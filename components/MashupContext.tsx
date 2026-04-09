@@ -14,6 +14,7 @@ export interface GeneratedImage {
   isVideo?: boolean;
   tags?: string[];
   collectionId?: string;
+  groupId?: string; // For grouping multiple images into one post
   postCaption?: string;
   postHashtags?: string[];
   approved?: boolean;
@@ -151,7 +152,8 @@ export interface Idea {
 
 export interface ScheduledPost {
   id: string;
-  imageId: string;
+  imageId?: string; // Kept for backward compatibility
+  imageIds?: string[]; // Support for multiple images in one post
   date: string;
   time: string;
   platforms: string[];
@@ -267,6 +269,7 @@ interface MashupContextType {
   generatePostContent: (image: GeneratedImage) => Promise<GeneratedImage | undefined>;
   rerollImage: (id: string, prompt: string, options?: GenerateOptions) => Promise<void>;
   saveImage: (img: GeneratedImage) => void;
+  saveImages: (imgs: GeneratedImage[]) => void;
   deleteImage: (id: string, fromSaved: boolean) => void;
   updateImageTags: (id: string, tags: string[]) => void;
   createCollection: (name?: string, description?: string, imageIds?: string[]) => Promise<Collection>;
@@ -582,6 +585,22 @@ export function MashupProvider({ children }: { children: ReactNode }) {
       } else {
         next = [{ ...img, savedAt: Date.now() }, ...prev];
       }
+      set('mashup_saved_images', next).catch(err => console.error('Failed to save to IndexedDB', err));
+      return next;
+    });
+  };
+
+  const saveImages = (imgs: GeneratedImage[]) => {
+    setSavedImages(prev => {
+      let next = [...prev];
+      imgs.forEach(img => {
+        const index = next.findIndex(i => i.id === img.id);
+        if (index !== -1) {
+          next[index] = { ...next[index], ...img };
+        } else {
+          next = [{ ...img, savedAt: Date.now() }, ...next];
+        }
+      });
       set('mashup_saved_images', next).catch(err => console.error('Failed to save to IndexedDB', err));
       return next;
     });
@@ -1800,6 +1819,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
       generateNegativePrompt,
       autoTagImage,
       setImageStatus,
+      saveImages,
       autoGenerateCollectionInfo,
       comparisonPrompt,
       setComparisonPrompt,

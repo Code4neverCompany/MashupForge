@@ -3,27 +3,40 @@ import { TwitterApi } from 'twitter-api-v2';
 
 export async function POST(req: Request) {
   try {
-    const { caption, platforms, mediaUrl, mediaBase64, credentials } = await req.json();
+    const { caption, platforms, mediaUrl, mediaUrls, mediaBase64, credentials } = await req.json();
 
     const results: any = {};
 
-    // Helper to get image buffer
-    let imageBuffer: Buffer | null = null;
-    let mimeType = 'image/jpeg';
+    // Helper to get image buffers
+    const imageItems: { buffer: Buffer, mimeType: string, url?: string }[] = [];
     
-    if (mediaBase64) {
-      imageBuffer = Buffer.from(mediaBase64, 'base64');
-    } else if (mediaUrl && mediaUrl.startsWith('data:')) {
-      const base64Data = mediaUrl.split(',')[1];
-      if (base64Data) {
-        imageBuffer = Buffer.from(base64Data, 'base64');
-        mimeType = mediaUrl.split(';')[0].split(':')[1] || 'image/jpeg';
+    const urlsToProcess = mediaUrls && mediaUrls.length > 0 ? mediaUrls : (mediaUrl ? [mediaUrl] : []);
+
+    for (const url of urlsToProcess) {
+      let buffer: Buffer | null = null;
+      let mimeType = 'image/jpeg';
+      
+      if (url.startsWith('data:')) {
+        const base64Data = url.split(',')[1];
+        if (base64Data) {
+          buffer = Buffer.from(base64Data, 'base64');
+          mimeType = url.split(';')[0].split(':')[1] || 'image/jpeg';
+        }
+      } else {
+        const imgRes = await fetch(url);
+        const arrayBuffer = await imgRes.arrayBuffer();
+        buffer = Buffer.from(arrayBuffer);
+        mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
       }
-    } else if (mediaUrl) {
-      const imgRes = await fetch(mediaUrl);
-      const arrayBuffer = await imgRes.arrayBuffer();
-      imageBuffer = Buffer.from(arrayBuffer);
-      mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
+      
+      if (buffer) {
+        imageItems.push({ buffer, mimeType, url: url.startsWith('http') ? url : undefined });
+      }
+    }
+
+    // Fallback for mediaBase64 (single image)
+    if (imageItems.length === 0 && mediaBase64) {
+      imageItems.push({ buffer: Buffer.from(mediaBase64, 'base64'), mimeType: 'image/jpeg' });
     }
 
     if (platforms.includes('instagram')) {
@@ -39,94 +52,86 @@ export async function POST(req: Request) {
 
       const hostUrl = igAccessToken.startsWith('IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
 
-      let igMediaUrl = mediaUrl;
-      if (!igMediaUrl || igMediaUrl.startsWith('data:')) {
-        if (!imageBuffer) {
-          throw new Error('No image data available for Instagram');
-        }
-        try {
-          const formData = new FormData();
-          const blob = new Blob([new Uint8Array(imageBuffer)], { type: mimeType });
-          formData.append('files[]', blob, 'image.jpg');
-          
-          const uploadRes = await fetch('https://uguu.se/upload.php', {
-            method: 'POST',
-            body: formData
-          });
-          
-          if (!uploadRes.ok) {
-            throw new Error('Failed to upload image to temporary host');
-          }
-          const uploadData = await uploadRes.json();
-          if (!uploadData.success || !uploadData.files || !uploadData.files[0]) {
-            throw new Error('Temporary host returned invalid response');
-          }
-          igMediaUrl = uploadData.files[0].url;
-        } catch (err: any) {
-          throw new Error(`Failed to host image for Instagram: ${err.message}`);
-        }
-      }
-
-      // 1. Create Media Container
-      const containerRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${igAccessToken}`
-        },
-        body: JSON.stringify({
-          image_url: igMediaUrl,
-          caption: caption
-        })
-      });
-      const containerData = await containerRes.json();
-      if (containerData.error) {
-        if (containerData.error.message.includes('Cannot parse access token') || containerData.error.message.includes('Invalid OAuth access token')) {
-          throw new Error(`Your Instagram Access Token is invalid. Please ensure you are using a valid ${igAccessToken.startsWith('IGAA') ? 'Instagram' : 'Page'} Access Token from the Meta Developer Portal.`);
-        }
-        throw new Error(`IG Container Error: ${containerData.error.message}`);
-      }
-
-      // Wait a few seconds for Instagram to process the image container
-      // Sometimes publishing immediately fails with "Media ID is not available"
-      await new Promise(resolve => setTimeout(resolve, 5000));
-
-      // 2. Publish Media
-      const publishRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media_publish`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${igAccessToken}`
-        },
-        body: JSON.stringify({
-          creation_id: containerData.id
-        })
-      });
-      const publishData = await publishRes.json();
-      if (publishData.error) {
-        // If it still fails, try one more time after another delay
-        if (publishData.error.message.includes('Media ID is not available')) {
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          const retryPublishRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media_publish`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${igAccessToken}`
-            },
-            body: JSON.stringify({
-              creation_id: containerData.id
-            })
-          });
-          const retryPublishData = await retryPublishRes.json();
-          if (retryPublishData.error) {
-            throw new Error(`IG Publish Error (Retry): ${retryPublishData.error.message}`);
-          }
+      // For Instagram, we need public URLs for all images
+      const igMediaUrls: string[] = [];
+      for (const item of imageItems) {
+        if (item.url) {
+          igMediaUrls.push(item.url);
         } else {
-          throw new Error(`IG Publish Error: ${publishData.error.message}`);
+          try {
+            const formData = new FormData();
+            const blob = new Blob([new Uint8Array(item.buffer)], { type: item.mimeType });
+            formData.append('files[]', blob, 'image.jpg');
+            
+            const uploadRes = await fetch('https://uguu.se/upload.php', {
+              method: 'POST',
+              body: formData
+            });
+            
+            if (!uploadRes.ok) throw new Error('Failed to upload image to temporary host');
+            const uploadData = await uploadRes.json();
+            if (!uploadData.success || !uploadData.files || !uploadData.files[0]) throw new Error('Temporary host returned invalid response');
+            igMediaUrls.push(uploadData.files[0].url);
+          } catch (err: any) {
+            throw new Error(`Failed to host image for Instagram: ${err.message}`);
+          }
         }
       }
 
-      results.instagram = publishData;
+      if (igMediaUrls.length === 1) {
+        // Single image post
+        const containerRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
+          body: JSON.stringify({ image_url: igMediaUrls[0], caption: caption })
+        });
+        const containerData = await containerRes.json();
+        if (containerData.error) throw new Error(`IG Container Error: ${containerData.error.message}`);
+
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        const publishRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media_publish`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
+          body: JSON.stringify({ creation_id: containerData.id })
+        });
+        const publishData = await publishRes.json();
+        if (publishData.error) throw new Error(`IG Publish Error: ${publishData.error.message}`);
+        results.instagram = publishData;
+      } else if (igMediaUrls.length > 1) {
+        // Carousel post
+        const childrenIds: string[] = [];
+        for (const url of igMediaUrls) {
+          const childRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
+            body: JSON.stringify({ image_url: url, is_carousel_item: true })
+          });
+          const childData = await childRes.json();
+          if (childData.error) throw new Error(`IG Carousel Item Error: ${childData.error.message}`);
+          childrenIds.push(childData.id);
+        }
+
+        // Create Carousel Container
+        const carouselRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
+          body: JSON.stringify({ media_type: 'CAROUSEL', children: childrenIds, caption: caption })
+        });
+        const carouselData = await carouselRes.json();
+        if (carouselData.error) throw new Error(`IG Carousel Container Error: ${carouselData.error.message}`);
+
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        const publishRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media_publish`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
+          body: JSON.stringify({ creation_id: carouselData.id })
+        });
+        const publishData = await publishRes.json();
+        if (publishData.error) throw new Error(`IG Carousel Publish Error: ${publishData.error.message}`);
+        results.instagram = publishData;
+      }
     }
 
     if (platforms.includes('twitter')) {
@@ -140,14 +145,15 @@ export async function POST(req: Request) {
         accessSecret: credentials.twitter.accessSecret,
       });
 
-      let mediaId = undefined;
-      if (imageBuffer) {
-        mediaId = await client.v1.uploadMedia(imageBuffer, { mimeType });
+      const mediaIds: string[] = [];
+      for (const item of imageItems.slice(0, 4)) { // Twitter allows up to 4 images
+        const mediaId = await client.v1.uploadMedia(item.buffer, { mimeType: item.mimeType });
+        mediaIds.push(mediaId);
       }
 
       const tweet = await client.v2.tweet({
         text: caption,
-        ...(mediaId ? { media: { media_ids: [mediaId] } } : {})
+        ...(mediaIds.length > 0 ? { media: { media_ids: mediaIds as any } } : {})
       });
       results.twitter = tweet;
     }
@@ -160,10 +166,10 @@ export async function POST(req: Request) {
       const formData = new FormData();
       formData.append('payload_json', JSON.stringify({ content: caption }));
       
-      if (imageBuffer) {
-        const blob = new Blob([new Uint8Array(imageBuffer)], { type: mimeType });
-        formData.append('files[0]', blob, 'image.jpg');
-      }
+      imageItems.forEach((item, idx) => {
+        const blob = new Blob([new Uint8Array(item.buffer)], { type: item.mimeType });
+        formData.append(`files[${idx}]`, blob, `image-${idx}.jpg`);
+      });
 
       const discordRes = await fetch(credentials.discord.webhookUrl, {
         method: 'POST',

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { 
@@ -2683,7 +2683,7 @@ export function MainContent() {
 }
 
 function CaptioningView({ setView }: { setView: (v: 'studio' | 'gallery' | 'compare' | 'captioning' | 'post-ready') => void }) {
-  const { savedImages, generatePostContent, settings, saveImage } = useMashup();
+  const { savedImages, generatePostContent, settings, saveImage, saveImages } = useMashup();
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -2691,6 +2691,55 @@ function CaptioningView({ setView }: { setView: (v: 'studio' | 'gallery' | 'comp
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
 
   const captioningImages = savedImages.filter(img => img.approved && !img.isPostReady);
+
+  // Group images by groupId
+  const groupedCaptioningItems = React.useMemo(() => {
+    const groups: Record<string, GeneratedImage[]> = {};
+    const ungrouped: GeneratedImage[] = [];
+    
+    captioningImages.forEach(img => {
+      if (img.groupId) {
+        if (!groups[img.groupId]) groups[img.groupId] = [];
+        groups[img.groupId].push(img);
+      } else {
+        ungrouped.push(img);
+      }
+    });
+    
+    const items: { id: string, images: GeneratedImage[], isGroup: boolean }[] = [];
+    
+    // Add groups
+    Object.entries(groups).forEach(([groupId, imgs]) => {
+      items.push({ id: groupId, images: imgs, isGroup: true });
+    });
+    
+    // Add ungrouped
+    ungrouped.forEach(img => {
+      items.push({ id: img.id, images: [img], isGroup: false });
+    });
+    
+    // Sort by newest image in item
+    return items.sort((a, b) => {
+      const timeA = Math.max(...a.images.map(i => i.savedAt || 0));
+      const timeB = Math.max(...b.images.map(i => i.savedAt || 0));
+      return timeB - timeA;
+    });
+  }, [captioningImages]);
+
+  const handleGroupSelected = async () => {
+    if (selectedForBatch.size < 2) return;
+    const groupId = `group-${Date.now()}`;
+    const ids = Array.from(selectedForBatch);
+    const imgsToUpdate = savedImages.filter(img => ids.includes(img.id)).map(img => ({ ...img, groupId }));
+    saveImages(imgsToUpdate);
+    setSelectedForBatch(new Set());
+  };
+
+  const handleUngroup = async (groupId: string) => {
+    const imgsToUpdate = savedImages.filter(img => img.groupId === groupId).map(img => ({ ...img, groupId: undefined }));
+    saveImages(imgsToUpdate);
+    if (selectedImage?.groupId === groupId) setSelectedImage(null);
+  };
 
   useEffect(() => {
     if (selectedImage && !showSuccess) {
@@ -2710,7 +2759,18 @@ function CaptioningView({ setView }: { setView: (v: 'studio' | 'gallery' | 'comp
     if (!selectedImage) return;
     setIsSaving(true);
     try {
-      await saveImage({ ...selectedImage, isPostReady: true });
+      if (selectedImage.groupId) {
+        const groupImgs = savedImages.filter(img => img.groupId === selectedImage.groupId);
+        const updatedImgs = groupImgs.map(img => ({ 
+          ...img, 
+          isPostReady: true, 
+          postCaption: selectedImage.postCaption, 
+          postHashtags: selectedImage.postHashtags 
+        }));
+        saveImages(updatedImgs);
+      } else {
+        await saveImage({ ...selectedImage, isPostReady: true });
+      }
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
@@ -2761,16 +2821,27 @@ function CaptioningView({ setView }: { setView: (v: 'studio' | 'gallery' | 'comp
           <h2 className="text-2xl font-bold text-white tracking-tight">Captioning Studio</h2>
           <p className="text-zinc-400 text-sm">Review, edit, and finalize your AI-generated captions and hashtags.</p>
         </div>
-        {selectedForBatch.size > 0 && (
-          <button
-            onClick={handleBatchMove}
-            disabled={isBatchProcessing}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg font-medium transition-colors flex items-center gap-2 text-sm"
-          >
-            {isBatchProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-            Batch Move to Post Ready ({selectedForBatch.size})
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {selectedForBatch.size >= 2 && (
+            <button
+              onClick={handleGroupSelected}
+              className="px-4 py-2 bg-emerald-600/10 text-emerald-400 hover:bg-emerald-600/20 border border-emerald-500/20 rounded-lg font-medium transition-colors flex items-center gap-2 text-sm"
+            >
+              <Layers className="w-4 h-4" />
+              Group Selected into One Post ({selectedForBatch.size})
+            </button>
+          )}
+          {selectedForBatch.size > 0 && (
+            <button
+              onClick={handleBatchMove}
+              disabled={isBatchProcessing}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg font-medium transition-colors flex items-center gap-2 text-sm"
+            >
+              {isBatchProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              Batch Move to Post Ready ({selectedForBatch.size})
+            </button>
+          )}
+        </div>
       </div>
 
       {captioningImages.length === 0 ? (
@@ -2789,93 +2860,118 @@ function CaptioningView({ setView }: { setView: (v: 'studio' | 'gallery' | 'comp
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* List of ready posts */}
           <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
-            {captioningImages.map(img => (
-              <div
-                key={img.id}
-                onClick={() => setSelectedImage(img)}
-                className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left cursor-pointer relative ${
-                  selectedImage?.id === img.id 
-                    ? 'bg-indigo-500/10 border-indigo-500/50 ring-1 ring-indigo-500/50' 
-                    : 'bg-zinc-900/50 border-zinc-800 hover:border-zinc-700'
-                }`}
-              >
-                <div className="absolute top-2 right-2 flex items-center gap-2">
-                  <button
-                    onClick={(e) => handleRemove(img, e)}
-                    className="p-1.5 bg-zinc-800/80 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 rounded-lg transition-colors"
-                    title="Remove from Captioning"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                  <input
-                    type="checkbox"
-                    checked={selectedForBatch.has(img.id)}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      setSelectedForBatch(prev => {
-                        const next = new Set(prev);
-                        if (e.target.checked) next.add(img.id);
-                        else next.delete(img.id);
-                        return next;
-                      });
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-4 h-4 rounded border-zinc-700 text-indigo-600 focus:ring-indigo-500/50 bg-zinc-900"
-                  />
-                </div>
-                <div className="relative w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-zinc-800">
-                  {img.isVideo ? (
-                    <div className="relative w-full h-full">
-                      <video
-                        src={img.url}
-                        className="w-full h-full object-cover"
-                      />
-                      {settings.watermark?.enabled && (
-                        <div className={`absolute pointer-events-none z-10 ${
-                          settings.watermark.position === 'bottom-right' ? 'bottom-1 right-1' :
-                          settings.watermark.position === 'bottom-left' ? 'bottom-1 left-1' :
-                          settings.watermark.position === 'top-right' ? 'top-1 right-1' :
-                          settings.watermark.position === 'top-left' ? 'top-1 left-1' : 'bottom-1 right-1'
-                        }`} style={{ opacity: settings.watermark.opacity || 0.8 }}>
-                          {settings.watermark.image ? (
-                            <Image src={settings.watermark.image} alt="Watermark" fill className="object-contain" referrerPolicy="no-referrer" />
-                          ) : settings.channelName ? (
-                            <span className="text-white bg-black/50 px-1 py-0.5 rounded text-[8px] font-bold">{settings.channelName}</span>
-                          ) : null}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <Image 
-                      src={img.url || `data:image/jpeg;base64,${img.base64}`} 
-                      alt="" 
-                      fill 
-                      className="object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-white font-medium truncate mb-1">{img.prompt}</p>
-                  {img.postCaption ? (
-                    <p className="text-xs text-zinc-500 line-clamp-2">{img.postCaption}</p>
-                  ) : (
-                    <button 
-                      onClick={async (e) => {
+            {groupedCaptioningItems.map(item => {
+              const mainImg = item.images[0];
+              const isSelected = selectedImage?.id === mainImg.id || (selectedImage?.groupId && selectedImage.groupId === item.id);
+              
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => setSelectedImage(mainImg)}
+                  className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left cursor-pointer relative ${
+                    isSelected 
+                      ? 'bg-indigo-500/10 border-indigo-500/50 ring-1 ring-indigo-500/50' 
+                      : 'bg-zinc-900/50 border-zinc-800 hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="absolute top-2 right-2 flex items-center gap-2">
+                    {item.isGroup && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUngroup(item.id);
+                        }}
+                        className="p-1.5 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-lg transition-colors"
+                        title="Ungroup Post"
+                      >
+                        <MinusCircle className="w-3 h-3" />
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
                         e.stopPropagation();
-                        const updated = await generatePostContent(img);
-                        if (updated && selectedImage?.id === updated.id) {
-                          setSelectedImage(updated);
-                        }
+                        item.images.forEach(img => handleRemove(img, e));
                       }}
-                      className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-wider"
+                      className="p-1.5 bg-zinc-800/80 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 rounded-lg transition-colors"
+                      title="Remove from Captioning"
                     >
-                      Generate Post Content
+                      <Trash2 className="w-3 h-3" />
                     </button>
-                  )}
+                    {!item.isGroup && (
+                      <input
+                        type="checkbox"
+                        checked={selectedForBatch.has(mainImg.id)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          setSelectedForBatch(prev => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(mainImg.id);
+                            else next.delete(mainImg.id);
+                            return next;
+                          });
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-4 h-4 rounded border-zinc-700 text-indigo-600 focus:ring-indigo-500/50 bg-zinc-900"
+                      />
+                    )}
+                  </div>
+                  
+                  <div className="relative w-20 h-20 flex-shrink-0">
+                    {item.images.slice(0, 3).map((img, idx) => (
+                      <div 
+                        key={img.id}
+                        className="absolute rounded-xl overflow-hidden border border-zinc-800 bg-zinc-800 transition-all"
+                        style={{ 
+                          width: '100%', 
+                          height: '100%',
+                          top: idx * -4,
+                          left: idx * 4,
+                          zIndex: 10 - idx,
+                          opacity: 1 - (idx * 0.2)
+                        }}
+                      >
+                        <Image 
+                          src={img.url || `data:image/jpeg;base64,${img.base64}`} 
+                          alt="" 
+                          fill 
+                          className="object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    ))}
+                    {item.isGroup && (
+                      <div className="absolute -bottom-1 -right-1 bg-indigo-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md z-20 shadow-lg">
+                        {item.images.length}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0 ml-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-sm text-white font-medium truncate">
+                        {item.isGroup ? `Multi-Image Post: ${mainImg.prompt.slice(0, 30)}...` : mainImg.prompt}
+                      </p>
+                    </div>
+                    {mainImg.postCaption ? (
+                      <p className="text-xs text-zinc-500 line-clamp-2">{mainImg.postCaption}</p>
+                    ) : (
+                      <button 
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const updated = await generatePostContent(mainImg);
+                          if (updated && selectedImage?.id === updated.id) {
+                            setSelectedImage(updated);
+                          }
+                        }}
+                        className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-wider"
+                      >
+                        Generate Post Content
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Instagram Preview */}
@@ -2899,7 +2995,24 @@ function CaptioningView({ setView }: { setView: (v: 'studio' | 'gallery' | 'comp
 
                 {/* Image */}
                 <div className="relative aspect-square bg-zinc-900">
-                  {selectedImage.isVideo ? (
+                  {selectedImage.groupId ? (
+                    <div className="w-full h-full flex overflow-x-auto snap-x snap-mandatory hide-scrollbar">
+                      {savedImages.filter(img => img.groupId === selectedImage.groupId).map((img, idx) => (
+                        <div key={img.id} className="w-full h-full flex-shrink-0 snap-center relative">
+                          <Image 
+                            src={img.url || `data:image/jpeg;base64,${img.base64}`} 
+                            alt="" 
+                            fill 
+                            className="object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded text-[10px] text-white font-bold">
+                            {idx + 1} / {savedImages.filter(i => i.groupId === selectedImage.groupId).length}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : selectedImage.isVideo ? (
                     <video
                       src={selectedImage.url}
                       autoPlay
@@ -3005,8 +3118,38 @@ function CaptioningView({ setView }: { setView: (v: 'studio' | 'gallery' | 'comp
 }
 
 function PostReadyView() {
-  const { savedImages, settings, updateSettings, saveImage } = useMashup();
+  const { savedImages, settings, updateSettings, saveImage, saveImages } = useMashup();
   const postReadyImages = savedImages.filter(img => img.isPostReady);
+  
+  // Group postReadyImages by groupId
+  const groupedPostReadyItems = React.useMemo(() => {
+    const groups: Record<string, GeneratedImage[]> = {};
+    const ungrouped: GeneratedImage[] = [];
+    
+    postReadyImages.forEach(img => {
+      if (img.groupId) {
+        if (!groups[img.groupId]) groups[img.groupId] = [];
+        groups[img.groupId].push(img);
+      } else {
+        ungrouped.push(img);
+      }
+    });
+    
+    const items: { id: string, images: GeneratedImage[], isGroup: boolean }[] = [];
+    Object.entries(groups).forEach(([groupId, imgs]) => {
+      items.push({ id: groupId, images: imgs, isGroup: true });
+    });
+    ungrouped.forEach(img => {
+      items.push({ id: img.id, images: [img], isGroup: false });
+    });
+    
+    return items.sort((a, b) => {
+      const timeA = Math.max(...a.images.map(i => i.savedAt || 0));
+      const timeB = Math.max(...b.images.map(i => i.savedAt || 0));
+      return timeB - timeA;
+    });
+  }, [postReadyImages]);
+
   const [selectedImageForSchedule, setSelectedImageForSchedule] = useState<GeneratedImage | null>(null);
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
@@ -3095,13 +3238,17 @@ function PostReadyView() {
         scheduleIsoDate = dateObj.toISOString();
       }
 
+      const imageIds = selectedImageForSchedule.groupId 
+        ? savedImages.filter(img => img.groupId === selectedImageForSchedule.groupId).map(img => img.id)
+        : [selectedImageForSchedule.id];
+
       // If it's scheduled for the future, we just save it locally.
       // Free APIs don't hold scheduled posts for us.
       if (!isImmediate) {
         if (editingScheduleId) {
           const updatedPosts: ScheduledPost[] = settings.scheduledPosts?.map(p => 
             p.id === editingScheduleId 
-              ? { ...p, date: scheduleDate, time: scheduleTime, platforms: selectedPlatforms, caption: editedCaption, status: 'scheduled' }
+              ? { ...p, date: scheduleDate, time: scheduleTime, platforms: selectedPlatforms, caption: editedCaption, status: 'scheduled', imageIds }
               : p
           ) || [];
           updateSettings({ scheduledPosts: updatedPosts });
@@ -3109,7 +3256,7 @@ function PostReadyView() {
         } else {
           const newSchedule: ScheduledPost = {
             id: `sched-${Date.now()}`,
-            imageId: selectedImageForSchedule.id,
+            imageIds,
             date: scheduleDate,
             time: scheduleTime,
             platforms: selectedPlatforms,
@@ -3134,13 +3281,18 @@ function PostReadyView() {
       }
 
       // Immediate posting
+      const mediaUrls = selectedImageForSchedule.groupId
+        ? savedImages.filter(img => img.groupId === selectedImageForSchedule.groupId).map(img => img.url)
+        : [selectedImageForSchedule.url];
+
       const res = await fetch('/api/social/post', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           caption: editedCaption,
           platforms: selectedPlatforms.map(p => p.toLowerCase()),
-          mediaUrl: selectedImageForSchedule.url,
+          mediaUrl: mediaUrls[0], // For now, most APIs handle one URL easily. Multi-image posting might need API updates.
+          mediaUrls: mediaUrls.length > 1 ? mediaUrls : undefined,
           mediaBase64: selectedImageForSchedule.base64,
           credentials: {
             instagram: instagramCreds,
@@ -3155,7 +3307,7 @@ function PostReadyView() {
 
       const newSchedule: ScheduledPost = {
         id: editingScheduleId || `sched-${Date.now()}`,
-        imageId: selectedImageForSchedule.id,
+        imageIds,
         date: new Date().toISOString().split('T')[0],
         time: new Date().toTimeString().substring(0,5),
         platforms: selectedPlatforms,
@@ -3199,8 +3351,10 @@ function PostReadyView() {
     }
   };
 
-  const getScheduledInfo = (imageId: string) => {
-    return settings.scheduledPosts?.filter(p => p.imageId === imageId) || [];
+  const getScheduledInfo = (itemId: string, isGroup: boolean) => {
+    return settings.scheduledPosts?.filter(p => 
+      isGroup ? p.imageIds?.includes(savedImages.find(img => img.groupId === itemId)?.id || '') : (p.imageId === itemId || p.imageIds?.includes(itemId))
+    ) || [];
   };
 
   // Helper to get dates for the current week
@@ -3264,18 +3418,36 @@ function PostReadyView() {
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {postReadyImages.map(img => {
-            const schedules = getScheduledInfo(img.id);
+          {groupedPostReadyItems.map(item => {
+            const mainImg = item.images[0];
+            const schedules = getScheduledInfo(item.id, item.isGroup);
             return (
-            <div key={img.id} className="bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800 shadow-xl flex flex-col">
+            <div key={item.id} className="bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800 shadow-xl flex flex-col">
               <div className="relative aspect-square bg-zinc-800 cursor-pointer group" onClick={() => {
-                setSelectedImageForSchedule(img);
-                setEditedCaption(`${img.postCaption}\n\n${img.postHashtags?.map(t => '#' + t.replace('#', '')).join(' ')}`);
+                setSelectedImageForSchedule(mainImg);
+                setEditedCaption(`${mainImg.postCaption}\n\n${mainImg.postHashtags?.map(t => '#' + t.replace('#', '')).join(' ')}`);
               }}>
-                {img.isVideo ? (
+                {item.isGroup ? (
+                  <div className="w-full h-full flex overflow-x-auto snap-x snap-mandatory hide-scrollbar">
+                    {item.images.map((img, idx) => (
+                      <div key={img.id} className="w-full h-full flex-shrink-0 snap-center relative">
+                        <Image 
+                          src={img.url || `data:image/jpeg;base64,${img.base64}`} 
+                          alt="" 
+                          fill 
+                          className="object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded text-[10px] text-white font-bold">
+                          {idx + 1} / {item.images.length}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : mainImg.isVideo ? (
                   <div className="relative w-full h-full">
                     <video
-                      src={img.url}
+                      src={mainImg.url}
                       autoPlay
                       loop
                       muted
@@ -3285,56 +3457,77 @@ function PostReadyView() {
                   </div>
                 ) : (
                   <Image 
-                    src={img.url || `data:image/jpeg;base64,${img.base64}`} 
+                    src={mainImg.url || `data:image/jpeg;base64,${mainImg.base64}`} 
                     alt="" 
                     fill 
-                    className="object-cover"
+                    className="object-cover group-hover:scale-105 transition-transform duration-500"
                     referrerPolicy="no-referrer"
                   />
                 )}
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <span className="text-white font-bold bg-indigo-600 px-4 py-2 rounded-lg">Schedule Post</span>
+                {item.isGroup && (
+                  <div className="absolute top-2 left-2 bg-indigo-600 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-lg flex items-center gap-1.5">
+                    <Layers className="w-3 h-3" />
+                    Multi-Image Post
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <div className="bg-white/10 backdrop-blur-md border border-white/20 px-4 py-2 rounded-xl text-white text-sm font-medium">
+                    Schedule Post
+                  </div>
                 </div>
               </div>
-              <div className="p-4 space-y-3 flex-1 flex flex-col">
-                <p className="text-sm text-white font-medium line-clamp-2">{img.postCaption}</p>
-                <div className="flex flex-wrap gap-x-1">
-                  {img.postHashtags?.map(tag => (
-                    <span key={tag} className="text-xs text-blue-400">#{tag.replace('#', '')}</span>
-                  ))}
+              
+              <div className="p-4 flex-1 flex flex-col">
+                <div className="flex-1">
+                  <p className="text-sm text-zinc-300 line-clamp-2 mb-3 italic">
+                    &quot;{mainImg.postCaption}&quot;
+                  </p>
+                  <div className="flex flex-wrap gap-1 mb-4">
+                    {mainImg.postHashtags?.slice(0, 3).map(tag => (
+                      <span key={tag} className="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">#{tag.replace('#', '')}</span>
+                    ))}
+                    {(mainImg.postHashtags?.length || 0) > 3 && (
+                      <span className="text-[10px] text-zinc-500">+{mainImg.postHashtags!.length - 3} more</span>
+                    )}
+                  </div>
                 </div>
-                
-                {schedules.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-zinc-800">
-                    <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Scheduled For:</p>
+
+                <div className="pt-4 border-t border-zinc-800 space-y-3">
+                  {schedules.length > 0 ? (
                     <div className="space-y-2">
-                      {schedules.map(sched => (
-                        <div key={sched.id} className="bg-zinc-950 p-2 rounded-lg border border-zinc-800 flex items-center justify-between">
-                          <div className="text-xs text-zinc-300">
-                            <span className="font-bold text-white">{sched.date}</span> at {sched.time}
+                      {schedules.map(s => (
+                        <div key={s.id} className="flex items-center justify-between p-2 bg-indigo-500/5 border border-indigo-500/20 rounded-xl">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${s.status === 'posted' ? 'bg-green-500' : 'bg-indigo-500 animate-pulse'}`} />
+                            <span className="text-[10px] text-zinc-300 font-medium">
+                              {s.status === 'posted' ? 'Posted' : 'Scheduled'}: {s.date} @ {s.time}
+                            </span>
                           </div>
-                          <div className="flex gap-1">
-                            {sched.platforms.map(p => (
-                              <span key={p} className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded capitalize">{p}</span>
-                            ))}
-                          </div>
+                          <button 
+                            onClick={() => {
+                              setEditingScheduleId(s.id);
+                              setSelectedImageForSchedule(mainImg);
+                              setScheduleDate(s.date);
+                              setScheduleTime(s.time);
+                              setSelectedPlatforms(s.platforms);
+                              setEditedCaption(s.caption);
+                            }}
+                            className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold"
+                          >
+                            Edit
+                          </button>
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-[10px] text-zinc-500 text-center italic">No posts scheduled yet</p>
+                  )}
+                </div>
 
                 <div className="pt-4 mt-auto flex gap-2">
-                  <a 
-                    href={img.url || `data:image/jpeg;base64,${img.base64}`} 
-                    download={`post-${img.id}.jpg`}
-                    className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium text-xs text-center transition-colors"
-                  >
-                    Download Media
-                  </a>
                   <button 
                     onClick={() => {
-                      navigator.clipboard.writeText(`${img.postCaption}\n\n${img.postHashtags?.map(t => '#' + t.replace('#', '')).join(' ')}`);
+                      navigator.clipboard.writeText(`${mainImg.postCaption}\n\n${mainImg.postHashtags?.map(t => '#' + t.replace('#', '')).join(' ')}`);
                     }}
                     className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium text-xs text-center transition-colors"
                   >
@@ -3343,7 +3536,12 @@ function PostReadyView() {
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();
-                      await saveImage({ ...img, isPostReady: false, postCaption: undefined, postHashtags: undefined });
+                      if (item.isGroup) {
+                        const updated = item.images.map(img => ({ ...img, isPostReady: false, postCaption: undefined, postHashtags: undefined, groupId: undefined }));
+                        saveImages(updated);
+                      } else {
+                        await saveImage({ ...mainImg, isPostReady: false, postCaption: undefined, postHashtags: undefined });
+                      }
                     }}
                     className="px-3 py-2 bg-zinc-800 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 rounded-lg transition-colors"
                     title="Remove from Post Ready"
@@ -3353,8 +3551,7 @@ function PostReadyView() {
                 </div>
               </div>
             </div>
-            );
-          })}
+          );})}
         </div>
       ) : (
         <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-x-auto hide-scrollbar">
@@ -3375,7 +3572,8 @@ function PostReadyView() {
                 return (
                   <div key={dateStr} className="border-r border-zinc-800 last:border-0 p-2 space-y-2">
                     {daySchedules.sort((a, b) => a.time.localeCompare(b.time)).map(sched => {
-                      const img = postReadyImages.find(img => img.id === sched.imageId);
+                      const imgId = sched.imageIds?.[0] || sched.imageId;
+                      const img = postReadyImages.find(img => img.id === imgId);
                       if (!img) return null;
                       
                       return (
@@ -3393,6 +3591,11 @@ function PostReadyView() {
                                 <video src={img.url} className="w-full h-full object-cover" />
                               ) : (
                                 <Image src={img.url || `data:image/jpeg;base64,${img.base64}`} alt="" fill className="object-cover" />
+                              )}
+                              {sched.imageIds && sched.imageIds.length > 1 && (
+                                <div className="absolute bottom-0 right-0 bg-indigo-600 text-white text-[6px] font-bold px-0.5 rounded-tl">
+                                  {sched.imageIds.length}
+                                </div>
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
