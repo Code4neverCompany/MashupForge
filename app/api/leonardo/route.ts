@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
   try {
-    const { prompt, negative_prompt, modelId, width, height, apiKey: customApiKey } = await req.json();
+    const bodyData = await req.json();
+    const { prompt, negative_prompt, modelId, width, height, seed, apiKey: customApiKey } = bodyData;
     const apiKey = customApiKey || process.env.LEONARDO_API_KEY;
 
     if (!apiKey || apiKey === 'MY_LEONARDO_API_KEY') {
@@ -25,10 +26,16 @@ export async function POST(req: Request) {
         prompt_enhance: "OFF",
       };
 
+      if (seed !== undefined && seed !== null && !isNaN(Number(seed))) {
+        parameters.seed = Number(seed);
+      }
+
       if (modelId === 'gpt-image-1.5') {
         parameters.quality = "MEDIUM";
-      } else {
-        parameters.style_ids = ["111dc692-d470-4eec-b791-3475abac4c46"]; // Default to Dynamic style for other V2 models
+        // GPT Image-1.5 supports mode: FAST, QUALITY, ULTRA
+        parameters.mode = "QUALITY";
+      } else if (modelId === 'phoenix' || modelId === 'gemini-image-2' || modelId === 'nano-banana-2') {
+        parameters.style_ids = ["111dc692-d470-4eec-b791-3475abac4c46"]; // Dynamic style
       }
 
       body = JSON.stringify({
@@ -73,9 +80,21 @@ export async function POST(req: Request) {
 
     const createData = await createRes.json();
     
-    if (Array.isArray(createData) && createData.length > 0 && createData[0].extensions) {
+    // Handle GraphQL style errors which sometimes come back with 200 OK or 400
+    const graphqlErrors = Array.isArray(createData) ? createData : (createData.errors || []);
+    if (graphqlErrors.length > 0 && graphqlErrors[0].extensions) {
       console.error('Leonardo GraphQL error:', JSON.stringify(createData));
-      return NextResponse.json({ error: `Leonardo API Error: ${createData[0].message || 'Validation failed'}` }, { status: 400 });
+      const firstError = graphqlErrors[0];
+      const details = firstError.extensions?.details;
+      let errorMessage = firstError.message || 'Validation failed';
+      
+      if (details?.errors && Array.isArray(details.errors) && details.errors.length > 0) {
+        errorMessage = details.errors[0].message || errorMessage;
+      } else if (details?.message) {
+        errorMessage = details.message;
+      }
+
+      return NextResponse.json({ error: `Leonardo API Error: ${errorMessage}` }, { status: 400 });
     }
 
     const generationId = createData.sdGenerationJob?.generationId || createData.generationId || createData.id || createData.generation?.id || createData.generate?.generationId;

@@ -37,6 +37,7 @@ import {
   Palette,
   Sun,
   Camera,
+  Ban,
   Edit3,
   Lightbulb,
   Calendar,
@@ -137,6 +138,7 @@ export function MainContent() {
   const [isComparing, setIsComparing] = useState(false);
   const [isGeneratingIdea, setIsGeneratingIdea] = useState(false);
   const [isAutoSelecting, setIsAutoSelecting] = useState(false);
+  const [isPushing, setIsPushing] = useState(false);
 
   const PREDEFINED_PROMPTS = [
     "Darth Vader as a Space Marine in the Warhammer 40k universe, grimdark style",
@@ -187,12 +189,14 @@ export function MainContent() {
         Select the best Camera Angle from: ${CAMERA_ANGLES.join(', ')}.
         Select the best Aspect Ratio from: ${ASPECT_RATIOS.join(', ')}.
         
+        Also, generate a fitting negative prompt (what to avoid in the image) for this specific concept.
+        
         CRITICAL ASPECT RATIO RULES:
         - If the prompt describes an epic scene, landscape, wide battle, or cinematic vista, you MUST select "16:9".
         - If the prompt describes a character portrait, single character focus, or vertical subject, you MUST select "9:16".
         - Otherwise, select "1:1" or another appropriate ratio.
 
-        Return ONLY a JSON object with keys: style, lighting, angle, aspectRatio.`,
+        Return ONLY a JSON object with keys: style, lighting, angle, aspectRatio, negativePrompt.`,
         config: {
           responseMimeType: 'application/json',
         },
@@ -204,7 +208,8 @@ export function MainContent() {
         style: params.style || prev.style,
         lighting: params.lighting || prev.lighting,
         angle: params.angle || prev.angle,
-        aspectRatio: params.aspectRatio || prev.aspectRatio
+        aspectRatio: params.aspectRatio || prev.aspectRatio,
+        negativePrompt: params.negativePrompt || prev.negativePrompt
       }));
     } catch (error) {
       console.error('Error auto-selecting parameters:', error);
@@ -214,6 +219,7 @@ export function MainContent() {
   };
 
   const handlePushIdeaToCompare = async (prompt: string) => {
+    setIsPushing(true);
     setView('compare');
     try {
       const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
@@ -274,6 +280,8 @@ export function MainContent() {
     } catch (error) {
       console.error('Error generating enhanced prompt for comparison:', error);
       setComparisonPrompt(prompt);
+    } finally {
+      setIsPushing(false);
     }
   };
 
@@ -695,21 +703,21 @@ export function MainContent() {
             </button>
           )}
 
-          {view === 'studio' && (
+          {view === 'compare' && (
             <button
-              onClick={() => generateImages()}
-              disabled={isGenerating}
+              onClick={handleCompare}
+              disabled={isComparing || comparisonModels.length < 2 || !comparisonPrompt.trim()}
               className="hidden md:flex items-center gap-2 px-4 py-2 bg-white text-black hover:bg-zinc-200 disabled:opacity-50 disabled:hover:bg-white rounded-lg font-medium text-sm transition-colors shrink-0"
             >
-              {isGenerating ? (
+              {isComparing ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Generating...
+                  Comparing...
                 </>
               ) : (
                 <>
-                  <ImageIcon className="w-4 h-4" />
-                  Generate Mashup
+                  <Columns className="w-4 h-4" />
+                  Compare Models
                 </>
               )}
             </button>
@@ -894,10 +902,14 @@ export function MainContent() {
                                   )}
                                   {status === 'in-work' && (
                                     <>
-                                      <button onClick={() => {
-                                        setComparisonPrompt(idea.concept);
-                                        setView('compare');
-                                      }} className="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded-md">To Studio</button>
+                                      <button 
+                                        onClick={() => handlePushIdeaToCompare(idea.concept)} 
+                                        disabled={isPushing}
+                                        className="text-[10px] bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-2 py-1 rounded-md flex items-center gap-1"
+                                      >
+                                        {isPushing ? <Loader2 className="w-2 h-2 animate-spin" /> : <Zap className="w-2 h-2" />}
+                                        To Studio
+                                      </button>
                                       <button onClick={() => updateIdeaStatus(idea.id, 'done')} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-1 rounded-md">Done</button>
                                     </>
                                   )}
@@ -994,6 +1006,20 @@ export function MainContent() {
                           onChange={(e) => setComparisonPrompt(e.target.value)}
                           placeholder="Enter a prompt to compare across models..."
                           className="w-full bg-zinc-950/80 border border-indigo-500/30 rounded-xl p-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 min-h-[100px] resize-none shadow-inner shadow-indigo-500/5"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-red-400/70 flex items-center gap-2">
+                          <Ban className="w-4 h-4" />
+                          Negative Prompt (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={comparisonOptions.negativePrompt || ''}
+                          onChange={(e) => setComparisonOptions(prev => ({ ...prev, negativePrompt: e.target.value }))}
+                          placeholder="What to avoid (e.g. blurry, low quality, extra limbs)..."
+                          className="w-full bg-zinc-950/80 border border-red-500/20 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30 shadow-inner shadow-red-500/5"
                         />
                       </div>
 

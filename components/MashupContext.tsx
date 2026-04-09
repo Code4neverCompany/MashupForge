@@ -57,14 +57,14 @@ export interface GenerateOptions {
 }
 
 export const GEMINI_MODELS = [
-  { id: 'gemini-3.1-flash-image-preview', name: 'Gemini 3.1 Flash Image (Nano Banana 2)' },
-  { id: 'gemini-3-pro-image-preview', name: 'Gemini 3 Pro Image (Nano Banana Pro)' },
-  { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image (Nano Banana)' },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash' },
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro' },
 ];
 
 export const PAID_MODELS = [
   'gemini-3.1-flash-image-preview',
   'gemini-3-pro-image-preview',
+  'gemini-3.1-pro-preview',
   'gemini-3-flash-preview',
   'veo-3.1-fast-generate-preview',
   'veo-3.1-generate-preview'
@@ -111,8 +111,6 @@ export const RECOMMENDED_GENRES = [
 ];
 
 export const LEONARDO_MODELS = [
-  { id: 'nano-banana-2', name: 'Nano Banana 2 (Leonardo)' },
-  { id: 'gemini-image-2', name: 'Nano Banana Pro (Leonardo)' },
   { id: 'b24e16ff-06e3-43eb-8d33-4416c2d75876', name: 'Leonardo Lightning' },
   { id: '6b645e3a-d64f-4341-a6d8-7a3690fbf042', name: 'Leonardo Vision XL' },
   { id: '1e60896f-3c26-4296-8ecc-53e2afecc132', name: 'Leonardo Diffusion XL' },
@@ -123,6 +121,8 @@ export const LEONARDO_MODELS = [
   { id: 'e316348f-7773-490e-adcd-46757c738eb7', name: 'Absolute Reality v1.6' },
   { id: 'phoenix', name: 'Leonardo Phoenix' },
   { id: 'gpt-image-1.5', name: 'GPT Image-1.5' },
+  { id: 'nano-banana-2', name: 'Nano Banana 2' },
+  { id: 'gemini-image-2', name: 'Nano Banana Pro' },
 ];
 
 export interface WatermarkSettings {
@@ -807,12 +807,14 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     setProgress('Preparing comparison...');
 
     try {
+      console.log('Starting comparison for models:', modelIds);
       for (let i = 0; i < modelIds.length; i++) {
         const modelId = modelIds[i];
         const isLeonardo = LEONARDO_MODELS.some(m => m.id === modelId);
         const provider = isLeonardo ? 'leonardo' : 'gemini';
         const modelName = getModelName(modelId, provider);
         
+        console.log(`Generating with model ${i + 1}/${modelIds.length}: ${modelName} (${modelId})`);
         setProgress(`Generating with ${modelName}...`);
         
         try {
@@ -823,30 +825,49 @@ export function MashupProvider({ children }: { children: ReactNode }) {
 
           if (isLeonardo) {
             const modelNameLower = modelName.toLowerCase();
-            const isXL = modelNameLower.includes('xl') || modelNameLower.includes('lightning') || modelId === 'gemini-image-2' || modelId === 'nano-banana-2';
+            const isXL = modelNameLower.includes('xl') || 
+                         modelNameLower.includes('lightning') || 
+                         modelId === 'phoenix' || 
+                         modelId === 'gpt-image-1.5' ||
+                         modelId === 'nano-banana-2' ||
+                         modelId === 'gemini-image-2';
             
             let width = isXL ? 1024 : 768;
             let height = isXL ? 1024 : 768;
             const currentAspectRatio = options?.aspectRatio || '1:1';
 
-            if (currentAspectRatio === '16:9') { 
-              width = isXL ? 1376 : 1024; 
-              height = isXL ? 768 : 576; 
-            } else if (currentAspectRatio === '9:16') { 
-              width = isXL ? 768 : 576; 
-              height = isXL ? 1376 : 1024; 
-            } else if (currentAspectRatio === '4:3') { 
-              width = isXL ? 1200 : 896; 
-              height = isXL ? 896 : 672; 
-            } else if (currentAspectRatio === '3:4') { 
-              width = isXL ? 896 : 672; 
-              height = isXL ? 1200 : 896; 
-            } else if (currentAspectRatio === '4:1') { 
-              width = isXL ? 1584 : 1024; 
-              height = isXL ? 672 : 256; 
-            } else if (currentAspectRatio === '1:4') { 
-              width = isXL ? 672 : 256; 
-              height = isXL ? 1584 : 1024; 
+            // GPT Image-1.5 has very specific supported dimensions
+            if (modelId === 'gpt-image-1.5') {
+              if (currentAspectRatio === '16:9' || currentAspectRatio === '3:2' || currentAspectRatio === '4:3') {
+                width = 1536;
+                height = 1024;
+              } else if (currentAspectRatio === '9:16' || currentAspectRatio === '2:3' || currentAspectRatio === '3:4') {
+                width = 1024;
+                height = 1536;
+              } else {
+                width = 1024;
+                height = 1024;
+              }
+            } else {
+              if (currentAspectRatio === '16:9') { 
+                width = isXL ? 1376 : 1024; 
+                height = isXL ? 768 : 576; 
+              } else if (currentAspectRatio === '9:16') { 
+                width = isXL ? 768 : 576; 
+                height = isXL ? 1376 : 1024; 
+              } else if (currentAspectRatio === '4:3') { 
+                width = isXL ? 1200 : 896; 
+                height = isXL ? 896 : 672; 
+              } else if (currentAspectRatio === '3:4') { 
+                width = isXL ? 896 : 672; 
+                height = isXL ? 1200 : 896; 
+              } else if (currentAspectRatio === '4:1') { 
+                width = isXL ? 1584 : 1024; 
+                height = isXL ? 672 : 256; 
+              } else if (currentAspectRatio === '1:4') { 
+                width = isXL ? 672 : 256; 
+                height = isXL ? 1584 : 1024; 
+              }
             }
 
             const res = await fetch('/api/leonardo', {
@@ -858,6 +879,8 @@ export function MashupProvider({ children }: { children: ReactNode }) {
                 width,
                 height,
                 negativePrompt: options?.negativePrompt,
+                seed: options?.seed,
+                guidance_scale: options?.cfgScale,
                 apiKey: settings.apiKeys.leonardo
               }),
             });
@@ -879,19 +902,44 @@ export function MashupProvider({ children }: { children: ReactNode }) {
                     imageId = statusData.imageId;
                     seed = statusData.seed;
                   } else if (status === 'FAILED') {
+                    // Check for moderation errors
+                    if (statusData.prompt_moderations && statusData.prompt_moderations.length > 0) {
+                      const mod = statusData.prompt_moderations[0];
+                      const reason = mod.moderationClassification?.join(', ') || 'Content moderation';
+                      throw new Error(`Leonardo generation failed: Content blocked due to moderation (${reason}). Try rephrasing your prompt.`);
+                    }
                     break;
                   }
                 }
               }
+            } else {
+              console.error(`Leonardo API error for ${modelName}:`, await res.text());
             }
           } else {
             const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
             const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+            
+            const imageConfig: any = {
+              aspectRatio: options?.aspectRatio || "1:1"
+            };
+            
+            if (modelId !== 'gemini-2.5-flash-image') {
+              imageConfig.imageSize = options?.imageSize || '1K';
+            }
+
+            // Append negative prompt to the main prompt for Gemini
+            let geminiPrompt = finalPrompt;
+            if (options?.negativePrompt) {
+              geminiPrompt += `\n\nNegative Prompt: ${options.negativePrompt}`;
+            }
+
             const imgRes = await ai.models.generateContent({
               model: modelId,
-              contents: finalPrompt,
+              contents: {
+                parts: [{ text: geminiPrompt }]
+              },
               config: {
-                imageConfig: { aspectRatio: options?.aspectRatio || "1:1" },
+                imageConfig,
               },
             });
             
@@ -921,11 +969,12 @@ export function MashupProvider({ children }: { children: ReactNode }) {
             };
             setComparisonResults(prev => prev.map(img => img.id === placeholders[i].id ? newImg : img));
           } else {
+            console.warn(`No image returned for ${modelName}`);
             setComparisonResults(prev => prev.filter(img => img.id !== placeholders[i].id));
           }
         } catch (err) {
           console.error(`Failed to generate with ${modelName}`, err);
-          setImages(prev => prev.filter(img => img.id !== placeholders[i].id));
+          setComparisonResults(prev => prev.filter(img => img.id !== placeholders[i].id));
         }
       }
     } catch (e) {
@@ -1180,29 +1229,45 @@ export function MashupProvider({ children }: { children: ReactNode }) {
                 const isXL = modelNameLower.includes('xl') || 
                              modelNameLower.includes('lightning') || 
                              selectedModel === 'gemini-image-2' ||
-                             selectedModel === 'nano-banana-2';
+                             selectedModel === 'nano-banana-2' ||
+                             selectedModel === 'phoenix' ||
+                             selectedModel === 'gpt-image-1.5';
                 
                 let width = isXL ? 1024 : 768;
                 let height = isXL ? 1024 : 768;
-              
-              if (currentAspectRatio === '16:9') { 
-                width = isXL ? 1376 : 1024; 
-                height = isXL ? 768 : 576; 
-              } else if (currentAspectRatio === '9:16') { 
-                width = isXL ? 768 : 576; 
-                height = isXL ? 1376 : 1024; 
-              } else if (currentAspectRatio === '4:3') { 
-                width = isXL ? 1200 : 896; 
-                height = isXL ? 896 : 672; 
-              } else if (currentAspectRatio === '3:4') { 
-                width = isXL ? 896 : 672; 
-                height = isXL ? 1200 : 896; 
-              } else if (currentAspectRatio === '4:1') { 
-                width = isXL ? 1584 : 1024; 
-                height = isXL ? 672 : 256; 
-              } else if (currentAspectRatio === '1:4') { 
-                width = isXL ? 672 : 256; 
-                height = isXL ? 1584 : 1024; 
+
+              // GPT Image-1.5 has very specific supported dimensions
+              if (selectedModel === 'gpt-image-1.5') {
+                if (currentAspectRatio === '16:9' || currentAspectRatio === '3:2' || currentAspectRatio === '4:3') {
+                  width = 1536;
+                  height = 1024;
+                } else if (currentAspectRatio === '9:16' || currentAspectRatio === '2:3' || currentAspectRatio === '3:4') {
+                  width = 1024;
+                  height = 1536;
+                } else {
+                  width = 1024;
+                  height = 1024;
+                }
+              } else {
+                if (currentAspectRatio === '16:9') { 
+                  width = isXL ? 1376 : 1024; 
+                  height = isXL ? 768 : 576; 
+                } else if (currentAspectRatio === '9:16') { 
+                  width = isXL ? 768 : 576; 
+                  height = isXL ? 1376 : 1024; 
+                } else if (currentAspectRatio === '4:3') { 
+                  width = isXL ? 1200 : 896; 
+                  height = isXL ? 896 : 672; 
+                } else if (currentAspectRatio === '3:4') { 
+                  width = isXL ? 896 : 672; 
+                  height = isXL ? 1200 : 896; 
+                } else if (currentAspectRatio === '4:1') { 
+                  width = isXL ? 1584 : 1024; 
+                  height = isXL ? 672 : 256; 
+                } else if (currentAspectRatio === '1:4') { 
+                  width = isXL ? 672 : 256; 
+                  height = isXL ? 1584 : 1024; 
+                }
               }
 
               const res = await fetch('/api/leonardo', {
@@ -1269,6 +1334,12 @@ export function MashupProvider({ children }: { children: ReactNode }) {
                       }
                     } : img));
                   } else if (status === 'FAILED') {
+                    // Check for moderation errors
+                    if (statusData.prompt_moderations && statusData.prompt_moderations.length > 0) {
+                      const mod = statusData.prompt_moderations[0];
+                      const reason = mod.moderationClassification?.join(', ') || 'Content moderation';
+                      throw new Error(`Leonardo generation failed: Content blocked due to moderation (${reason}). Try rephrasing your prompt.`);
+                    }
                     throw new Error(statusData.error || 'Leonardo generation failed');
                   }
                 }
@@ -1316,10 +1387,16 @@ export function MashupProvider({ children }: { children: ReactNode }) {
               imageConfig.imageSize = options?.imageSize || '1K';
             }
             
+            // Append negative prompt to the main prompt for Gemini
+            let geminiPrompt = finalPrompt;
+            if (options?.negativePrompt) {
+              geminiPrompt += `\n\nNegative Prompt: ${options.negativePrompt}`;
+            }
+            
             const imgRes = await imageAi.models.generateContent({
               model: selectedGeminiModel,
               contents: {
-                parts: [{ text: finalPrompt }],
+                parts: [{ text: geminiPrompt }],
               },
               config: {
                 imageConfig,
