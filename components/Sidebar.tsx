@@ -85,23 +85,64 @@ export function Sidebar() {
         setIsLoading(false);
       }
     } else {
-      // Content Generator — stream tokens so the user sees "thinking" in
-      // real time, then parse the JSON once the stream ends.
+      // Content Generator — fetch trending first, then stream ideas.
       const userMsgObj = { id: Date.now().toString(), role: 'user' as const, text: userMsg };
       const modelMsgId = (Date.now() + 1).toString();
       setContentMessages((prev) => [
         ...prev,
         userMsgObj,
-        { id: modelMsgId, role: 'model', text: '⏳ Generating ideas…' },
+        { id: modelMsgId, role: 'model', text: '⏳ Researching trending topics…' },
       ]);
+
       try {
-        const message = `Topic: ${userMsg}
-Return 3 crossover ideas between Star Wars, Marvel, DC, or Warhammer 40k as a JSON array. Each object has "context" (short title) and "concept" (detailed image prompt). Return ONLY the JSON array, no prose.`;
+        // Step 1: Fetch trending data for all active niches/genres
+        let trendingSummary = '';
+        try {
+          const trendRes = await fetch('/api/trending', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              niches: settings.agentNiches,
+              genres: settings.agentGenres,
+              ideaConcept: userMsg,
+            }),
+          });
+          const trendData = await trendRes.json();
+          if (trendData.success && trendData.summary) {
+            trendingSummary = trendData.summary;
+          }
+        } catch { /* non-blocking */ }
+
+        // Step 2: Build trend-aware prompt
+        const trendingBlock = trendingSummary
+          ? `\n\nCURRENT TRENDING CONTEXT — base your ideas on these real trends to make them timely and shareable:\n${trendingSummary}\n`
+          : '';
+        const niches = settings.agentNiches?.join(', ') || 'Marvel, DC, Star Wars, Warhammer 40k';
+        const genres = settings.agentGenres?.join(', ') || 'Cinematic Crossovers, Epic Action, Visual Storytelling';
+
+        const message = `${settings.agentPrompt || 'You are an elite AI art director and social media growth hacker.'}
+
+Active Niches: ${niches}
+Active Genres: ${genres}
+${trendingBlock}
+
+Topic: ${userMsg}
+
+Generate 3-5 crossover content ideas that are SPECTACULAR, timely, and would go viral on Instagram. Each idea should be a visually stunning image concept.
+Return them as a JSON array. Each object has "context" (short catchy title) and "concept" (detailed image generation prompt, vivid and cinematic).
+Return ONLY the JSON array, no prose.`;
+
+        setContentMessages((prev) =>
+          prev.map((m) =>
+            m.id === modelMsgId
+              ? { ...m, text: trendingSummary ? `📈 Found trending topics!\n\n⏳ Generating trend-aware ideas…` : '⏳ Generating ideas…' }
+              : m
+          )
+        );
 
         let acc = '';
         for await (const delta of streamAI(message, { mode: 'idea' })) {
           acc += delta;
-          // Show the raw partial stream so the user sees real progress.
           const preview = acc.length > 400 ? `${acc.slice(0, 400)}…` : acc;
           setContentMessages((prev) =>
             prev.map((m) =>
