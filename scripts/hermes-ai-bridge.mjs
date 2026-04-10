@@ -14,9 +14,8 @@
  *   GET  /models    ?provider=zai → { provider, models: [...] }   or all providers if omitted
  *   GET  /health    → { status, providers, cache }
  *
- * Route-to-model defaults (overridable via body.provider + body.model):
- *   /chat      → zai / glm-4.5-flash   (fast)
- *   /generate  → zai / glm-5.1         (smart)
+ * No hardcoded model defaults. The client must always send
+ * { provider, model } in the request body.
  *
  * API keys: pi-ai reads ZAI_API_KEY, GOOGLE_API_KEY, ANTHROPIC_API_KEY,
  * OPENAI_API_KEY, GROQ_API_KEY, ... from the environment.
@@ -44,10 +43,8 @@ registerBuiltInApiProviders();
 
 const PORT = 8090;
 
-const DEFAULT_MODELS = {
-  '/chat':     { provider: 'zai', model: 'glm-4.5-flash' },
-  '/generate': { provider: 'zai', model: 'glm-5.1' },
-};
+// No hardcoded defaults. The client must send { provider, model }.
+// If neither is set, the bridge returns an error asking for them.
 
 const ENRICHMENT = {
   chat:     'Be concise, vivid, creative. Respond in the requested format.',
@@ -133,9 +130,13 @@ async function handleStreamRequest(req, res) {
   const enrichMode = mode || (req.url === '/chat' ? 'chat' : 'generate');
   const systemPrompt = enrichSystemPrompt(enrichMode, userSystemPrompt);
 
-  const route = DEFAULT_MODELS[req.url];
-  const provider = overrideProvider || route.provider;
-  const modelId = overrideModel || route.model;
+  if (!overrideProvider || !overrideModel) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'provider and model are required. Send { provider: "google", model: "gemini-2.5-flash" } etc.' }));
+    return;
+  }
+  const provider = overrideProvider;
+  const modelId = overrideModel;
 
   const cacheKey = `${provider}:${modelId}:${enrichMode}:${prompt.slice(0, 200)}`;
 
@@ -294,8 +295,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[Hermes AI Bridge v4 — pi-ai] http://127.0.0.1:${PORT}`);
-  console.log(`  /chat     → ${DEFAULT_MODELS['/chat'].provider}/${DEFAULT_MODELS['/chat'].model}`);
-  console.log(`  /generate → ${DEFAULT_MODELS['/generate'].provider}/${DEFAULT_MODELS['/generate'].model}`);
+  console.log(`  Client must send { provider, model } per request`);
   console.log(`  ZAI:       ${process.env.ZAI_API_KEY ? 'set' : 'MISSING'}`);
   console.log(`  Google:    ${process.env.GOOGLE_API_KEY ? 'set' : 'not set'}`);
   console.log(`  Anthropic: ${process.env.ANTHROPIC_API_KEY ? 'set' : 'not set'}`);
