@@ -1,20 +1,86 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+
+# MashupForge
+
+**AI-Powered Creative Crossover Studio**
+
+Generate epic crossover artwork combining characters and universes from Star Wars, Marvel, DC, Warhammer 40k, and beyond.
+
 </div>
 
-# Run and deploy your AI Studio app
+---
 
-This contains everything you need to run your app locally.
+## What It Does
 
-View your app in AI Studio: https://ai.studio/apps/8bcf04e2-b721-49fa-ae9c-c9abd1761c6a
+- **Idea Generator** — AI brainstorms creative "what if" crossover scenarios across franchises
+- **Image Generation** — Turn ideas into images via Leonardo.ai (3 models: GPT Image-1.5, Nano Banana 2, Nano Banana Pro)
+- **Compare Mode** — Generate the same prompt across multiple models side-by-side
+- **History** — Browse and re-roll previous generations
+- **Chat Assistant** — Conversational AI for brainstorming and prompt refinement
 
-## Run Locally
+## AI Engine
 
-**Prerequisites:**  Node.js
+All text AI (ideas, prompts, captions, chat) runs through **[pi.dev](https://pi.dev)** — a local AI coding agent that connects to any LLM provider. You pick the provider, pi handles the rest.
 
+Supported pi providers include: Google Antigravity, Google AI Studio, Anthropic, OpenAI, ZAI, Groq, Cerebras, and 15+ more.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Tech Stack
+
+- **Next.js 16** (Turbopack) + React 19
+- **TypeScript** throughout
+- **Leonardo.ai v2 API** for image generation
+- **pi.dev RPC** for text AI (subprocess, no cloud dependency)
+- **Tailwind CSS** for styling
+
+## Setup
+
+```
+# Install dependencies
+npm install
+
+# Set your Leonardo API key
+echo "LEONARDO_API_KEY=your-key-here" > .env.local
+
+# Start dev server
+npm run dev
+```
+
+### pi.dev Setup (AI Text Features)
+
+1. Open Settings in the app
+2. Click **Setup Pi.dev** — this installs pi and opens its login flow
+3. Pick your provider and authenticate through pi's native UI
+4. Click **Start Pi** — done
+
+Pi stores its own credentials in `~/.pi/agent/auth.json`. No API keys needed in the app.
+
+### Leonardo.ai (Image Generation)
+
+Get an API key from [leonardo.ai](https://leonardo.ai) and set it in `.env.local` or directly in the app's settings panel.
+
+## Project Structure
+
+```
+app/
+  api/
+    leonardo/          # Leonardo image generation + polling
+    pi/                # pi.dev RPC proxy (start/stop/prompt/status)
+  page.tsx             # Main app entry
+components/
+  MainContent.tsx      # Primary UI (all tabs, settings, image grid)
+  Sidebar.tsx          # Chat + content generator
+  MashupStudio.tsx     # Root layout
+hooks/
+  useImageGeneration.ts  # Image generation + polling logic
+  useComparison.ts       # Compare mode (multi-model generation)
+lib/
+  pi-client.ts        # pi.dev RPC subprocess client
+  pi-setup.ts         # pi install/auth helpers
+  aiClient.ts         # Client-side AI utilities (SSE consumption)
+types/
+  mashup.ts           # Leonardo models, styles, dimensions, type defs
+```
+
+## License
+
+Private — 4neverCompany
