@@ -193,20 +193,130 @@ export const RECOMMENDED_GENRES = [
   'Minimalist Design'
 ];
 
-export const LEONARDO_MODELS = [
-  { id: 'nano-banana-2', name: 'Nano Banana 2 (Leonardo)' },
-  { id: 'gemini-image-2', name: 'Nano Banana Pro (Leonardo)' },
-  { id: 'b24e16ff-06e3-43eb-8d33-4416c2d75876', name: 'Leonardo Lightning' },
-  { id: '6b645e3a-d64f-4341-a6d8-7a3690fbf042', name: 'Leonardo Vision XL' },
-  { id: '1e60896f-3c26-4296-8ecc-53e2afecc132', name: 'Leonardo Diffusion XL' },
-  { id: 'aa77f04e-3eec-4034-9c07-d0f619684628', name: 'Leonardo Kino XL' },
-  { id: 'ac614f96-1081-4438-81f4-6684fdcb3b8d', name: 'DreamShaper v7' },
-  { id: 'd69c8273-6b17-4a30-a13e-d6637ae8cce7', name: '3D Animation Style' },
-  { id: '17e4ed9a-45cb-459f-bc66-7f051dd33b70', name: 'Anime Pastel Dream' },
-  { id: 'e316348f-7773-490e-adcd-46757c738eb7', name: 'Absolute Reality v1.6' },
-  { id: 'phoenix', name: 'Leonardo Phoenix' },
-  { id: 'gpt-image-1.5', name: 'GPT Image-1.5' },
+// ── Leonardo Models (API-documented) ──────────────────────────────────────
+
+export interface LeonardoModelConfig {
+  id: string;
+  name: string;
+  apiModelId: string;
+  version: 'v2';
+  supportsStyleIds: boolean;
+  supportsQuality: boolean;      // GPT Image-1.5 only
+  supportsGuidance: boolean;
+  maxQuantity: number;
+  aspectRatios: { label: string; width: number; height: number }[];
+  styles?: { name: string; uuid: string }[];
+}
+
+export const LEONARDO_MODELS: LeonardoModelConfig[] = [
+  {
+    id: 'nano-banana-2',
+    name: 'Nano Banana 2',
+    apiModelId: 'nano-banana-2',
+    version: 'v2',
+    supportsStyleIds: true,
+    supportsQuality: false,
+    supportsGuidance: true,
+    maxQuantity: 8,
+    aspectRatios: [
+      { label: '1:1', width: 1024, height: 1024 },
+      { label: '2:3', width: 848, height: 1264 },
+      { label: '3:2', width: 1264, height: 848 },
+      { label: '3:4', width: 896, height: 1200 },
+      { label: '4:3', width: 1200, height: 896 },
+      { label: '4:5', width: 928, height: 1152 },
+      { label: '5:4', width: 1152, height: 928 },
+      { label: '9:16', width: 768, height: 1376 },
+      { label: '16:9', width: 1376, height: 768 },
+      { label: '21:9', width: 1584, height: 672 },
+    ],
+    styles: [
+      { name: 'None', uuid: '556c1ee5-ec38-42e8-955a-1e82dad0ffa1' },
+      { name: 'Dynamic', uuid: '111dc692-d470-4eec-b791-3475abac4c46' },
+      { name: 'Creative', uuid: '6fedbf1f-4a17-45ec-84fb-92fe524a29ef' },
+      { name: 'Cinematic', uuid: 'b504f83c-3326-4947-82e1-7fe9e839ec0f' },
+      { name: 'Ray Traced', uuid: 'b504f83c-3326-4947-82e1-7fe9e839ec0f' },
+      { name: 'Photorealistic', uuid: '7c3f932b-a572-47cb-9b9b-f20211e63b5b' },
+      { name: 'Portrait', uuid: '8e2bc543-6ee2-45f9-bcd9-594b6ce84dcd' },
+      { name: 'Portrait Cinematic', uuid: '4edb03c9-8a26-4041-9d01-f85b5d4abd71' },
+      { name: 'Portrait Fashion', uuid: '0d34f8e1-46d4-428f-8ddd-4b11811fa7c9' },
+      { name: 'Fashion', uuid: '594c4a08-a522-4e0e-b7ff-e4dac4b6b622' },
+      { name: 'Stock Photo', uuid: '5bdc3f2a-1be6-4d1c-8e77-992a30824a2c' },
+      { name: 'Illustration', uuid: '645e4195-f63d-4715-a3f2-3fb1e6eb8c70' },
+      { name: '3D Render', uuid: 'debdf72a-91a4-467b-bf61-cc02bdeb69c6' },
+      { name: 'Game Concept', uuid: '09d2b5b5-d7c5-4c02-905d-9f84051640f4' },
+      { name: 'Acrylic', uuid: '3cbb655a-7ca4-463f-b697-8a03ad67327c' },
+      { name: 'Watercolor', uuid: '1db308ce-c7ad-4d10-96fd-592fa6b75cc4' },
+      { name: 'Graphic Design 2D', uuid: '703d6fe5-7f1c-4a9e-8da0-5331f214d5cf' },
+      { name: 'Graphic Design 3D', uuid: '7d7c2bc5-4b12-4ac3-81a9-630057e9e89f' },
+      { name: 'B&W Photography', uuid: '22a9a7d2-2166-4d86-80ff-22e2643adbcf' },
+      { name: 'Film Photography', uuid: '581ba6d6-5aac-4492-bebe-54c424a0d46e' },
+    ],
+  },
+  {
+    id: 'nano-banana-pro',
+    name: 'Nano Banana Pro',
+    apiModelId: 'gemini-image-2',
+    version: 'v2',
+    supportsStyleIds: true,
+    supportsQuality: false,
+    supportsGuidance: true,
+    maxQuantity: 8,
+    aspectRatios: [
+      { label: '1:1', width: 1024, height: 1024 },
+      { label: '2:3', width: 1024, height: 1536 },
+      { label: '3:2', width: 1536, height: 1024 },
+    ],
+    styles: [
+      { name: 'None', uuid: '556c1ee5-ec38-42e8-955a-1e82dad0ffa1' },
+      { name: 'Dynamic', uuid: '111dc692-d470-4eec-b791-3475abac4c46' },
+      { name: 'Creative', uuid: '6fedbf1f-4a17-45ec-84fb-92fe524a29ef' },
+      { name: 'Ray Traced', uuid: 'b504f83c-3326-4947-82e1-7fe9e839ec0f' },
+      { name: 'Photorealistic', uuid: '7c3f932b-a572-47cb-9b9b-f20211e63b5b' },
+      { name: 'Portrait', uuid: '8e2bc543-6ee2-45f9-bcd9-594b6ce84dcd' },
+      { name: 'Portrait Cinematic', uuid: '4edb03c9-8a26-4041-9d01-f85b5d4abd71' },
+      { name: 'Portrait Fashion', uuid: '0d34f8e1-46d4-428f-8ddd-4b11811fa7c9' },
+      { name: 'Fashion', uuid: '594c4a08-a522-4e0e-b7ff-e4dac4b6b622' },
+      { name: 'Stock Photo', uuid: '5bdc3f2a-1be6-4d1c-8e77-992a30824a2c' },
+      { name: 'Illustration', uuid: '645e4195-f63d-4715-a3f2-3fb1e6eb8c70' },
+      { name: '3D Render', uuid: 'debdf72a-91a4-467b-bf61-cc02bdeb69c6' },
+      { name: 'Game Concept', uuid: '09d2b5b5-d7c5-4c02-905d-9f84051640f4' },
+      { name: 'Acrylic', uuid: '3cbb655a-7ca4-463f-b697-8a03ad67327c' },
+      { name: 'Watercolor', uuid: '1db308ce-c7ad-4d10-96fd-592fa6b75cc4' },
+      { name: 'Graphic Design 2D', uuid: '703d6fe5-7f1c-4a9e-8da0-5331f214d5cf' },
+      { name: 'Graphic Design 3D', uuid: '7d7c2bc5-4b12-4ac3-81a9-630057e9e89f' },
+      { name: 'B&W Photography', uuid: '22a9a7d2-2166-4d86-80ff-22e2643adbcf' },
+      { name: 'Film Photography', uuid: '581ba6d6-5aac-4492-bebe-54c424a0d46e' },
+    ],
+  },
+  {
+    id: 'gpt-image-1.5',
+    name: 'GPT Image-1.5',
+    apiModelId: 'gpt-image-1.5',
+    version: 'v2',
+    supportsStyleIds: false,
+    supportsQuality: true,
+    supportsGuidance: true,
+    maxQuantity: 4,
+    aspectRatios: [
+      { label: '1:1', width: 1024, height: 1024 },
+      { label: '2:3', width: 1024, height: 1536 },
+      { label: '3:2', width: 1536, height: 1024 },
+    ],
+  },
 ];
+
+/** Get a Leonardo model config by its id */
+export function getLeonardoModel(modelId: string): LeonardoModelConfig | undefined {
+  return LEONARDO_MODELS.find(m => m.id === modelId || m.apiModelId === modelId);
+}
+
+/** Get aspect ratio dimensions for a Leonardo model */
+export function getLeonardoDimensions(modelId: string, aspectRatio: string): { width: number; height: number } {
+  const model = getLeonardoModel(modelId);
+  const ar = model?.aspectRatios.find(a => a.label === aspectRatio);
+  return ar ? { width: ar.width, height: ar.height } : { width: 1024, height: 1024 };
+}
 
 export const ART_STYLES = [
   'Cinematic', 'Digital Art', 'Oil Painting', 'Cyberpunk', 'Sketch',
@@ -223,8 +333,8 @@ export const CAMERA_ANGLES = [
   'Eye Level', 'Dutch Angle', 'Macro', 'Panoramic', 'Portrait'
 ];
 
-export const ASPECT_RATIOS = ['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'];
-export const IMAGE_SIZES = ['512px', '1K', '2K', '4K'];
+export const ASPECT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+export const IMAGE_SIZES = ['1K', '2K', '4K'];
 
 // ── Default Settings ────────────────────────────────────────────────────────
 
@@ -232,7 +342,7 @@ export const defaultSettings: UserSettings = {
   enabledProviders: ['gemini', 'leonardo'],
   apiKeys: {},
   defaultProvider: 'gemini',
-  defaultLeonardoModel: 'b24e16ff-06e3-43eb-8d33-4416c2d75876',
+  defaultLeonardoModel: 'nano-banana-2',
   defaultGeminiModel: 'gemini-3.1-flash-image-preview',
   defaultAnimationDuration: 3,
   defaultAnimationStyle: 'DYNAMIC',

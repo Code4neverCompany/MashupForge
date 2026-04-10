@@ -2,10 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Send, Search, MessageSquare, Loader2, ExternalLink, Image as ImageIcon, Sparkles, Columns, RefreshCw } from 'lucide-react';
+import { Send, Search, MessageSquare, Loader2, ExternalLink, Image as ImageIcon, Sparkles, Columns, RefreshCw, History } from 'lucide-react';
 import { useMashup, LEONARDO_MODELS } from './MashupContext';
 
-type Tab = 'chat' | 'content';
+type Tab = 'chat' | 'content' | 'history';
 
 interface Message {
   id: string;
@@ -22,7 +22,7 @@ export function Sidebar() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { generateImages, settings, setView, generateComparison, generateNegativePrompt, setComparisonPrompt, setComparisonOptions, addIdea, isSidebarOpen, setIsSidebarOpen } = useMashup();
+  const { generateImages, settings, setView, generateComparison, generateNegativePrompt, setComparisonPrompt, setComparisonOptions, addIdea, isSidebarOpen, setIsSidebarOpen, images, clearComparison } = useMashup();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -200,11 +200,66 @@ export function Sidebar() {
             }`}
           >
             <Search className="w-4 h-4" />
-            Content Generator
+            Content
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
+              activeTab === 'history' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            History
           </button>
         </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {activeTab === 'history' ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Recent Generations</h3>
+              {images.length > 0 && (
+                <button 
+                  onClick={clearComparison}
+                  className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors"
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
+            {images.length === 0 ? (
+              <div className="text-center py-10">
+                <History className="w-8 h-8 text-zinc-800 mx-auto mb-2" />
+                <p className="text-xs text-zinc-600">No generation history yet.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {images.filter(img => img.status === 'ready').map((img) => (
+                  <div 
+                    key={img.id} 
+                    className="group relative aspect-square bg-zinc-950 rounded-lg overflow-hidden border border-zinc-800 hover:border-indigo-500/50 transition-all cursor-pointer"
+                    onClick={() => {
+                      setComparisonPrompt(img.prompt);
+                      setView('compare');
+                    }}
+                  >
+                    {img.url ? (
+                      <img src={img.url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Loader2 className="w-4 h-4 animate-spin text-zinc-700" />
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2">
+                      <p className="text-[10px] text-white line-clamp-2 leading-tight">{img.prompt}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+        <>
         {messages.length === 0 && (
           <div className="text-center text-zinc-500 text-sm mt-10 flex flex-col items-center gap-4">
             {activeTab === 'chat' ? (
@@ -274,8 +329,11 @@ export function Sidebar() {
           </div>
         )}
         <div ref={messagesEndRef} />
+        </>
+        )}
       </div>
 
+      {activeTab !== 'history' && (
       <div className="p-4 border-t border-zinc-800 bg-zinc-900/80">
         <form
           suppressHydrationWarning
@@ -304,6 +362,7 @@ export function Sidebar() {
           </button>
         </form>
       </div>
+      )}
     </div>
     </>
   );

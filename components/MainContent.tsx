@@ -113,6 +113,7 @@ export function MainContent() {
   const [tagQuery, setTagQuery] = useState('');
   const [selectedCollectionId, setSelectedCollectionId] = useState('all');
   const [selectedForBatch, setSelectedForBatch] = useState<Set<string>>(new Set());
+  const [dragOverCollection, setDragOverCollection] = useState<string | null>(null);
   const [showCollectionModal, setShowCollectionModal] = useState(false);
   const [showBulkTagModal, setShowBulkTagModal] = useState(false);
   const [bulkTagsInput, setBulkTagsInput] = useState('');
@@ -1330,7 +1331,13 @@ export function MainContent() {
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: idx * 0.1, ease: "easeOut" }}
-                    className="group relative bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800 shadow-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-indigo-500/20 hover:border-zinc-700"
+                    className={`group relative bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800 shadow-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-indigo-500/20 hover:border-zinc-700 ${dragOverCollection ? 'ring-2 ring-indigo-500' : ''}`}
+                    draggable={view === 'gallery'}
+                    onDragStart={(e) => {
+                      const native = e as unknown as React.DragEvent;
+                      native.dataTransfer.setData('imageId', img.id);
+                      native.dataTransfer.effectAllowed = 'move';
+                    }}
                   >
                     <div 
                       className={`aspect-square relative overflow-hidden bg-zinc-950 cursor-pointer ${img.approved ? 'ring-4 ring-indigo-500 ring-inset' : ''}`}
@@ -1459,7 +1466,16 @@ export function MainContent() {
                                 <button
                                   key={col.id}
                                   onClick={(e) => { e.stopPropagation(); addImageToCollection(img.id, col.id); }}
+                                  onDragOver={(e) => { e.preventDefault(); setDragOverCollection(col.id); }}
+                                  onDragLeave={() => setDragOverCollection(null)}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    const droppedImageId = e.dataTransfer.getData('imageId');
+                                    if (droppedImageId) addImageToCollection(droppedImageId, col.id);
+                                    setDragOverCollection(null);
+                                  }}
                                   className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
+                                    dragOverCollection === col.id ? 'bg-indigo-500 text-white scale-105' :
                                     img.collectionId === col.id ? 'bg-indigo-500/20 text-indigo-400' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
                                   }`}
                                 >

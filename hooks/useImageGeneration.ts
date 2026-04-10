@@ -18,6 +18,7 @@ import {
   GEMINI_MODELS,
   PAID_MODELS,
   LEONARDO_MODELS,
+  getLeonardoDimensions,
   RECOMMENDED_NICHES,
   RECOMMENDED_GENRES,
 } from '../types/mashup';
@@ -373,34 +374,10 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
 
             if (!useGeminiApi) {
               try {
-                const modelNameLower = modelName.toLowerCase();
-                const isXL = modelNameLower.includes('xl') ||
-                             modelNameLower.includes('lightning') ||
-                             selectedModel === 'gemini-image-2' ||
-                             selectedModel === 'nano-banana-2';
-
-                let width = isXL ? 1024 : 768;
-                let height = isXL ? 1024 : 768;
-
-              if (currentAspectRatio === '16:9') {
-                width = isXL ? 1376 : 1024;
-                height = isXL ? 768 : 576;
-              } else if (currentAspectRatio === '9:16') {
-                width = isXL ? 768 : 576;
-                height = isXL ? 1376 : 1024;
-              } else if (currentAspectRatio === '4:3') {
-                width = isXL ? 1200 : 896;
-                height = isXL ? 896 : 672;
-              } else if (currentAspectRatio === '3:4') {
-                width = isXL ? 896 : 672;
-                height = isXL ? 1200 : 896;
-              } else if (currentAspectRatio === '4:1') {
-                width = isXL ? 1584 : 1024;
-                height = isXL ? 672 : 256;
-              } else if (currentAspectRatio === '1:4') {
-                width = isXL ? 672 : 256;
-                height = isXL ? 1584 : 1024;
-              }
+                // Use API-documented dimensions per model
+                const dims = getLeonardoDimensions(selectedModel, currentAspectRatio);
+                const width = dims.width;
+                const height = dims.height;
 
               const res = await fetch('/api/leonardo', {
                 method: 'POST',
@@ -411,8 +388,7 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
                   modelId: selectedModel,
                   width,
                   height,
-                  seed: options?.seed,
-                  guidance_scale: options?.cfgScale,
+                  styleIds: options?.style ? [options.style] : undefined,
                   apiKey: settings.apiKeys.leonardo
                 })
               });
@@ -633,34 +609,9 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
 
       if (!useGeminiApi) {
         try {
-          const modelName = getModelName(selectedModel, 'leonardo').toLowerCase();
-          const isXL = modelName.includes('xl') ||
-                       modelName.includes('lightning') ||
-                       selectedModel === 'gemini-image-2';
-
-          let width = isXL ? 1024 : 768;
-          let height = isXL ? 1024 : 768;
-
+          // Use API-documented dimensions per model
           const currentAspectRatio = options?.aspectRatio || '1:1';
-          if (currentAspectRatio === '16:9') {
-            width = isXL ? 1376 : 1024;
-            height = isXL ? 768 : 576;
-          } else if (currentAspectRatio === '9:16') {
-            width = isXL ? 768 : 576;
-            height = isXL ? 1376 : 1024;
-          } else if (currentAspectRatio === '4:3') {
-            width = isXL ? 1200 : 896;
-            height = isXL ? 896 : 672;
-          } else if (currentAspectRatio === '3:4') {
-            width = isXL ? 896 : 672;
-            height = isXL ? 1200 : 896;
-          } else if (currentAspectRatio === '4:1') {
-            width = isXL ? 1584 : 1024;
-            height = isXL ? 672 : 256;
-          } else if (currentAspectRatio === '1:4') {
-            width = isXL ? 672 : 256;
-            height = isXL ? 1584 : 1024;
-          }
+          const dims = getLeonardoDimensions(selectedModel, currentAspectRatio);
 
           const res = await fetch('/api/leonardo', {
             method: 'POST',
@@ -669,10 +620,9 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
               prompt: finalPrompt,
               negative_prompt: options?.negativePrompt,
               modelId: selectedModel,
-              width,
-              height,
-              seed: options?.seed,
-              guidance_scale: options?.cfgScale,
+              width: dims.width,
+              height: dims.height,
+              styleIds: options?.style ? [options.style] : undefined,
               apiKey: settings.apiKeys.leonardo
             })
           });
