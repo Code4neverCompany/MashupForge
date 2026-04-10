@@ -50,6 +50,7 @@ import {
   GeneratedImage, 
   GEMINI_MODELS, 
   LEONARDO_MODELS,
+  LEONARDO_STYLES,
   Collection,
   GenerateOptions,
   ScheduledPost,
@@ -188,6 +189,7 @@ export function MainContent() {
         Select the best Lighting from: ${LIGHTING_OPTIONS.join(', ')}.
         Select the best Camera Angle from: ${CAMERA_ANGLES.join(', ')}.
         Select the best Aspect Ratio from: ${ASPECT_RATIOS.join(', ')}.
+        Select the best Leonardo Style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE.
         
         Also, generate a fitting negative prompt (what to avoid in the image) for this specific concept.
         
@@ -196,7 +198,7 @@ export function MainContent() {
         - If the prompt describes a character portrait, single character focus, or vertical subject, you MUST select "9:16".
         - Otherwise, select "1:1" or another appropriate ratio.
 
-        Return ONLY a JSON object with keys: style, lighting, angle, aspectRatio, negativePrompt.`,
+        Return ONLY a JSON object with keys: style, lighting, angle, aspectRatio, negativePrompt, leonardoStyle.`,
         config: {
           responseMimeType: 'application/json',
         },
@@ -209,7 +211,8 @@ export function MainContent() {
         lighting: params.lighting || prev.lighting,
         angle: params.angle || prev.angle,
         aspectRatio: params.aspectRatio || prev.aspectRatio,
-        negativePrompt: params.negativePrompt || prev.negativePrompt
+        negativePrompt: params.negativePrompt || prev.negativePrompt,
+        leonardoStyle: params.leonardoStyle || prev.leonardoStyle
       }));
     } catch (error) {
       console.error('Error auto-selecting parameters:', error);
@@ -235,6 +238,7 @@ export function MainContent() {
         - Camera angle from: ${CAMERA_ANGLES.join(', ')}
         - Aspect ratio from: ${['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'].join(', ')}
         - Image size from: ${['512px', '1K', '2K', '4K'].join(', ')}
+        - Leonardo style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE
         
         CRITICAL ASPECT RATIO RULES:
         - If the prompt describes an epic scene, landscape, wide battle, or cinematic vista, you MUST select "16:9".
@@ -248,7 +252,8 @@ export function MainContent() {
         - "lighting": string
         - "angle": string
         - "aspectRatio": string
-        - "imageSize": string`,
+        - "imageSize": string
+        - "leonardoStyle": string`,
         config: {
           responseMimeType: 'application/json',
           responseSchema: {
@@ -260,7 +265,8 @@ export function MainContent() {
               lighting: { type: Type.STRING },
               angle: { type: Type.STRING },
               aspectRatio: { type: Type.STRING },
-              imageSize: { type: Type.STRING }
+              imageSize: { type: Type.STRING },
+              leonardoStyle: { type: Type.STRING }
             }
           }
         }
@@ -276,6 +282,7 @@ export function MainContent() {
         angle: CAMERA_ANGLES.includes(data.angle) ? data.angle : CAMERA_ANGLES[0],
         aspectRatio: ['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'].includes(data.aspectRatio) ? data.aspectRatio : '16:9',
         imageSize: ['512px', '1K', '2K', '4K'].includes(data.imageSize) ? data.imageSize : '1K',
+        leonardoStyle: data.leonardoStyle || 'DYNAMIC'
       }));
     } catch (error) {
       console.error('Error generating enhanced prompt for comparison:', error);
@@ -1060,6 +1067,19 @@ export function MainContent() {
                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
                           >
                             {CAMERA_ANGLES.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
+                            <Sparkles className="w-3 h-3" /> Leonardo Style
+                          </label>
+                          <select
+                            value={comparisonOptions.leonardoStyle || 'DYNAMIC'}
+                            onChange={(e) => setComparisonOptions(prev => ({ ...prev, leonardoStyle: e.target.value }))}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
+                          >
+                            {LEONARDO_STYLES.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                           </select>
                         </div>
 
@@ -2017,18 +2037,33 @@ export function MainContent() {
                   )}
 
                   {settings.enabledProviders.includes('leonardo') && (
-                    <div className="space-y-2">
-                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Default Leonardo Model</label>
-                      <select
-                        value={settings.defaultLeonardoModel}
-                        onChange={(e) => updateSettings({ defaultLeonardoModel: e.target.value })}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                      >
-                        {LEONARDO_MODELS.map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
-                    </div>
+                    <>
+                      <div className="space-y-2">
+                        <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Default Leonardo Model</label>
+                        <select
+                          value={settings.defaultLeonardoModel}
+                          onChange={(e) => updateSettings({ defaultLeonardoModel: e.target.value })}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                        >
+                          {LEONARDO_MODELS.map(m => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Default Leonardo Style</label>
+                        <select
+                          value={settings.defaultLeonardoStyle}
+                          onChange={(e) => updateSettings({ defaultLeonardoStyle: e.target.value })}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                        >
+                          {LEONARDO_STYLES.map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>

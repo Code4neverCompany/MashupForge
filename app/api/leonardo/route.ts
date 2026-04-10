@@ -3,15 +3,31 @@ import { NextResponse } from 'next/server';
 export async function POST(req: Request) {
   try {
     const bodyData = await req.json();
-    const { prompt, negative_prompt, modelId, width, height, seed, apiKey: customApiKey } = bodyData;
+    const { prompt, negative_prompt, modelId, width, height, seed, leonardoStyle, guidance_scale, apiKey: customApiKey } = bodyData;
     const apiKey = customApiKey || process.env.LEONARDO_API_KEY;
 
     if (!apiKey || apiKey === 'MY_LEONARDO_API_KEY') {
       return NextResponse.json({ error: 'Leonardo API key not configured. Please add a valid LEONARDO_API_KEY to your environment variables or settings.' }, { status: 500 });
     }
 
+    // Style ID mapping for V2 models
+    const STYLE_MAP: Record<string, string> = {
+      'DYNAMIC': '111dc692-d470-4eec-b791-3475abac4c46',
+      'CINEMATIC': '21605d8b-54a0-4965-985e-1393603c4671',
+      'RAYTRACED': '658458a0-5833-4770-993b-9147070c4c46',
+      'SKETCH_BW': '50005d8b-54a0-4965-985e-1393603c4671',
+      'ANIME': '71605d8b-54a0-4965-985e-1393603c4671',
+      'CREATIVE': '61605d8b-54a0-4965-985e-1393603c4671',
+      'VIBRANT': '41605d8b-54a0-4965-985e-1393603c4671',
+      'PORTRAIT': '31605d8b-54a0-4965-985e-1393603c4671',
+      'PHOTOREALISTIC': 'e316348f-7773-490e-adcd-46757c738eb7', // This is a model ID but often used as a style hint in some contexts, for V2 we'll use a neutral or cinematic one if not sure
+    };
+
     // 1. Create generation
-    const isV2Model = modelId === 'gemini-image-2' || modelId === 'nano-banana-2' || modelId === 'phoenix' || modelId === 'gpt-image-1.5';
+    const V2_MODEL_IDS = ['gemini-image-2', 'nano-banana-2', 'phoenix', 'gpt-image-1.5'];
+    const isV2Model = V2_MODEL_IDS.includes(modelId);
+    const actualModelId = isV2Model ? 'phoenix' : (modelId || 'b24e16ff-06e3-43eb-8d33-4416c2d75876');
+
     const endpoint = isV2Model 
       ? 'https://cloud.leonardo.ai/api/rest/v2/generations' 
       : 'https://cloud.leonardo.ai/api/rest/v1/generations';
@@ -30,16 +46,26 @@ export async function POST(req: Request) {
         parameters.seed = Number(seed);
       }
 
+      if (guidance_scale !== undefined && guidance_scale !== null && !isNaN(Number(guidance_scale))) {
+        parameters.guidance_scale = Number(guidance_scale);
+      }
+
       if (modelId === 'gpt-image-1.5') {
         parameters.quality = "MEDIUM";
         // GPT Image-1.5 supports mode: FAST, QUALITY, ULTRA
         parameters.mode = "QUALITY";
-      } else if (modelId === 'phoenix' || modelId === 'gemini-image-2' || modelId === 'nano-banana-2') {
+      } 
+      
+      // Handle Styles
+      if (leonardoStyle && STYLE_MAP[leonardoStyle]) {
+        parameters.style_ids = [STYLE_MAP[leonardoStyle]];
+      } else {
+        // Default style for all V2 models if none specified
         parameters.style_ids = ["111dc692-d470-4eec-b791-3475abac4c46"]; // Dynamic style
       }
 
       body = JSON.stringify({
-        model: modelId,
+        modelId: actualModelId,
         parameters,
         public: false
       });
@@ -47,10 +73,11 @@ export async function POST(req: Request) {
       body = JSON.stringify({
         prompt: String(prompt),
         negative_prompt: negative_prompt || '',
-        modelId: modelId || 'b24e16ff-06e3-43eb-8d33-4416c2d75876', // Default to Lightning
+        modelId: actualModelId,
         width: Number(width) || 1024,
         height: Number(height) || 1024,
         num_images: 1,
+        guidance_scale: guidance_scale ? Number(guidance_scale) : undefined,
       });
     }
 

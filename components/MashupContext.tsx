@@ -51,6 +51,7 @@ export interface GenerateOptions {
   geminiModel?: string;
   skipEnhance?: boolean;
   style?: string;
+  leonardoStyle?: string;
   lighting?: string;
   angle?: string;
   seed?: number;
@@ -126,6 +127,20 @@ export const LEONARDO_MODELS = [
   { id: 'gemini-image-2', name: 'Nano Banana Pro' },
 ];
 
+export const LEONARDO_STYLES = [
+  { id: 'SMART', name: 'Smart AI Selection' },
+  { id: 'DYNAMIC', name: 'Dynamic' },
+  { id: 'RAYTRACED', name: 'Ray Traced' },
+  { id: 'CINEMATIC', name: 'Cinematic' },
+  { id: 'PHOTOREALISTIC', name: 'Photorealistic' },
+  { id: 'ANIME', name: 'Anime' },
+  { id: 'CREATIVE', name: 'Creative' },
+  { id: 'VIBRANT', name: 'Vibrant' },
+  { id: 'PORTRAIT', name: 'Portrait' },
+  { id: 'SKETCH_BW', name: 'Sketch (B&W)' },
+  { id: 'NONE', name: 'None' },
+];
+
 export interface WatermarkSettings {
   enabled: boolean;
   image: string | null;
@@ -180,6 +195,7 @@ export interface UserSettings {
   };
   defaultProvider: 'gemini' | 'leonardo';
   defaultLeonardoModel: string;
+  defaultLeonardoStyle?: string;
   defaultGeminiModel: string;
   defaultVideoModel?: string;
   defaultAnimationDuration?: 3 | 5 | 10;
@@ -198,6 +214,7 @@ const defaultSettings: UserSettings = {
   apiKeys: {},
   defaultProvider: 'gemini',
   defaultLeonardoModel: 'b24e16ff-06e3-43eb-8d33-4416c2d75876',
+  defaultLeonardoStyle: 'SMART',
   defaultGeminiModel: 'gemini-3.1-flash-image-preview',
   defaultAnimationDuration: 3,
   defaultAnimationStyle: 'DYNAMIC',
@@ -795,9 +812,38 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const resolveSmartStyle = async (prompt: string, style?: string): Promise<string> => {
+    const targetStyle = style || settings.defaultLeonardoStyle || 'DYNAMIC';
+    if (targetStyle !== 'SMART') return targetStyle;
+    
+    try {
+      const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
+      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+      const styleRes = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Analyze this image prompt: "${prompt}". 
+        Pick the most fitting Leonardo style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE.
+        Return ONLY the style name in plain text.`,
+      });
+      const selectedStyle = styleRes.text.trim().toUpperCase();
+      const validStyles = ['DYNAMIC', 'RAYTRACED', 'CINEMATIC', 'PHOTOREALISTIC', 'ANIME', 'CREATIVE', 'VIBRANT', 'PORTRAIT', 'SKETCH_BW', 'NONE'];
+      return validStyles.includes(selectedStyle) ? selectedStyle : 'DYNAMIC';
+    } catch (e) {
+      console.error('Failed to resolve smart style', e);
+      return 'DYNAMIC';
+    }
+  };
+
   const generateComparison = async (prompt: string, modelIds: string[], options?: GenerateOptions) => {
     setIsGenerating(true);
     const comparisonId = `comp-group-${Date.now()}`;
+    
+    // Resolve smart style if needed
+    let resolvedStyle = options?.leonardoStyle || settings.defaultLeonardoStyle;
+    if (resolvedStyle === 'SMART') {
+      setProgress('AI selecting best Leonardo style...');
+      resolvedStyle = await resolveSmartStyle(prompt, 'SMART');
+    }
     
     // Construct the final prompt with style, lighting, and angle if provided
     let finalPrompt = prompt;
@@ -899,6 +945,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
                 height,
                 negativePrompt: options?.negativePrompt,
                 seed: options?.seed,
+                leonardoStyle: resolvedStyle,
                 guidance_scale: options?.cfgScale,
                 apiKey: settings.apiKeys.leonardo
               }),
@@ -1120,6 +1167,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
           - "selectedNiches": array of strings
           - "selectedGenres": array of strings
           - "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)
+          - "leonardoStyle": string (Pick the most fitting style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE)
           
           Random Seed: ${Math.random()}`,
           config: {
@@ -1137,7 +1185,8 @@ export function MashupProvider({ children }: { children: ReactNode }) {
                   tags: { type: Type.ARRAY, items: { type: Type.STRING } },
                   selectedNiches: { type: Type.ARRAY, items: { type: Type.STRING } },
                   selectedGenres: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  negativePrompt: { type: Type.STRING }
+                  negativePrompt: { type: Type.STRING },
+                  leonardoStyle: { type: Type.STRING }
                 }
               },
             },
@@ -1174,7 +1223,8 @@ export function MashupProvider({ children }: { children: ReactNode }) {
           - "tags": array of strings
           - "selectedNiches": array of strings
           - "selectedGenres": array of strings
-          - "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)`,
+          - "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)
+          - "leonardoStyle": string (Pick the most fitting style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE)`,
           config: {
             temperature: 1.2,
             responseMimeType: 'application/json',
@@ -1188,7 +1238,8 @@ export function MashupProvider({ children }: { children: ReactNode }) {
                   tags: { type: Type.ARRAY, items: { type: Type.STRING } },
                   selectedNiches: { type: Type.ARRAY, items: { type: Type.STRING } },
                   selectedGenres: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  negativePrompt: { type: Type.STRING }
+                  negativePrompt: { type: Type.STRING },
+                  leonardoStyle: { type: Type.STRING }
                 }
               },
             },
@@ -1299,6 +1350,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
                   width,
                   height,
                   seed: options?.seed,
+                  leonardoStyle: await resolveSmartStyle(item.prompt, item.leonardoStyle || options?.leonardoStyle),
                   guidance_scale: options?.cfgScale,
                   apiKey: settings.apiKeys.leonardo
                 })
@@ -1538,7 +1590,10 @@ export function MashupProvider({ children }: { children: ReactNode }) {
           const modelName = getModelName(selectedModel, 'leonardo').toLowerCase();
           const isXL = modelName.includes('xl') || 
                        modelName.includes('lightning') || 
-                       selectedModel === 'gemini-image-2';
+                       selectedModel === 'gemini-image-2' ||
+                       selectedModel === 'nano-banana-2' ||
+                       selectedModel === 'phoenix' ||
+                       selectedModel === 'gpt-image-1.5';
           
           let width = isXL ? 1024 : 768;
           let height = isXL ? 1024 : 768;
@@ -1574,6 +1629,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
               width,
               height,
               seed: options?.seed,
+              leonardoStyle: await resolveSmartStyle(finalPrompt, options?.leonardoStyle),
               guidance_scale: options?.cfgScale,
               apiKey: settings.apiKeys.leonardo
             })
