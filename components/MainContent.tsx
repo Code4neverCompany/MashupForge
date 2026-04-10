@@ -193,6 +193,11 @@ export function MainContent() {
   // When grouping is OFF, users can check individual cards and manually
   // promote a selection to a carousel group.
   const [captioningSelected, setCaptioningSelected] = useState<Set<string>>(new Set());
+  // Carousel picker modal: multi-source image picker for grouping
+  // savedImages into a carousel from ANY subset (not just auto-detected).
+  const [showCarouselPicker, setShowCarouselPicker] = useState(false);
+  const [pickerTargetGroupId, setPickerTargetGroupId] = useState<string | null>(null);
+  const [pickerSelected, setPickerSelected] = useState<Set<string>>(new Set());
   const [batchCaptioning, setBatchCaptioning] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   // Image id currently copied (for the brief "Copied" affordance on the
@@ -214,6 +219,11 @@ export function MainContent() {
   const [postReadyView, setPostReadyView] = useState<'grid' | 'calendar'>('grid');
   const [calendarMode, setCalendarMode] = useState<'week' | 'month'>('week');
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
+  // Inline edit popover state for the week view — only one open at a time.
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  // Drag state for rescheduling scheduled posts via HTML5 DnD.
+  const [dragPostId, setDragPostId] = useState<string | null>(null);
+  const [dragOverCell, setDragOverCell] = useState<string | null>(null);
 
   // Batch "Schedule All" mini-modal state.
   const [showScheduleAll, setShowScheduleAll] = useState(false);
@@ -448,9 +458,16 @@ export function MainContent() {
     return items;
   };
 
-  /** Persist a manual carousel group (from an auto-detected one). */
+  /**
+   * Persist a manual carousel group. If imageIds has fewer than 2
+   * entries we auto-ungroup instead (a carousel of 1 is just a post).
+   */
   const persistCarouselGroup = (id: string, imageIds: string[], patch?: Partial<CarouselGroup>) => {
     const groups = settings.carouselGroups || [];
+    if (imageIds.length < 2) {
+      updateSettings({ carouselGroups: groups.filter((g) => g.id !== id) });
+      return;
+    }
     const existing = groups.find((g) => g.id === id);
     if (existing) {
       updateSettings({
@@ -467,6 +484,45 @@ export function MainContent() {
   const separateCarousel = (groupId: string) => {
     const groups = settings.carouselGroups || [];
     updateSettings({ carouselGroups: groups.filter((g) => g.id !== groupId) });
+  };
+
+  /** Remove a single image from a carousel group. Auto-ungroups at <2. */
+  const removeFromCarousel = (groupId: string, imageId: string) => {
+    const groups = settings.carouselGroups || [];
+    const g = groups.find((x) => x.id === groupId);
+    if (!g) return;
+    const nextIds = g.imageIds.filter((id) => id !== imageId);
+    persistCarouselGroup(groupId, nextIds);
+  };
+
+  /** Open the multi-source image picker for an existing or new group. */
+  const openCarouselPicker = (targetGroupId: string | null) => {
+    setPickerTargetGroupId(targetGroupId);
+    // Seed selection with the group's current members when editing.
+    if (targetGroupId) {
+      const g = (settings.carouselGroups || []).find((x) => x.id === targetGroupId);
+      setPickerSelected(new Set(g?.imageIds || []));
+    } else {
+      setPickerSelected(new Set());
+    }
+    setShowCarouselPicker(true);
+  };
+
+  /** Confirm picker selection → persist a new or updated carousel group. */
+  const confirmCarouselPicker = () => {
+    const ids = Array.from(pickerSelected);
+    if (ids.length < 2) {
+      setShowCarouselPicker(false);
+      return;
+    }
+    const id = pickerTargetGroupId || `manual-${ids[0]}`;
+    persistCarouselGroup(id, ids);
+    setShowCarouselPicker(false);
+    setPickerTargetGroupId(null);
+    setPickerSelected(new Set());
+    // After creating a fresh group, flip the tab into grouped view so
+    // the user sees the result immediately.
+    if (!pickerTargetGroupId) setCaptioningGrouped(true);
   };
 
   /** Post a whole carousel now — fans out to platforms with the full mediaUrls array. */
@@ -1490,15 +1546,21 @@ export function MainContent() {
 
               {view === 'compare' && (
                 <div className="space-y-8">
-                  <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-8 space-y-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="space-y-1">
-                        <h2 className="text-xl font-semibold text-white">Multiverse Mashup Studio</h2>
-                        <p className="text-zinc-400 text-sm">Generate and compare crossover ideas across different AI models.</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
+                  {/* Section header */}
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center">
+                      <Sparkles className="w-5 h-5 text-emerald-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-semibold text-white">Mashup Studio</h2>
+                      <p className="text-sm text-zinc-400">Generate and compare crossover ideas across AI models</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl p-6 space-y-6">
+                    <div className="flex flex-wrap justify-end gap-2">
                         <select
-                          className="text-xs bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-w-[150px]"
+                          className="text-xs bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1 text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 max-w-[150px]"
                           onChange={(e) => {
                             if (e.target.value) {
                               setComparisonPrompt(e.target.value);
@@ -1514,7 +1576,7 @@ export function MainContent() {
                         <button
                           onClick={handleGenerateIdea}
                           disabled={isGeneratingIdea}
-                          className="text-xs bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600/20 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors border border-indigo-500/20"
+                          className="text-xs bg-emerald-600/10 text-emerald-400 hover:bg-emerald-600/20 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-colors border border-emerald-500/20"
                         >
                           {isGeneratingIdea ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                           Generate Idea
@@ -1522,12 +1584,11 @@ export function MainContent() {
                         <button
                           onClick={() => autoSelectParameters(comparisonPrompt)}
                           disabled={isAutoSelecting || !comparisonPrompt.trim()}
-                          className="text-xs bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600/20 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors border border-indigo-500/20 disabled:opacity-50"
+                          className="text-xs bg-emerald-600/10 text-emerald-400 hover:bg-emerald-600/20 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-colors border border-emerald-500/20 disabled:opacity-50"
                         >
                           {isAutoSelecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
                           Auto-Select Params
                         </button>
-                      </div>
                     </div>
 
                     <div className="space-y-4">
@@ -1546,8 +1607,8 @@ export function MainContent() {
                               }}
                               className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all text-left flex items-center justify-between ${
                                 comparisonModels.includes(model.id)
-                                  ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300'
-                                  : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                                  ? 'bg-emerald-600/20 border-emerald-500/30 text-emerald-400'
+                                  : 'bg-zinc-900 border-zinc-800/60 text-zinc-400 hover:border-zinc-700/50'
                               }`}
                             >
                               <span className="truncate mr-2">{model.name}</span>
@@ -1558,7 +1619,7 @@ export function MainContent() {
                       </div>
 
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-indigo-400 flex items-center gap-2">
+                        <label className="text-sm font-medium text-emerald-400 flex items-center gap-2">
                           <Sparkles className="w-4 h-4" />
                           Pushed Prompt
                         </label>
@@ -1566,7 +1627,7 @@ export function MainContent() {
                           value={comparisonPrompt}
                           onChange={(e) => setComparisonPrompt(e.target.value)}
                           placeholder="Enter a prompt to compare across models..."
-                          className="w-full bg-zinc-950/80 border border-indigo-500/30 rounded-xl p-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 min-h-[100px] resize-none shadow-inner shadow-indigo-500/5"
+                          className="w-full bg-zinc-950/80 border border-emerald-500/30 rounded-xl p-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 min-h-[100px] resize-none shadow-inner shadow-emerald-500/5"
                         />
                       </div>
 
@@ -1592,7 +1653,7 @@ export function MainContent() {
                           <select
                             value={comparisonOptions.style || ART_STYLES[0]}
                             onChange={(e) => setComparisonOptions(prev => ({ ...prev, style: e.target.value }))}
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
+                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
                           >
                             {ART_STYLES.map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
@@ -1605,7 +1666,7 @@ export function MainContent() {
                           <select
                             value={comparisonOptions.lighting || LIGHTING_OPTIONS[0]}
                             onChange={(e) => setComparisonOptions(prev => ({ ...prev, lighting: e.target.value }))}
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
+                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
                           >
                             {LIGHTING_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
@@ -1618,7 +1679,7 @@ export function MainContent() {
                           <select
                             value={comparisonOptions.angle || CAMERA_ANGLES[0]}
                             onChange={(e) => setComparisonOptions(prev => ({ ...prev, angle: e.target.value }))}
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
+                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
                           >
                             {CAMERA_ANGLES.map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
@@ -1631,7 +1692,7 @@ export function MainContent() {
                           <select
                             value={comparisonOptions.aspectRatio}
                             onChange={(e) => setComparisonOptions(prev => ({ ...prev, aspectRatio: e.target.value }))}
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
+                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
                           >
                             {['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'].map(ar => <option key={ar} value={ar}>{ar}</option>)}
                           </select>
@@ -1644,7 +1705,7 @@ export function MainContent() {
                           <select
                             value={comparisonOptions.imageSize}
                             onChange={(e) => setComparisonOptions(prev => ({ ...prev, imageSize: e.target.value }))}
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
+                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
                           >
                             {['512px', '1K', '2K', '4K'].map(size => <option key={size} value={size}>{size}</option>)}
                           </select>
@@ -1659,14 +1720,14 @@ export function MainContent() {
                             value={comparisonOptions.seed || ''}
                             onChange={(e) => setComparisonOptions(prev => ({ ...prev, seed: e.target.value === '' ? undefined : parseInt(e.target.value) }))}
                             placeholder="Random (Leave empty)"
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                           />
                         </div>
 
                         <div className="space-y-2">
                           <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
                             <span>CFG Scale / Stylize</span>
-                            <span className="text-indigo-400">{comparisonOptions.cfgScale || 7}</span>
+                            <span className="text-emerald-400">{comparisonOptions.cfgScale || 7}</span>
                           </label>
                           <input
                             type="range"
@@ -1675,7 +1736,7 @@ export function MainContent() {
                             step="1"
                             value={comparisonOptions.cfgScale || 7}
                             onChange={(e) => setComparisonOptions(prev => ({ ...prev, cfgScale: parseInt(e.target.value) }))}
-                            className="w-full accent-indigo-500"
+                            className="w-full accent-emerald-500"
                           />
                         </div>
                       </div>
@@ -1683,7 +1744,7 @@ export function MainContent() {
                       <button
                         onClick={handleCompare}
                         disabled={isComparing || comparisonModels.length < 2 || !comparisonPrompt.trim()}
-                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
+                        className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
                       >
                         {isComparing ? (
                           <>
@@ -1887,6 +1948,19 @@ export function MainContent() {
                           {captioningGrouped ? 'Grouped' : 'Group Similar'}
                         </button>
 
+                        {/* Create Carousel — always visible in grouped mode.
+                            Opens the multi-source picker so the user can
+                            pick any combination of images. */}
+                        {captioningGrouped && (
+                          <button
+                            onClick={() => openCarouselPicker(null)}
+                            className="px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white rounded-full flex items-center gap-1.5 transition-colors"
+                          >
+                            <LayoutGrid className="w-3.5 h-3.5" />
+                            Create Carousel
+                          </button>
+                        )}
+
                         {/* Manual "Group Selected" — only when grouping toggle is off
                             and the user has picked 2+ images with checkboxes. */}
                         {!captioningGrouped && captioningSelected.size >= 2 && (
@@ -1954,19 +2028,41 @@ export function MainContent() {
                                 <div className="relative bg-zinc-950 overflow-x-auto">
                                   <div className="flex gap-1 p-2" style={{ minHeight: 140 }}>
                                     {entry.images.map((ci) => (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img
-                                        key={ci.id}
-                                        src={ci.url}
-                                        alt={ci.prompt}
-                                        onClick={() => setSelectedImage(ci)}
-                                        className="h-32 w-32 object-cover rounded-lg cursor-zoom-in shrink-0"
-                                      />
+                                      <div key={ci.id} className="relative shrink-0 group/ci">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                          src={ci.url}
+                                          alt={ci.prompt}
+                                          onClick={() => setSelectedImage(ci)}
+                                          className="h-32 w-32 object-cover rounded-lg cursor-zoom-in"
+                                        />
+                                        {isExplicit && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              removeFromCarousel(entry.id, ci.id);
+                                            }}
+                                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600/90 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover/ci:opacity-100 transition-opacity"
+                                            title="Remove from carousel"
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        )}
+                                      </div>
                                     ))}
                                   </div>
                                   <span className="absolute top-3 left-3 inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-600/90 text-[10px] font-medium text-white rounded-full">
                                     <LayoutGrid className="w-3 h-3" /> Carousel · {entry.images.length} images
                                   </span>
+                                  {isExplicit && (
+                                    <button
+                                      onClick={() => openCarouselPicker(entry.id)}
+                                      className="absolute top-3 right-3 px-2 py-0.5 text-[10px] font-medium bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 rounded-full flex items-center gap-1 transition-colors"
+                                      title="Add more images to this carousel"
+                                    >
+                                      <Plus className="w-3 h-3" /> Add
+                                    </button>
+                                  )}
                                   {isWorking && (
                                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2 text-xs text-white">
                                       <Loader2 className="w-4 h-4 animate-spin" /> Generating caption…
@@ -2212,6 +2308,128 @@ export function MainContent() {
                         })}
                       </div>
                     )}
+
+                    {/* Carousel multi-source picker modal */}
+                    {showCarouselPicker && (
+                      <div
+                        className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => setShowCarouselPicker(false)}
+                      >
+                        <div
+                          className="bg-zinc-900/95 backdrop-blur border border-zinc-800/60 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between p-5 border-b border-zinc-800/60">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center">
+                                <LayoutGrid className="w-5 h-5 text-indigo-400" />
+                              </div>
+                              <div>
+                                <h3 className="text-lg font-semibold text-white">
+                                  {pickerTargetGroupId ? 'Edit Carousel' : 'Create Carousel'}
+                                </h3>
+                                <p className="text-xs text-zinc-500">
+                                  Pick 2 or more images to group them into a single multi-image post.
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setShowCarouselPicker(false)}
+                              className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <div className="flex-1 overflow-y-auto p-5">
+                            {all.length === 0 ? (
+                              <p className="text-sm text-zinc-500 text-center py-8">
+                                No saved images yet.
+                              </p>
+                            ) : (
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                {all.map((img) => {
+                                  // When editing, already-in-group images are
+                                  // pre-selected. Images that belong to a
+                                  // DIFFERENT explicit group are greyed out
+                                  // so you can't pull them out accidentally.
+                                  const inAnotherGroup = (settings.carouselGroups || []).some(
+                                    (g) => g.id !== pickerTargetGroupId && g.imageIds.includes(img.id)
+                                  );
+                                  const selected = pickerSelected.has(img.id);
+                                  return (
+                                    <button
+                                      key={img.id}
+                                      onClick={() => {
+                                        if (inAnotherGroup) return;
+                                        const next = new Set(pickerSelected);
+                                        if (next.has(img.id)) next.delete(img.id);
+                                        else next.add(img.id);
+                                        setPickerSelected(next);
+                                      }}
+                                      disabled={inAnotherGroup}
+                                      className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
+                                        inAnotherGroup
+                                          ? 'border-zinc-800/40 opacity-30 cursor-not-allowed'
+                                          : selected
+                                            ? 'border-emerald-500 ring-2 ring-emerald-500/30'
+                                            : 'border-zinc-800/60 hover:border-zinc-600'
+                                      }`}
+                                      title={inAnotherGroup ? 'Already in another carousel' : img.prompt}
+                                    >
+                                      {img.url ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                          src={img.url}
+                                          alt={img.prompt}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center bg-zinc-950">
+                                          <ImageIcon className="w-6 h-6 text-zinc-700" />
+                                        </div>
+                                      )}
+                                      {selected && (
+                                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center">
+                                          <Check className="w-3 h-3" />
+                                        </div>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between p-4 border-t border-zinc-800/60">
+                            <span className="text-xs text-zinc-500">
+                              {pickerSelected.size} selected
+                              {pickerSelected.size < 2 && (
+                                <span className="text-amber-400 ml-2">
+                                  Pick at least 2 images to form a carousel.
+                                </span>
+                              )}
+                            </span>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setShowCarouselPicker(false)}
+                                className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={confirmCarouselPicker}
+                                disabled={pickerSelected.size < 2}
+                                className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center gap-1.5"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                {pickerTargetGroupId ? 'Update Carousel' : 'Create Carousel'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -2395,6 +2613,130 @@ export function MainContent() {
                               </div>
                             </div>
 
+                            {/* Inline edit popover — rendered above the grid
+                                whenever a post is selected. Click outside
+                                (or the Close button) to dismiss. */}
+                            {editingPostId && (() => {
+                              const editing = scheduled.find((p) => p.id === editingPostId);
+                              if (!editing) return null;
+                              const editingImg = imgById.get(editing.imageId);
+                              const togglePlatformInPost = (plat: string) => {
+                                const next = editing.platforms.includes(plat)
+                                  ? editing.platforms.filter((x) => x !== plat)
+                                  : [...editing.platforms, plat];
+                                updateSettings({
+                                  scheduledPosts: (settings.scheduledPosts || []).map((sp) =>
+                                    sp.id === editing.id ? { ...sp, platforms: next } : sp
+                                  ),
+                                });
+                              };
+                              const patchField = (patch: Partial<ScheduledPost>) => {
+                                updateSettings({
+                                  scheduledPosts: (settings.scheduledPosts || []).map((sp) =>
+                                    sp.id === editing.id ? { ...sp, ...patch } : sp
+                                  ),
+                                });
+                              };
+                              return (
+                                <div className="m-4 bg-zinc-950/90 backdrop-blur border border-emerald-500/30 rounded-2xl p-4 space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                                      <Clock className="w-4 h-4 text-emerald-400" />
+                                      Edit scheduled post
+                                    </h4>
+                                    <button
+                                      onClick={() => setEditingPostId(null)}
+                                      className="p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Date</label>
+                                      <input
+                                        type="date"
+                                        value={editing.date}
+                                        onChange={(e) => patchField({ date: e.target.value })}
+                                        className="w-full bg-zinc-900 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Time</label>
+                                      <input
+                                        type="time"
+                                        value={editing.time}
+                                        onChange={(e) => patchField({ time: e.target.value })}
+                                        className="w-full bg-zinc-900 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Platforms</label>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {(['instagram', 'pinterest', 'twitter', 'discord'] as PostPlatform[]).map((p) => {
+                                        const checked = editing.platforms.includes(p);
+                                        return (
+                                          <button
+                                            key={p}
+                                            type="button"
+                                            onClick={() => togglePlatformInPost(p)}
+                                            className={`px-2.5 py-1 text-[10px] rounded-full border transition-colors ${
+                                              checked
+                                                ? `${platformBadgeClass(p)} text-white border-transparent`
+                                                : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
+                                            }`}
+                                          >
+                                            {checked && <Check className="w-3 h-3 inline mr-1" />}
+                                            {p}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Caption</label>
+                                    <p className="text-xs text-zinc-300 bg-zinc-900/50 border border-zinc-800/60 rounded-lg px-3 py-2 line-clamp-3">
+                                      {editing.caption || '(no caption)'}
+                                    </p>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => {
+                                        if (editingImg) setSelectedImage(editingImg);
+                                      }}
+                                      disabled={!editingImg}
+                                      className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-xl flex items-center gap-1.5"
+                                    >
+                                      <ImageIcon className="w-3.5 h-3.5" /> View Image
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        updateSettings({
+                                          scheduledPosts: (settings.scheduledPosts || []).filter((sp) => sp.id !== editing.id),
+                                        });
+                                        setEditingPostId(null);
+                                      }}
+                                      className="px-3 py-1.5 text-xs bg-red-600/80 hover:bg-red-500 text-white rounded-xl flex items-center gap-1.5"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                                    </button>
+                                    <div className="flex-1" />
+                                    <button
+                                      onClick={() => setEditingPostId(null)}
+                                      className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex items-center gap-1.5"
+                                    >
+                                      <Check className="w-3.5 h-3.5" /> Done
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
                             {/* Week grid: 1 hour label column + 7 day columns */}
                             <div className="overflow-x-auto">
                               <div className="grid grid-cols-[60px_repeat(7,minmax(120px,1fr))] border-b border-zinc-800/60 sticky top-0 bg-zinc-900/95 backdrop-blur">
@@ -2428,18 +2770,57 @@ export function MainContent() {
                                       const [hh] = p.time.split(':').map(Number);
                                       return hh === hour;
                                     });
+                                    const cellKey = `${dateStr}:${hour}`;
+                                    const isDragOver = dragOverCell === cellKey;
                                     return (
                                       <div
                                         key={i}
-                                        className="border-l border-zinc-800/60 min-h-[40px] p-1 space-y-1"
+                                        onDragOver={(e) => {
+                                          e.preventDefault();
+                                          if (dragOverCell !== cellKey) setDragOverCell(cellKey);
+                                        }}
+                                        onDragLeave={() => {
+                                          if (dragOverCell === cellKey) setDragOverCell(null);
+                                        }}
+                                        onDrop={(e) => {
+                                          e.preventDefault();
+                                          const postId = e.dataTransfer.getData('postId');
+                                          setDragOverCell(null);
+                                          setDragPostId(null);
+                                          if (!postId) return;
+                                          // Rewrite the post's date/time in
+                                          // settings.scheduledPosts. Time is
+                                          // pinned to HH:00 — finer resolution
+                                          // needs the edit popover.
+                                          const newTime = `${String(hour).padStart(2, '0')}:00`;
+                                          updateSettings({
+                                            scheduledPosts: (settings.scheduledPosts || []).map((sp) =>
+                                              sp.id === postId ? { ...sp, date: dateStr, time: newTime } : sp
+                                            ),
+                                          });
+                                        }}
+                                        className={`border-l border-zinc-800/60 min-h-[40px] p-1 space-y-1 transition-colors ${
+                                          isDragOver ? 'ring-2 ring-emerald-500/50 bg-emerald-500/5' : ''
+                                        }`}
                                       >
                                         {postsAtSlot.map((p) => {
-                                          const img = imgById.get(p.imageId);
                                           return (
                                             <button
                                               key={p.id}
-                                              onClick={() => img && setSelectedImage(img)}
-                                              className={`w-full text-left px-2 py-1 rounded-md border text-[10px] truncate ${calendarColorFor(p.status)}`}
+                                              draggable
+                                              onDragStart={(e) => {
+                                                e.dataTransfer.setData('postId', p.id);
+                                                e.dataTransfer.effectAllowed = 'move';
+                                                setDragPostId(p.id);
+                                              }}
+                                              onDragEnd={() => setDragPostId(null)}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingPostId((current) => (current === p.id ? null : p.id));
+                                              }}
+                                              className={`relative w-full text-left px-2 py-1 rounded-md border text-[10px] truncate cursor-grab active:cursor-grabbing ${calendarColorFor(p.status)} ${
+                                                dragPostId === p.id ? 'opacity-50' : ''
+                                              }`}
                                               title={`${p.time} · ${p.platforms.join(', ')}\n${p.caption}`}
                                             >
                                               {p.time} · {p.platforms.join(',')}
