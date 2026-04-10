@@ -8,7 +8,7 @@ export async function POST(req: Request) {
     const text = await callAI({
       systemPrompt,
       userPrompt: prompt,
-      maxTokens: 4000,
+      maxTokens: 500,
     });
 
     return NextResponse.json({ text });

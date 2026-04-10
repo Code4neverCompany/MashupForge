@@ -75,17 +75,10 @@ export function Sidebar() {
       // Content Generator
       setContentMessages((prev) => [...prev, { id: Date.now().toString(), role: 'user', text: userMsg }]);
       try {
-        const prompt = `${settings.agentPrompt || 'You are a Master Content Creator.'}
-        The user is asking for content ideas about: ${userMsg}.
-        Platform Niches: ${settings.agentNiches?.join(', ') || 'None'}.
-        Target Genres: ${settings.agentGenres?.join(', ') || 'None'}.
-
-        Based on your personality, niches, and genres, brainstorm 3-5 rapid content creation ideas.
-        You MUST strictly limit the content to ONLY these franchises: Star Wars, Marvel, DC, and Warhammer 40k.
-        Format the ideas as a JSON array of objects, each with two keys:
-        - "context": A short title or explanation of what the idea is about (e.g., "Darth Vader vs Batman in Gotham").
-        - "concept": The highly detailed image generation prompt.
-        Return ONLY the JSON array.`;
+        // Keep this prompt tight: GLM-5.1's reasoning budget scales with
+        // input length, so trimming boilerplate cuts seconds off every call.
+        const prompt = `Topic: ${userMsg}
+Return 3 crossover ideas between Star Wars, Marvel, DC, or Warhammer 40k as a JSON array. Each object has "context" (short title) and "concept" (detailed image prompt). Return ONLY the JSON array, no prose.`;
 
         const res = await fetch('/api/ai/generate', {
           method: 'POST',

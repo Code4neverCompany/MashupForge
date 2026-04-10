@@ -43,10 +43,14 @@ export async function callAI(options: CallAIOptions): Promise<string> {
   }
   messages.push({ role: 'user', content: options.userPrompt });
 
+  // Default to 1000 tokens when the caller doesn't specify — 2000 was too
+  // generous and gave GLM-5.1's reasoning phase room to blow past the 25s
+  // route timeout on simple content generation. Routes that need more should
+  // pass maxTokens explicitly.
   const body: any = {
     model: AI_MODEL,
     messages,
-    max_tokens: options.maxTokens || 2000,
+    max_tokens: options.maxTokens ?? 1000,
     temperature: options.temperature ?? 0.3,
   };
 
@@ -71,10 +75,11 @@ export async function callAI(options: CallAIOptions): Promise<string> {
   const reasoning = message?.reasoning_content || '';
   
   // GLM-5.1 is a reasoning model: it reasons first, then produces final content.
-  // If content is empty, the reasoning phase consumed all tokens — retry with more.
+  // If content is empty, the reasoning phase consumed all tokens — retry with
+  // more. Only double when the caller explicitly requested a budget; otherwise
+  // bump the default to a modest 1500 so we don't blow past the route timeout.
   if (!content && reasoning) {
-    // Try once more with doubled max_tokens
-    body.max_tokens = (options.maxTokens || 1000) * 2;
+    body.max_tokens = options.maxTokens ? options.maxTokens * 2 : 1500;
     const retryRes = await fetch(`${ZAI_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {

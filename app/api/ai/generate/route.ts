@@ -17,10 +17,10 @@ export async function POST(req: Request) {
         ? contents
         : JSON.stringify(contents);
 
-    // Long franchise-list prompts don't need 4000 output tokens — the response
-    // is typically a few hundred. Capping max_tokens cuts ZAI's reasoning budget
-    // and shortens latency dramatically for large inputs.
-    const maxTokens = userPrompt.length > 2000 ? 2000 : 4000;
+    // The sidebar content generator's actual output is typically a few
+    // hundred tokens; 800 is plenty and keeps us safely under the 25s ZAI
+    // timeout even when GLM-5.1's reasoning phase is chatty.
+    const maxTokens = 800;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), ZAI_TIMEOUT_MS);
