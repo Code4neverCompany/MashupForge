@@ -1,14 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { streamAIToString } from '@/lib/aiClient';
+import { streamAIToString, extractJsonFromLLM } from '@/lib/aiClient';
+import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import {
   type GeneratedImage,
   type GenerateOptions,
   type UserSettings,
   type WatermarkSettings,
   LEONARDO_MODELS,
-  MODEL_PROMPT_GUIDES,
   getLeonardoDimensions,
   RECOMMENDED_NICHES,
   RECOMMENDED_GENRES,
@@ -16,58 +16,6 @@ import {
 
 function getModelName(id: string): string {
   return LEONARDO_MODELS.find(m => m.id === id)?.name || id;
-}
-
-/**
- * Rewrite a base prompt with pi using the target model's strengths
- * guide. Falls back to the original on error so an AI glitch never
- * blocks image generation.
- */
-async function enhancePromptForModel(
-  basePrompt: string,
-  modelId: string,
-  style?: string
-): Promise<string> {
-  const guide = MODEL_PROMPT_GUIDES[modelId];
-  if (!guide) return basePrompt;
-  try {
-    const enhanced = await streamAIToString(
-      `You are an expert AI image prompt engineer. Rewrite this prompt to get the BEST result from ${getModelName(modelId)}.
-
-MODEL STRENGTHS: ${guide}
-${style ? `ART STYLE: ${style}` : ''}
-
-ORIGINAL: "${basePrompt}"
-
-Return ONLY the rewritten prompt.`,
-      { mode: 'enhance' }
-    );
-    return enhanced.trim() || basePrompt;
-  } catch {
-    return basePrompt;
-  }
-}
-
-/**
- * Extract a JSON array from a raw LLM response.
- *
- * Reasoning models (GLM-5.1 etc.) often wrap their output in markdown
- * code fences AND append explanatory commentary after the closing
- * bracket. JSON.parse rejects anything after the top-level value, so
- * we strip fences, then slice from the first `[` to the last `]` before
- * parsing. Objects get the `{` / `}` variant. Falls back to an empty
- * array / object on empty input.
- */
-function extractJsonFromLLM(raw: string, kind: 'array' | 'object' = 'array'): any {
-  let s = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  const open = kind === 'array' ? '[' : '{';
-  const close = kind === 'array' ? ']' : '}';
-  const first = s.indexOf(open);
-  const last = s.lastIndexOf(close);
-  if (first !== -1 && last > first) {
-    s = s.slice(first, last + 1);
-  }
-  return JSON.parse(s || (kind === 'array' ? '[]' : '{}'));
 }
 
 export async function applyWatermark(baseImageSrc: string, settings: WatermarkSettings, channelName?: string): Promise<string> {
@@ -342,33 +290,44 @@ Return ONLY a JSON array of objects, each with:
 
       for (let i = 0; i < itemsToGenerate.length; i++) {
         const item = itemsToGenerate[i];
-        const currentAspectRatio = item.aspectRatio || options?.aspectRatio || '1:1';
 
         const selectedModel = options?.leonardoModel || settings.defaultLeonardoModel;
         const modelName = getModelName(selectedModel);
 
-        // Rewrite the prompt for this model's strengths before sending
-        // it to Leonardo. Skipped when options.skipEnhance is set.
+        // Ask pi to rewrite the prompt AND pick model-aware parameters
+        // (best aspect ratio, best style, smart negative prompt) before
+        // sending it to Leonardo. Skipped when options.skipEnhance is set.
         setProgress(`Optimizing prompt for ${modelName}...`);
-        const modelPrompt = options?.skipEnhance
-          ? item.prompt
-          : await enhancePromptForModel(item.prompt, selectedModel, options?.style);
+        const enhancement = options?.skipEnhance
+          ? { prompt: item.prompt }
+          : await enhancePromptForModel(item.prompt, selectedModel, {
+              style: options?.style,
+              aspectRatio: item.aspectRatio || options?.aspectRatio,
+              negativePrompt: item.negativePrompt || options?.negativePrompt,
+            });
+
+        const modelPrompt = enhancement.prompt;
+        const currentAspectRatio =
+          enhancement.aspectRatio || item.aspectRatio || options?.aspectRatio || '1:1';
+        const modelStyle = enhancement.style || options?.style;
+        const modelNegPrompt =
+          enhancement.negativePrompt || item.negativePrompt || options?.negativePrompt;
 
         setProgress(`Generating image ${i + 1} of ${itemsToGenerate.length} with ${modelName}...`);
         try {
-          const generatedNegativePrompt = item.negativePrompt || options?.negativePrompt;
+          const generatedNegativePrompt = modelNegPrompt;
 
           const dims = getLeonardoDimensions(selectedModel, currentAspectRatio);
 
           // Map art style name to Leonardo UUID. ART_STYLES are display names
           // like "Cinematic"; Leonardo needs UUIDs. Best-effort fuzzy match.
           const leonardoStyleUuids = (() => {
-            if (!options?.style) return undefined;
+            if (!modelStyle) return undefined;
             const modelConfig = LEONARDO_MODELS.find(m => m.id === selectedModel);
             if (!modelConfig?.styles) return undefined;
             const match = modelConfig.styles.find(s =>
-              s.name.toLowerCase() === options.style!.toLowerCase() ||
-              s.name.toLowerCase().includes(options.style!.toLowerCase())
+              s.name.toLowerCase() === modelStyle.toLowerCase() ||
+              s.name.toLowerCase().includes(modelStyle.toLowerCase())
             );
             return match ? [match.uuid] : undefined;
           })();
@@ -503,27 +462,36 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
         ? `${enhancedPrompt}\nDo not include: ${options.negativePrompt}`
         : enhancedPrompt;
 
-      // Apply the per-model prompt tuning on top of the reroll
-      // enhancement so the rerolled image is also optimised for the
-      // target Leonardo variant.
-      const modelPrompt = options?.skipEnhance
-        ? finalPrompt
-        : await enhancePromptForModel(finalPrompt, selectedModel, options?.style);
+      // Apply the per-model prompt + parameter tuning on top of the
+      // reroll enhancement so rerolls also pick the best aspect ratio
+      // and art style for the target Leonardo variant.
+      const rerollEnhancement = options?.skipEnhance
+        ? { prompt: finalPrompt }
+        : await enhancePromptForModel(finalPrompt, selectedModel, {
+            style: options?.style,
+            aspectRatio: options?.aspectRatio,
+            negativePrompt: options?.negativePrompt,
+          });
+      const modelPrompt = rerollEnhancement.prompt;
+      const modelStyle = rerollEnhancement.style || options?.style;
+      const modelNegPrompt = rerollEnhancement.negativePrompt || options?.negativePrompt;
 
       let newImg: GeneratedImage | null = null;
 
       try {
-        const currentAspectRatio = options?.aspectRatio || '1:1';
+        const currentAspectRatio =
+          rerollEnhancement.aspectRatio || options?.aspectRatio || '1:1';
         const dims = getLeonardoDimensions(selectedModel, currentAspectRatio);
 
-        // Map art style name to Leonardo UUID (same fix as generate path)
+        // Map art style name to Leonardo UUID (same fix as generate path).
+        // Uses the model-optimised style when pi suggested one.
         const leonardoStyleUuids = (() => {
-          if (!options?.style) return undefined;
+          if (!modelStyle) return undefined;
           const modelConfig = LEONARDO_MODELS.find(m => m.id === selectedModel);
           if (!modelConfig?.styles) return undefined;
           const match = modelConfig.styles.find(s =>
-            s.name.toLowerCase() === options.style!.toLowerCase() ||
-            s.name.toLowerCase().includes(options.style!.toLowerCase())
+            s.name.toLowerCase() === modelStyle.toLowerCase() ||
+            s.name.toLowerCase().includes(modelStyle.toLowerCase())
           );
           return match ? [match.uuid] : undefined;
         })();
@@ -533,7 +501,7 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: modelPrompt,
-            negative_prompt: options?.negativePrompt,
+            negative_prompt: modelNegPrompt,
             modelId: selectedModel,
             width: dims.width,
             height: dims.height,
@@ -583,7 +551,7 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
                 tags: generatedTags,
                 imageId: statusData.imageId,
                 seed: statusData.seed,
-                negativePrompt: options?.negativePrompt,
+                negativePrompt: modelNegPrompt,
                 aspectRatio: currentAspectRatio,
                 status: 'ready',
                 modelInfo: {

@@ -67,7 +67,7 @@ import {
   IMAGE_SIZES
 } from './MashupContext';
 import { PipelinePanel } from './PipelinePanel';
-import { streamAIToString } from '@/lib/aiClient';
+import { streamAIToString, extractJsonFromLLM } from '@/lib/aiClient';
 import type { CarouselGroup } from './MashupContext';
 
 /**
@@ -821,8 +821,7 @@ export function MainContent() {
         Return ONLY a JSON object with keys: style, lighting, angle, aspectRatio.`,
         { mode: 'generate' }
       );
-      const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const params = JSON.parse(cleaned || '{}');
+      const params = extractJsonFromLLM(text, 'object');
       setComparisonOptions(prev => ({
         ...prev,
         style: params.style || prev.style,
@@ -868,8 +867,7 @@ export function MainContent() {
         - "imageSize": string`,
         { mode: 'enhance' }
       );
-      const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const data = JSON.parse(cleaned || '{}');
+      const data = extractJsonFromLLM(text, 'object');
       
       setComparisonPrompt(data.enhancedPrompt || prompt);
       setComparisonOptions(prev => ({
@@ -1172,8 +1170,7 @@ export function MainContent() {
         Return ONLY a JSON object with keys "duration" (number) and "style" (string).`,
           { mode: 'generate' }
         );
-        const cleaned = dynamicText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        const dynamicSettings = JSON.parse(cleaned || '{}');
+        const dynamicSettings = extractJsonFromLLM(dynamicText, 'object');
         if (dynamicSettings.duration && [3, 5, 10].includes(dynamicSettings.duration)) {
           duration = dynamicSettings.duration;
         }
@@ -1266,8 +1263,7 @@ export function MainContent() {
                 `Analyze this image prompt: "${prompt}". Generate 5-8 fitting tags (universe, character, style, theme). Return ONLY a JSON array of strings.`,
                 { mode: 'tag' }
               );
-              const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-              const parsed = JSON.parse(cleaned);
+              const parsed = extractJsonFromLLM(text, 'array');
               return Array.isArray(parsed) ? parsed : (parsed?.tags || ['Mashup']);
             } catch (e) {
               console.error('Failed to auto-tag during generation', e);

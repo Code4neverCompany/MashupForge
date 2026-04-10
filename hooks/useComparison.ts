@@ -2,50 +2,18 @@
 
 import { useState, useEffect } from 'react';
 import { get, set } from 'idb-keyval';
-import { streamAIToString } from '@/lib/aiClient';
+import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import {
   type GeneratedImage,
   type GenerateOptions,
   type UserSettings,
   type WatermarkSettings,
   LEONARDO_MODELS,
-  MODEL_PROMPT_GUIDES,
   getLeonardoDimensions,
 } from '../types/mashup';
 
 function getModelName(id: string) {
   return LEONARDO_MODELS.find(m => m.id === id)?.name || id;
-}
-
-/**
- * Ask pi to rewrite the base prompt using the model-specific guide.
- * Silently falls back to the original on any failure so an AI glitch
- * never blocks image generation.
- */
-async function enhancePromptForModel(
-  basePrompt: string,
-  modelId: string,
-  style?: string
-): Promise<string> {
-  const guide = MODEL_PROMPT_GUIDES[modelId];
-  if (!guide) return basePrompt;
-  try {
-    const enhanced = await streamAIToString(
-      `You are an expert AI image prompt engineer. Rewrite this image generation prompt to get the BEST possible result from this specific AI model.
-
-MODEL: ${getModelName(modelId)}
-MODEL STRENGTHS: ${guide}
-${style ? `ART STYLE: ${style}` : ''}
-
-ORIGINAL PROMPT: "${basePrompt}"
-
-Rewrite the prompt to leverage this model's strengths. Keep the same subject and intent. Return ONLY the rewritten prompt, nothing else. No explanations, no quotes around it.`,
-      { mode: 'enhance' }
-    );
-    return enhanced.trim() || basePrompt;
-  } catch {
-    return basePrompt;
-  }
 }
 
 interface UseComparisonDeps {
@@ -124,13 +92,25 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
         const modelId = modelIds[i];
         const modelName = getModelName(modelId);
 
-        // Rewrite the prompt per model so each Leonardo variant gets
-        // a version tuned to its strengths (photorealism vs. stylised,
-        // keyword-heavy vs. natural language, etc.).
+        // Rewrite the prompt per model so each Leonardo variant gets a
+        // version tuned to its strengths (photorealism vs. stylised,
+        // keyword-heavy vs. natural language, etc.). pi also picks the
+        // best supported aspect ratio, art style, and negative prompt
+        // for this specific model.
         setProgress(`Optimizing prompt for ${modelName}...`);
-        const modelPrompt = options?.skipEnhance
-          ? finalPrompt
-          : await enhancePromptForModel(finalPrompt, modelId, options?.style);
+        const enhancement = options?.skipEnhance
+          ? { prompt: finalPrompt }
+          : await enhancePromptForModel(finalPrompt, modelId, {
+              style: options?.style,
+              aspectRatio: options?.aspectRatio,
+              negativePrompt: options?.negativePrompt,
+            });
+        const modelPrompt = enhancement.prompt;
+        const modelRatio =
+          enhancement.aspectRatio || options?.aspectRatio || '1:1';
+        const modelStyle = enhancement.style || options?.style;
+        const modelNegPrompt =
+          enhancement.negativePrompt || options?.negativePrompt;
 
         setProgress(`Generating with ${modelName}...`);
 
@@ -139,17 +119,16 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
           let imageId = '';
           let seed = 0;
 
-          const currentAspectRatio = options?.aspectRatio || '1:1';
-          const dims = getLeonardoDimensions(modelId, currentAspectRatio);
+          const dims = getLeonardoDimensions(modelId, modelRatio);
 
           // Map art style name → Leonardo UUID
           const leonardoStyleUuids = (() => {
-            if (!options?.style) return undefined;
+            if (!modelStyle) return undefined;
             const modelConfig = LEONARDO_MODELS.find(m => m.id === modelId);
             if (!modelConfig?.styles) return undefined;
             const match = modelConfig.styles.find(s =>
-              s.name.toLowerCase() === options.style!.toLowerCase() ||
-              s.name.toLowerCase().includes(options.style!.toLowerCase())
+              s.name.toLowerCase() === modelStyle.toLowerCase() ||
+              s.name.toLowerCase().includes(modelStyle.toLowerCase())
             );
             return match ? [match.uuid] : undefined;
           })();
@@ -162,7 +141,7 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
               modelId,
               width: dims.width,
               height: dims.height,
-              negative_prompt: options?.negativePrompt,
+              negative_prompt: modelNegPrompt,
               styleIds: leonardoStyleUuids,
               apiKey: settings.apiKeys.leonardo
             }),
@@ -196,14 +175,15 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
               id: `comp-${Date.now()}-${modelId}`,
               comparisonId,
               url: imageUrl,
-              // Store the model-tuned prompt so the user can see exactly
-              // what was sent to Leonardo, not the original form.
+              // Store the model-tuned prompt + the resolved parameters
+              // so the user can see exactly what was sent to Leonardo,
+              // not the original form.
               prompt: modelPrompt,
               imageId,
               seed,
               status: 'ready',
-              negativePrompt: options?.negativePrompt,
-              aspectRatio: options?.aspectRatio,
+              negativePrompt: modelNegPrompt,
+              aspectRatio: modelRatio,
               imageSize: options?.imageSize,
               modelInfo: { provider: 'leonardo', modelId, modelName }
             };

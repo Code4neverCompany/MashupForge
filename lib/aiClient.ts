@@ -129,3 +129,26 @@ export async function streamAIToString(
   }
   return out;
 }
+
+/**
+ * Robust JSON extraction from an LLM response.
+ *
+ * Reasoning models (GLM-5.1 et al.) frequently wrap their output in
+ * markdown code fences AND append explanatory commentary after the
+ * closing bracket. JSON.parse rejects anything after the top-level
+ * value, so this helper strips fences, then slices from the first
+ * `[` to the last `]` (or `{` / `}` for objects) before parsing.
+ * Falls back to an empty array / object on empty input.
+ */
+export function extractJsonFromLLM(raw: string, kind: 'array' | 'object' = 'array'): any {
+  let text = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  if (!text) return kind === 'array' ? [] : {};
+  const open = kind === 'array' ? '[' : '{';
+  const close = kind === 'array' ? ']' : '}';
+  const first = text.indexOf(open);
+  const last = text.lastIndexOf(close);
+  if (first !== -1 && last > first) {
+    text = text.slice(first, last + 1);
+  }
+  return JSON.parse(text);
+}
