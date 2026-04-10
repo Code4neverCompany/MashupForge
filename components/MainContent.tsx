@@ -550,6 +550,10 @@ export function MainContent() {
     if (platforms.length === 0 || !date || !time || item.images.length === 0) return;
     const caption = item.group?.caption || formatPost(item.images[0]);
     const nowStamp = Date.now();
+    // Every post in the carousel gets the same carouselGroupId so the
+    // auto-post worker can pick them up as a single multi-image call
+    // instead of publishing each image independently.
+    const groupId = `carousel-grp-${nowStamp}-${Math.random().toString(36).slice(2, 8)}`;
     const newPosts: ScheduledPost[] = item.images.map((img, idx) => ({
       id: `post-${nowStamp}-${idx}-${Math.random().toString(36).slice(2, 8)}`,
       imageId: img.id,
@@ -558,6 +562,7 @@ export function MainContent() {
       platforms,
       caption,
       status: 'scheduled' as const,
+      carouselGroupId: groupId,
     }));
     updateSettings({
       scheduledPosts: [...(settings.scheduledPosts || []), ...newPosts],
@@ -908,48 +913,126 @@ export function MainContent() {
       let hasUpdates = false;
       const updatedPosts = [...settings.scheduledPosts];
 
+      // Shared credentials payload — same shape as postCarouselNow /
+      // postImageNow so the /api/social/post route doesn't care whether
+      // the publish was triggered manually or by the worker.
+      const credentials = {
+        instagram: settings.apiKeys.instagram,
+        twitter: settings.apiKeys.twitter,
+        pinterest: settings.apiKeys.pinterest,
+        discord: { webhookUrl: settings.apiKeys.discordWebhook },
+      };
+
+      // Posts handled as part of a carousel group — we skip these when
+      // we encounter their siblings later in the loop so each group is
+      // published exactly once.
+      const processedIds = new Set<string>();
+
       for (let i = 0; i < updatedPosts.length; i++) {
         const post = updatedPosts[i];
-        if (post.status === 'scheduled') {
-          const postDate = new Date(`${post.date}T${post.time}:00`);
-          if (now >= postDate) {
-            // Time to post!
-            const image = savedImages.find(img => img.id === post.imageId);
-            if (!image) {
-              updatedPosts[i] = { ...post, status: 'failed' };
-              hasUpdates = true;
-              continue;
-            }
+        if (processedIds.has(post.id)) continue;
+        if (post.status !== 'scheduled') continue;
+        const postDate = new Date(`${post.date}T${post.time}:00`);
+        if (now < postDate) continue;
 
-            try {
-              const res = await fetch('/api/social/post', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  caption: post.caption,
-                  platforms: post.platforms,
-                  mediaUrl: image.url,
-                  mediaBase64: image.base64,
-                  credentials: {
-                    instagram: settings.apiKeys.instagram,
-                    twitter: settings.apiKeys.twitter,
-                    pinterest: settings.apiKeys.pinterest,
-                    discord: { webhookUrl: settings.apiKeys.discordWebhook }
-                  }
-                })
-              });
+        // ── Carousel branch ────────────────────────────────────────
+        if (post.carouselGroupId) {
+          const groupPosts = updatedPosts.filter(
+            (p) => p.carouselGroupId === post.carouselGroupId && p.status === 'scheduled'
+          );
 
-              const data = await res.json();
-              if (!res.ok) throw new Error(data.error || 'Failed to post');
-              
-              updatedPosts[i] = { ...post, status: 'posted' };
-              hasUpdates = true;
-            } catch (e: any) {
-              console.error('Auto-post failed for', post.id, e.message || e);
-              updatedPosts[i] = { ...post, status: 'failed' };
-              hasUpdates = true;
-            }
+          // They share a date/time by construction, but double-check
+          // in case the user edited one of them.
+          const allDue = groupPosts.every((p) => {
+            const d = new Date(`${p.date}T${p.time}:00`);
+            return now >= d;
+          });
+          if (!allDue) {
+            groupPosts.forEach((gp) => processedIds.add(gp.id));
+            continue;
           }
+
+          const groupImages = groupPosts
+            .map((gp) => savedImages.find((img) => img.id === gp.imageId))
+            .filter((x): x is GeneratedImage => !!x);
+
+          if (groupImages.length === 0) {
+            groupPosts.forEach((gp) => {
+              const idx = updatedPosts.findIndex((p) => p.id === gp.id);
+              if (idx !== -1) updatedPosts[idx] = { ...gp, status: 'failed' };
+              processedIds.add(gp.id);
+            });
+            hasUpdates = true;
+            continue;
+          }
+
+          try {
+            const mediaUrls = groupImages.map((i) => i.url).filter(Boolean) as string[];
+            const res = await fetch('/api/social/post', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                caption: post.caption,
+                platforms: post.platforms,
+                mediaUrls,
+                credentials,
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to post carousel');
+
+            groupPosts.forEach((gp) => {
+              const idx = updatedPosts.findIndex((p) => p.id === gp.id);
+              if (idx !== -1) updatedPosts[idx] = { ...gp, status: 'posted' };
+              processedIds.add(gp.id);
+            });
+            hasUpdates = true;
+          } catch (e: any) {
+            console.error(
+              'Auto-post carousel failed for group',
+              post.carouselGroupId,
+              e?.message || e
+            );
+            groupPosts.forEach((gp) => {
+              const idx = updatedPosts.findIndex((p) => p.id === gp.id);
+              if (idx !== -1) updatedPosts[idx] = { ...gp, status: 'failed' };
+              processedIds.add(gp.id);
+            });
+            hasUpdates = true;
+          }
+          continue;
+        }
+
+        // ── Single-image branch (existing behaviour) ─────────────
+        const image = savedImages.find((img) => img.id === post.imageId);
+        if (!image) {
+          updatedPosts[i] = { ...post, status: 'failed' };
+          hasUpdates = true;
+          continue;
+        }
+
+        try {
+          const res = await fetch('/api/social/post', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              caption: post.caption,
+              platforms: post.platforms,
+              mediaUrl: image.url,
+              mediaBase64: image.base64,
+              credentials,
+            }),
+          });
+
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to post');
+
+          updatedPosts[i] = { ...post, status: 'posted' };
+          hasUpdates = true;
+        } catch (e: any) {
+          console.error('Auto-post failed for', post.id, e?.message || e);
+          updatedPosts[i] = { ...post, status: 'failed' };
+          hasUpdates = true;
         }
       }
 

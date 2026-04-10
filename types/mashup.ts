@@ -108,6 +108,13 @@ export interface ScheduledPost {
   platforms: string[];
   caption: string;
   status?: 'scheduled' | 'posted' | 'failed';
+  /**
+   * Optional link between scheduled posts that belong to the same
+   * carousel. When set, the auto-post worker collects every post with
+   * this id and publishes them as a single multi-image post (mediaUrls
+   * fan-out) instead of N separate single-image calls.
+   */
+  carouselGroupId?: string;
 }
 
 export interface UserSettings {
