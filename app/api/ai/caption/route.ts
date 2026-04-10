@@ -13,7 +13,6 @@ Include fitting emojis.
 Include a set of relevant hashtags, and MUST include #${channelName || 'MultiverseMashupAI'}.
 Return a JSON object with exactly two keys: "caption" (string) and "hashtags" (array of strings).`,
       maxTokens: 4000,
-      expectJSON: true,
     });
 
     const data = parseJSONResponse(text);

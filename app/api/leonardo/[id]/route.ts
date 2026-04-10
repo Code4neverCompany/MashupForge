@@ -11,39 +11,56 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ error: 'Leonardo API key not configured.' }, { status: 500 });
     }
 
-    const getRes = await fetch(`https://cloud.leonardo.ai/api/rest/v1/generations/${id}`, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Accept': 'application/json'
-      }
-    });
+    const headers = {
+      'Authorization': `Bearer ${apiKey}`,
+      'Accept': 'application/json',
+    };
+
+    // Generations created via /api/rest/v2/generations are not queryable via the
+    // v1 GET (the Hasura auth hook for v1 returns "Invalid response from authorization
+    // hook"). Try v2 first; fall back to v1 for legacy generations.
+    let getRes = await fetch(`https://cloud.leonardo.ai/api/rest/v2/generations/${id}`, { headers });
+    let usedV2 = true;
+    if (!getRes.ok && (getRes.status === 404 || getRes.status === 405)) {
+      getRes = await fetch(`https://cloud.leonardo.ai/api/rest/v1/generations/${id}`, { headers });
+      usedV2 = false;
+    }
 
     if (!getRes.ok) {
       const err = await getRes.text();
-      console.error('Leonardo status error:', err);
-      return NextResponse.json({ error: 'Failed to check Leonardo generation status' }, { status: getRes.status });
+      console.error(`Leonardo status error (v${usedV2 ? '2' : '1'}, ${getRes.status}):`, err);
+      return NextResponse.json(
+        { error: `Failed to check Leonardo generation status (${getRes.status}): ${err.slice(0, 200)}` },
+        { status: getRes.status }
+      );
     }
 
     const getData = await getRes.json();
-    const generation = getData.generations_by_pk;
-    
+    // v1 wraps in `generations_by_pk`; v2 may return the generation flat or under
+    // `generation` / `generations_by_pk`. Handle all known shapes.
+    const generation =
+      getData.generations_by_pk ||
+      getData.generation ||
+      (getData.id ? getData : null);
+
     if (!generation) {
+      console.error('Leonardo unexpected status response shape:', JSON.stringify(getData).slice(0, 400));
       return NextResponse.json({ error: 'Generation not found' }, { status: 404 });
     }
 
     if (generation.status === 'COMPLETE') {
-      const images = generation.generated_images;
-      if (images && images.length > 0) {
-        const url = images[0].motionMP4URL || images[0].url;
-        return NextResponse.json({ status: 'COMPLETE', url: url, imageId: images[0].id });
+      const images = generation.generated_images || generation.images || [];
+      if (images.length > 0) {
+        const imageUrl = images[0].motionMP4URL || images[0].url;
+        return NextResponse.json({ status: 'COMPLETE', url: imageUrl, imageId: images[0].id });
       }
       return NextResponse.json({ status: 'FAILED', error: 'Generation complete but no images found' });
     } else if (generation.status === 'FAILED') {
       const failureReason = generation.failure_reason || 'Unknown reason';
       console.error('Leonardo generation failed:', failureReason, JSON.stringify(generation));
-      return NextResponse.json({ 
-        status: 'FAILED', 
-        error: `Leonardo generation failed: ${failureReason}. This can happen due to prompt filters or technical issues on Leonardo's side.` 
+      return NextResponse.json({
+        status: 'FAILED',
+        error: `Leonardo generation failed: ${failureReason}. This can happen due to prompt filters or technical issues on Leonardo's side.`
       });
     }
 

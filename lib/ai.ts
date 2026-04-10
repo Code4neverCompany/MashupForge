@@ -24,7 +24,6 @@ interface CallAIOptions {
   userPrompt: string;
   maxTokens?: number;
   temperature?: number;
-  expectJSON?: boolean;
 }
 
 /**
@@ -50,10 +49,6 @@ export async function callAI(options: CallAIOptions): Promise<string> {
     temperature: options.temperature ?? 0.3,
   };
 
-  if (options.expectJSON) {
-    body.response_format = { type: 'json_object' };
-  }
-
   const res = await fetch(`${ZAI_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -77,7 +72,7 @@ export async function callAI(options: CallAIOptions): Promise<string> {
   // If content is empty, the reasoning phase consumed all tokens — retry with more.
   if (!content && reasoning) {
     // Try once more with doubled max_tokens
-    body.max_tokens = (body.max_tokens || 1000) * 2;
+    body.max_tokens = (options.maxTokens || 1000) * 2;
     const retryRes = await fetch(`${ZAI_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {

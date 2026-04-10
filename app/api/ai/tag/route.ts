@@ -15,7 +15,6 @@ Include:
 - Themes (e.g., "Battle", "Portrait", "Landscape")
 Return ONLY a JSON array of strings, nothing else.`,
       maxTokens: 4000,
-      expectJSON: true,
     });
 
     let tags = parseJSONResponse(text);

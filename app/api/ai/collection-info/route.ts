@@ -10,7 +10,6 @@ export async function POST(req: Request) {
 Generate a creative collection name (short, catchy) and a brief description (1-2 sentences).
 Return a JSON object with "name" and "description" keys.`,
       maxTokens: 4000,
-      expectJSON: true,
     });
 
     const data = parseJSONResponse(text);

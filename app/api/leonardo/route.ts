@@ -23,23 +23,25 @@ const MODEL_ID_MAP: Record<string, string> = {
 
 export async function POST(req: Request) {
   try {
-    const { 
-      prompt, 
-      negative_prompt, 
-      modelId, 
-      width, 
-      height, 
+    const {
+      prompt,
+      modelId,
+      width,
+      height,
       apiKey: customApiKey,
       styleIds,     // UUID array for Nano Banana models
       quality,      // LOW | MEDIUM | HIGH for GPT Image-1.5
       quantity,
     } = await req.json();
+    // Note: negative_prompt is intentionally not destructured. None of the v2
+    // models supported by this route (nano-banana-2, gemini-image-2, gpt-image-1.5)
+    // accept negative_prompt — sending it triggers a v2 VALIDATION_ERROR (400).
 
     const apiKey = customApiKey || process.env.LEONARDO_API_KEY;
 
     if (!apiKey || apiKey === 'MY_LEONARDO_API_KEY') {
-      return NextResponse.json({ 
-        error: 'Leonardo API key not configured.' 
+      return NextResponse.json({
+        error: 'Leonardo API key not configured.'
       }, { status: 500 });
     }
 
@@ -54,11 +56,6 @@ export async function POST(req: Request) {
       quantity: Math.min(Number(quantity) || 1, 8),
       prompt_enhance: "OFF",
     };
-
-    // Add negative prompt if provided
-    if (negative_prompt && String(negative_prompt).trim()) {
-      parameters.negative_prompt = String(negative_prompt).trim();
-    }
 
     // Model-specific parameters
     if (modelId === 'gpt-image-1.5') {
