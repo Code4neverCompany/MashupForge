@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { 
@@ -68,6 +68,7 @@ import {
 } from './MashupContext';
 import { PipelinePanel } from './PipelinePanel';
 import { streamAIToString, extractJsonFromLLM } from '@/lib/aiClient';
+import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import type { CarouselGroup } from './MashupContext';
 
 /**
@@ -178,6 +179,8 @@ export function MainContent() {
   const [comparisonModels, setComparisonModels] = useState<string[]>([]);
   const [isComparing, setIsComparing] = useState(false);
   const [isGeneratingIdea, setIsGeneratingIdea] = useState(false);
+  /** Per-model parameter preview (set by pi when prompt changes). */
+  const [modelPreviews, setModelPreviews] = useState<Record<string, { style?: string; aspectRatio?: string; negativePrompt?: string; lighting?: string; angle?: string }>>({});
   const [isAutoSelecting, setIsAutoSelecting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   // Track which image is currently having its caption generated so we can
@@ -891,16 +894,55 @@ export function MainContent() {
     const storedModels = localStorage.getItem('mashup_comparison_models');
     if (storedModels) {
       try {
-        setComparisonModels(JSON.parse(storedModels));
+        const parsed = JSON.parse(storedModels);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setComparisonModels(parsed);
+          return;
+        }
       } catch (e) {
         console.error('Failed to parse stored comparison models', e);
       }
     }
+    // Default: all three models selected
+    setComparisonModels(LEONARDO_MODELS.map(m => m.id));
   }, []);
 
   useEffect(() => {
     localStorage.setItem('mashup_comparison_models', JSON.stringify(comparisonModels));
   }, [comparisonModels]);
+
+  /** Preview per-model parameters whenever the prompt or models change. */
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!comparisonPrompt.trim() || comparisonModels.length === 0) {
+      setModelPreviews({});
+      return;
+    }
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    previewTimerRef.current = setTimeout(async () => {
+      const previews: Record<string, { style?: string; aspectRatio?: string; negativePrompt?: string; lighting?: string; angle?: string }> = {};
+      await Promise.all(comparisonModels.map(async (modelId) => {
+        try {
+          const enh = await enhancePromptForModel(comparisonPrompt, modelId, {
+            style: comparisonOptions.style,
+            aspectRatio: comparisonOptions.aspectRatio,
+            negativePrompt: comparisonOptions.negativePrompt,
+          });
+          previews[modelId] = {
+            style: enh.style,
+            aspectRatio: enh.aspectRatio,
+            negativePrompt: enh.negativePrompt,
+          };
+        } catch { /* ignore */ }
+      }));
+      setModelPreviews(prev => {
+        const same = Object.keys(prev).length === Object.keys(previews).length
+          && Object.entries(prev).every(([k, v]) => JSON.stringify(v) === JSON.stringify(previews[k]));
+        return same ? prev : previews;
+      });
+    }, 800);
+    return () => { if (previewTimerRef.current) clearTimeout(previewTimerRef.current); };
+  }, [comparisonPrompt, comparisonModels]);
 
   // Auto-posting effect
   useEffect(() => {
@@ -1807,11 +1849,11 @@ export function MainContent() {
                         />
                       </div>
 
-                      {/* AI-Optimized Parameters — read-only indicators.
-                          pi auto-tunes per model during generation via
-                          lib/modelOptimizer, so there's nothing to pick
-                          manually. The pills show what the latest
-                          autoSelect/handlePushIdeaToCompare populated. */}
+                      {/* AI-Optimized Parameters — read-only per-model indicators.
+                          pi pre-computes optimal params per model via
+                          lib/modelOptimizer whenever the prompt changes.
+                          During generation the same optimizer runs again
+                          so these pills accurately preview what will be sent. */}
                       <div className="bg-zinc-900/50 border border-zinc-800/40 rounded-xl p-4 space-y-3">
                         <div className="flex items-center gap-2 text-xs text-zinc-500">
                           <Sparkles className="w-3 h-3" />
@@ -1824,6 +1866,8 @@ export function MainContent() {
                               const model = LEONARDO_MODELS.find(
                                 (m) => m.id === modelId || m.apiModelId === modelId
                               );
+                              const preview = modelPreviews[modelId];
+                              const fallbackRatio = model?.aspectRatios?.[0]?.label || '1:1';
                               return (
                                 <div key={modelId} className="flex items-center gap-2 flex-wrap">
                                   <span className="text-[10px] font-mono text-zinc-500 w-28 shrink-0">
@@ -1831,27 +1875,27 @@ export function MainContent() {
                                   </span>
                                   <div className="flex flex-wrap gap-1.5">
                                     <span className="px-2 py-0.5 bg-zinc-800 text-zinc-400 text-[10px] rounded-md">
-                                      {comparisonOptions.aspectRatio || model?.aspectRatios?.[0]?.label || '1:1'}
+                                      {preview?.aspectRatio || comparisonOptions.aspectRatio || fallbackRatio}
                                     </span>
-                                    {comparisonOptions.style && (
+                                    {(preview?.style || comparisonOptions.style) && (
                                       <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-[10px] rounded-md border border-emerald-500/20">
-                                        {comparisonOptions.style}
+                                        {preview?.style || comparisonOptions.style}
                                       </span>
                                     )}
-                                    {comparisonOptions.lighting && (
+                                    {(preview?.lighting || comparisonOptions.lighting) && (
                                       <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 text-[10px] rounded-md border border-amber-500/20">
-                                        {comparisonOptions.lighting}
+                                        {preview?.lighting || comparisonOptions.lighting}
                                       </span>
                                     )}
-                                    {comparisonOptions.angle && (
+                                    {(preview?.angle || comparisonOptions.angle) && (
                                       <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 text-[10px] rounded-md border border-indigo-500/20">
-                                        {comparisonOptions.angle}
+                                        {preview?.angle || comparisonOptions.angle}
                                       </span>
                                     )}
-                                    {comparisonOptions.negativePrompt && (
+                                    {(preview?.negativePrompt || comparisonOptions.negativePrompt) && (
                                       <span className="px-2 py-0.5 bg-red-500/10 text-red-400 text-[10px] rounded-md border border-red-500/20">
-                                        not: {comparisonOptions.negativePrompt.slice(0, 50)}
-                                        {comparisonOptions.negativePrompt.length > 50 ? '…' : ''}
+                                        not: {(preview?.negativePrompt || comparisonOptions.negativePrompt || '').slice(0, 50)}
+                                        {(preview?.negativePrompt || comparisonOptions.negativePrompt || '').length > 50 ? '…' : ''}
                                       </span>
                                     )}
                                   </div>
