@@ -17,6 +17,28 @@ function getModelName(id: string): string {
   return LEONARDO_MODELS.find(m => m.id === id)?.name || id;
 }
 
+/**
+ * Extract a JSON array from a raw LLM response.
+ *
+ * Reasoning models (GLM-5.1 etc.) often wrap their output in markdown
+ * code fences AND append explanatory commentary after the closing
+ * bracket. JSON.parse rejects anything after the top-level value, so
+ * we strip fences, then slice from the first `[` to the last `]` before
+ * parsing. Objects get the `{` / `}` variant. Falls back to an empty
+ * array / object on empty input.
+ */
+function extractJsonFromLLM(raw: string, kind: 'array' | 'object' = 'array'): any {
+  let s = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  const open = kind === 'array' ? '[' : '{';
+  const close = kind === 'array' ? ']' : '}';
+  const first = s.indexOf(open);
+  const last = s.lastIndexOf(close);
+  if (first !== -1 && last > first) {
+    s = s.slice(first, last + 1);
+  }
+  return JSON.parse(s || (kind === 'array' ? '[]' : '{}'));
+}
+
 export async function applyWatermark(baseImageSrc: string, settings: WatermarkSettings, channelName?: string): Promise<string> {
   if (!settings.enabled) return baseImageSrc;
   if (!settings.image && !channelName) return baseImageSrc;
@@ -122,10 +144,9 @@ Generate a set of 5-8 fitting tags for a gallery. Include:
 Return ONLY a JSON array of strings, nothing else.`,
         { mode: 'tag' }
       );
-      const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       let tags: any = [];
       try {
-        tags = JSON.parse(cleaned);
+        tags = extractJsonFromLLM(text, 'array');
         if (!Array.isArray(tags) && typeof tags === 'object') {
           tags = tags.tags || Object.values(tags).flat();
         }
@@ -195,8 +216,7 @@ Keep it under 100 words. Return ONLY the negative prompt text, nothing else.`,
             `Analyze this image prompt: "${prompt}". Generate 5-8 fitting tags (universe, character, style, theme). Return ONLY a JSON array of strings.`,
             { mode: 'tag' }
           );
-          const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-          const parsed = JSON.parse(cleaned);
+          const parsed = extractJsonFromLLM(text, 'array');
           return Array.isArray(parsed) ? parsed : (parsed?.tags || ['Mashup']);
         } catch (e) {
           console.error('Failed to auto-tag during generation', e);
@@ -243,10 +263,9 @@ Random Seed: ${Math.random()}`,
         );
 
         try {
-          const cleaned = promptText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-          itemsToGenerate = JSON.parse(cleaned || '[]');
+          itemsToGenerate = extractJsonFromLLM(promptText, 'array');
         } catch (e) {
-          console.error('Failed to parse prompts:', e);
+          console.error('Failed to parse prompts:', e, 'Raw:', promptText?.slice(0, 200));
           itemsToGenerate = [
             { prompt: 'A Space Marine from Warhammer 40k wielding a lightsaber from Star Wars, standing on a desolate alien planet.', aspectRatio: '16:9', tags: ['Warhammer 40k', 'Star Wars', 'Crossover'] },
             { prompt: 'Batman wearing an Iron Man suit, perched on a gargoyle in a futuristic cyberpunk Gotham.', aspectRatio: '9:16', tags: ['DC', 'Marvel', 'Crossover'] },
@@ -277,10 +296,9 @@ Return ONLY a JSON array of objects, each with:
         );
 
         try {
-          const cleaned = promptText2.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-          itemsToGenerate = JSON.parse(cleaned || '[]');
+          itemsToGenerate = extractJsonFromLLM(promptText2, 'array');
         } catch (e) {
-          console.error('Failed to parse enhanced prompts:', e);
+          console.error('Failed to parse enhanced prompts:', e, 'Raw:', promptText2?.slice(0, 200));
           itemsToGenerate = customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio }));
         }
 
@@ -423,8 +441,7 @@ Return ONLY a JSON array of objects, each with:
             `Analyze this image prompt: "${prompt}". Generate 5-8 fitting tags (universe, character, style, theme). Return ONLY a JSON array of strings.`,
             { mode: 'tag' }
           );
-          const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-          const parsed = JSON.parse(cleaned);
+          const parsed = extractJsonFromLLM(text, 'array');
           return Array.isArray(parsed) ? parsed : (parsed?.tags || ['Mashup']);
         } catch (e) {
           console.error('Failed to auto-tag during generation', e);
