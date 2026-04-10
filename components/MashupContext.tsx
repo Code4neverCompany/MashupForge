@@ -819,17 +819,23 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     try {
       const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
       const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+      
+      // Use a very simple prompt to minimize token usage and potential for errors
       const styleRes = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Analyze this image prompt: "${prompt}". 
-        Pick the most fitting Leonardo style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE.
-        Return ONLY the style name in plain text.`,
+        contents: `Prompt: "${prompt}". Pick one Leonardo style: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW. Return ONLY the word.`,
       });
+      
       const selectedStyle = styleRes.text.trim().toUpperCase();
       const validStyles = ['DYNAMIC', 'RAYTRACED', 'CINEMATIC', 'PHOTOREALISTIC', 'ANIME', 'CREATIVE', 'VIBRANT', 'PORTRAIT', 'SKETCH_BW', 'NONE'];
       return validStyles.includes(selectedStyle) ? selectedStyle : 'DYNAMIC';
-    } catch (e) {
-      console.error('Failed to resolve smart style', e);
+    } catch (e: any) {
+      // If it's a quota error, don't log the whole thing to avoid cluttering
+      if (e.message?.includes('429') || e.message?.includes('quota')) {
+        console.warn('Gemini quota hit in resolveSmartStyle, falling back to DYNAMIC.');
+      } else {
+        console.error('Failed to resolve smart style:', e);
+      }
       return 'DYNAMIC';
     }
   };
@@ -1114,150 +1120,144 @@ export function MashupProvider({ children }: { children: ReactNode }) {
         tags?: string[], 
         selectedNiches?: string[], 
         selectedGenres?: string[],
-        negativePrompt?: string
+        negativePrompt?: string,
+        leonardoStyle?: string
       }[] = [];
-      const isLeonardo = options?.provider ? options.provider === 'leonardo' : settings.defaultProvider === 'leonardo';
 
-      const ensureTags = async (prompt: string, existingTags?: string[]) => {
-        if (existingTags && existingTags.length > 0) return existingTags;
-        try {
-          const tagRes = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Analyze this image prompt: "${prompt}". Generate a set of 5-8 fitting tags for a gallery. Include Universe/Franchise, Character names, Style, and Themes. Return ONLY a JSON array of strings.`,
-            config: { responseMimeType: 'application/json' }
-          });
-          return JSON.parse(tagRes.text || '[]');
-        } catch (e) {
-          console.error('Failed to auto-tag during generation', e);
-          return ['Mashup'];
-        }
-      };
-
-      const systemContext = `${settings.agentPrompt || 'You are a Master Content Creator.'} 
-      Active Niches: ${settings.agentNiches?.join(', ') || 'None'}.
-      Active Genres: ${settings.agentGenres?.join(', ') || 'None'}.
-      Recommended Niches: ${RECOMMENDED_NICHES.join(', ')}.
-      Recommended Genres: ${RECOMMENDED_GENRES.join(', ')}.
-      
-      INTELLIGENT SELECTION:
-      1. For each prompt, choose the most fitting Niches and Genres from the ACTIVE lists.
-      2. If a RECOMMENDED (but inactive) tag is significantly better for the specific prompt, you may pick it.
-      3. Smartly select the most appropriate aspect ratio (e.g., "16:9", "9:16", "1:1", "4:3", "3:4").
-      4. Generate a set of fitting tags for the gallery (characters, universe, themes).
-      
-      CRITICAL: Use Google Search to research current social media trends, popular crossover memes, and viral "what if" scenarios for Star Wars, Marvel, DC, and Warhammer 40k. Base your ideas on these real-world trends.
-      Focus heavily on alternative universes, different timelines, and epic crossovers.
-      Ensure the prompts are safe and do not contain restricted content.
-      
-      DIVERSITY MANDATE: You MUST generate highly diverse ideas. Do NOT repeat the same characters, themes, or scenarios across the prompts. Ensure a wide variety of characters from the mentioned franchises are used. Do not get stuck on a single character (like Dr. Doom, Darth Vader, Batman, etc.). Each prompt must feature completely different primary characters and settings.`;
-
-      if (options?.skipEnhance && customPrompts) {
-        itemsToGenerate = customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio }));
-      } else if (!customPrompts || customPrompts.length === 0) {
-        // Generate 4 distinct crossover prompts with smart aspect ratios
-        const promptRes = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: `${systemContext}
-          Generate 4 completely distinct, highly detailed image generation prompts. 
-          Ensure maximum variety in characters, franchises, and settings. Do NOT repeat characters.
-          Return ONLY a JSON array of 4 objects, each with:
-          - "prompt": string
-          - "aspectRatio": string
-          - "tags": array of strings
-          - "selectedNiches": array of strings
-          - "selectedGenres": array of strings
-          - "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)
-          - "leonardoStyle": string (Pick the most fitting style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE)
-          
-          Random Seed: ${Math.random()}`,
-          config: {
-            tools: [{ googleSearch: {} }],
-            toolConfig: { includeServerSideToolInvocations: true },
-            temperature: 1.2,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.ARRAY,
-              items: { 
-                type: Type.OBJECT,
-                properties: {
-                  prompt: { type: Type.STRING },
-                  aspectRatio: { type: Type.STRING },
-                  tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  selectedNiches: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  selectedGenres: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  negativePrompt: { type: Type.STRING },
-                  leonardoStyle: { type: Type.STRING }
-                }
-              },
-            },
-          },
-        });
-
-        try {
-          itemsToGenerate = JSON.parse(promptRes.text || '[]');
-        } catch (e) {
-          console.error('Failed to parse prompts:', e);
-          itemsToGenerate = [
-            { prompt: 'A Space Marine from Warhammer 40k wielding a lightsaber from Star Wars, standing on a desolate alien planet.', aspectRatio: '16:9', tags: ['Warhammer 40k', 'Star Wars', 'Crossover'] },
-            { prompt: 'Batman wearing an Iron Man suit, perched on a gargoyle in a futuristic cyberpunk Gotham.', aspectRatio: '9:16', tags: ['DC', 'Marvel', 'Crossover'] },
-            { prompt: 'Gandalf the White casting a spell alongside Doctor Strange in the Mirror Dimension.', aspectRatio: '16:9', tags: ['Marvel', 'Fantasy', 'Crossover'] },
-            { prompt: 'Darth Vader commanding a fleet of Star Destroyers over Hogwarts castle.', aspectRatio: '16:9', tags: ['Star Wars', 'Harry Potter', 'Crossover'] },
-          ];
-        }
-
-        if (!Array.isArray(itemsToGenerate) || itemsToGenerate.length === 0) {
-          throw new Error('Failed to generate prompts');
-        }
-
-        itemsToGenerate = itemsToGenerate.slice(0, 4);
-      } else {
-        // Enhance custom prompts using the Master Content Creator persona
-        const promptRes = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: `${systemContext}
-          The user wants to generate images based on these ideas: ${JSON.stringify(customPrompts)}. 
-          Enhance these ideas into highly detailed, cinematic image generation prompts. 
-          Return ONLY a JSON array of objects, each with:
-          - "prompt": string
-          - "aspectRatio": string
-          - "tags": array of strings
-          - "selectedNiches": array of strings
-          - "selectedGenres": array of strings
-          - "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)
-          - "leonardoStyle": string (Pick the most fitting style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE)`,
-          config: {
-            temperature: 1.2,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.ARRAY,
-              items: { 
-                type: Type.OBJECT,
-                properties: {
-                  prompt: { type: Type.STRING },
-                  aspectRatio: { type: Type.STRING },
-                  tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  selectedNiches: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  selectedGenres: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  negativePrompt: { type: Type.STRING },
-                  leonardoStyle: { type: Type.STRING }
-                }
-              },
-            },
-          },
-        });
-
-        try {
-          itemsToGenerate = JSON.parse(promptRes.text || '[]');
-        } catch (e) {
-          console.error('Failed to parse enhanced prompts:', e);
-          itemsToGenerate = customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio }));
-        }
+      try {
+        const systemContext = `${settings.agentPrompt || 'You are a Master Content Creator.'} 
+        Active Niches: ${settings.agentNiches?.join(', ') || 'None'}.
+        Active Genres: ${settings.agentGenres?.join(', ') || 'None'}.
+        Recommended Niches: ${RECOMMENDED_NICHES.join(', ')}.
+        Recommended Genres: ${RECOMMENDED_GENRES.join(', ')}.
         
-        if (!Array.isArray(itemsToGenerate) || itemsToGenerate.length === 0) {
+        INTELLIGENT SELECTION:
+        1. For each prompt, choose the most fitting Niches and Genres from the ACTIVE lists.
+        2. If a RECOMMENDED (but inactive) tag is significantly better for the specific prompt, you may pick it.
+        3. Smartly select the most appropriate aspect ratio (e.g., "16:9", "9:16", "1:1", "4:3", "3:4").
+        4. Generate a set of fitting tags for the gallery (characters, universe, themes).
+        
+        CRITICAL: Use Google Search to research current social media trends, popular crossover memes, and viral "what if" scenarios for Star Wars, Marvel, DC, and Warhammer 40k. Base your ideas on these real-world trends.
+        Focus heavily on alternative universes, different timelines, and epic crossovers.
+        Ensure the prompts are safe and do not contain restricted content.
+        
+        DIVERSITY MANDATE: You MUST generate highly diverse ideas. Do NOT repeat the same characters, themes, or scenarios across the prompts. Ensure a wide variety of characters from the mentioned franchises are used. Do not get stuck on a single character (like Dr. Doom, Darth Vader, Batman, etc.). Each prompt must feature completely different primary characters and settings.`;
+
+        if (options?.skipEnhance && customPrompts) {
+          itemsToGenerate = customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio }));
+        } else if (!customPrompts || customPrompts.length === 0) {
+          // Generate 4 distinct crossover prompts with smart aspect ratios
+          try {
+            const promptRes = await ai.models.generateContent({
+              model: 'gemini-3-flash-preview',
+              contents: `${systemContext}
+              Generate 4 completely distinct, highly detailed image generation prompts. 
+              Ensure maximum variety in characters, franchises, and settings. Do NOT repeat characters.
+              Return ONLY a JSON array of 4 objects, each with:
+              - "prompt": string
+              - "aspectRatio": string
+              - "tags": array of strings
+              - "selectedNiches": array of strings
+              - "selectedGenres": array of strings
+              - "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)
+              - "leonardoStyle": string (Pick the most fitting style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE)
+              
+              Random Seed: ${Math.random()}`,
+              config: {
+                tools: [{ googleSearch: {} }],
+                toolConfig: { includeServerSideToolInvocations: true },
+                temperature: 1.2,
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: Type.ARRAY,
+                  items: { 
+                    type: Type.OBJECT,
+                    properties: {
+                      prompt: { type: Type.STRING },
+                      aspectRatio: { type: Type.STRING },
+                      tags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      selectedNiches: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      selectedGenres: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      negativePrompt: { type: Type.STRING },
+                      leonardoStyle: { type: Type.STRING }
+                    }
+                  },
+                },
+              },
+            });
+            itemsToGenerate = JSON.parse(promptRes.text || '[]');
+          } catch (e) {
+            console.error('Failed to generate prompts (likely quota limit):', e);
+            itemsToGenerate = [
+              { prompt: 'A Space Marine from Warhammer 40k wielding a lightsaber from Star Wars, standing on a desolate alien planet.', aspectRatio: '16:9', tags: ['Warhammer 40k', 'Star Wars', 'Crossover'] },
+              { prompt: 'Batman wearing an Iron Man suit, perched on a gargoyle in a futuristic cyberpunk Gotham.', aspectRatio: '9:16', tags: ['DC', 'Marvel', 'Crossover'] },
+              { prompt: 'Gandalf the White casting a spell alongside Doctor Strange in the Mirror Dimension.', aspectRatio: '16:9', tags: ['Marvel', 'Fantasy', 'Crossover'] },
+              { prompt: 'Darth Vader commanding a fleet of Star Destroyers over Hogwarts castle.', aspectRatio: '16:9', tags: ['Star Wars', 'Harry Potter', 'Crossover'] },
+            ];
+          }
+        } else {
+          // Enhance provided prompts
+          try {
+            const promptRes = await ai.models.generateContent({
+              model: 'gemini-3-flash-preview',
+              contents: `${systemContext}
+              The user wants to generate images based on these ideas: ${JSON.stringify(customPrompts)}. 
+              Enhance these ideas into highly detailed, cinematic image generation prompts. 
+              Return ONLY a JSON array of objects, each with:
+              - "prompt": string
+              - "aspectRatio": string
+              - "tags": array of strings
+              - "selectedNiches": array of strings
+              - "selectedGenres": array of strings
+              - "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)
+              - "leonardoStyle": string (Pick the most fitting style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE)`,
+              config: {
+                temperature: 1.2,
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: Type.ARRAY,
+                  items: { 
+                    type: Type.OBJECT,
+                    properties: {
+                      prompt: { type: Type.STRING },
+                      aspectRatio: { type: Type.STRING },
+                      tags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      selectedNiches: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      selectedGenres: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      negativePrompt: { type: Type.STRING },
+                      leonardoStyle: { type: Type.STRING }
+                    }
+                  },
+                },
+              },
+            });
+            itemsToGenerate = JSON.parse(promptRes.text || '[]');
+          } catch (e) {
+            console.error('Failed to enhance custom prompts (likely quota limit):', e);
+            itemsToGenerate = customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio }));
+          }
+        }
+      } catch (error: any) {
+        console.error('Error in prompt generation logic:', error);
+        // Fallback: use custom prompts if available, otherwise generic ones
+        if (customPrompts && customPrompts.length > 0) {
           itemsToGenerate = customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio }));
         } else {
-          itemsToGenerate = itemsToGenerate.slice(0, customPrompts.length);
+          itemsToGenerate = [
+            { prompt: 'A futuristic crossover between Star Wars and Warhammer 40k', aspectRatio: '16:9' },
+            { prompt: 'Marvel characters in a DC universe setting', aspectRatio: '16:9' },
+            { prompt: 'A gritty noir detective story featuring Batman in Gotham', aspectRatio: '4:3' },
+            { prompt: 'An epic battle between Jedi and Space Marines', aspectRatio: '16:9' }
+          ];
         }
+      }
+
+      if (!Array.isArray(itemsToGenerate) || itemsToGenerate.length === 0) {
+        itemsToGenerate = customPrompts ? customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio })) : [];
+      } else if (customPrompts && customPrompts.length > 0) {
+        itemsToGenerate = itemsToGenerate.slice(0, customPrompts.length);
+      } else {
+        itemsToGenerate = itemsToGenerate.slice(0, 4);
       }
 
       // Check for API key selection for gemini-3.1-flash-image-preview

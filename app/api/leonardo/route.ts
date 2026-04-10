@@ -23,63 +23,41 @@ export async function POST(req: Request) {
       'PHOTOREALISTIC': 'e316348f-7773-490e-adcd-46757c738eb7', // This is a model ID but often used as a style hint in some contexts, for V2 we'll use a neutral or cinematic one if not sure
     };
 
-    // 1. Create generation
-    const V2_MODEL_IDS = ['gemini-image-2', 'nano-banana-2', 'phoenix', 'gpt-image-1.5'];
-    const isV2Model = V2_MODEL_IDS.includes(modelId);
-    const actualModelId = isV2Model ? 'phoenix' : (modelId || 'b24e16ff-06e3-43eb-8d33-4416c2d75876');
+    // 1. Determine model and endpoint
+    const PHOENIX_MODELS = ['gemini-image-2', 'nano-banana-2', 'phoenix', 'gpt-image-1.5'];
+    const isPhoenix = PHOENIX_MODELS.includes(modelId);
+    
+    // Vision XL UUID - often more stable than 'phoenix' string in some contexts
+    const VISION_XL_ID = '6b645e3a-d64f-4341-a6d8-7a3690fbf042';
+    
+    // Use V1 for stability, mapping Phoenix to Vision XL which is a high-quality XL model
+    const endpoint = 'https://cloud.leonardo.ai/api/rest/v1/generations';
 
-    const endpoint = isV2Model 
-      ? 'https://cloud.leonardo.ai/api/rest/v2/generations' 
-      : 'https://cloud.leonardo.ai/api/rest/v1/generations';
+    const requestBody: any = {
+      prompt: String(prompt),
+      negative_prompt: negative_prompt || '',
+      modelId: isPhoenix ? VISION_XL_ID : (modelId || 'b24e16ff-06e3-43eb-8d33-4416c2d75876'),
+      width: Number(width) || 1024,
+      height: Number(height) || 1024,
+      num_images: 1,
+      promptMagic: false,
+    };
 
-    let body;
-    if (isV2Model) {
-      const parameters: any = {
-        prompt: String(prompt),
-        width: Number(width) || 1024,
-        height: Number(height) || 1024,
-        quantity: 1,
-        prompt_enhance: "OFF",
-      };
-
-      if (seed !== undefined && seed !== null && !isNaN(Number(seed))) {
-        parameters.seed = Number(seed);
-      }
-
-      if (guidance_scale !== undefined && guidance_scale !== null && !isNaN(Number(guidance_scale))) {
-        parameters.guidance_scale = Number(guidance_scale);
-      }
-
-      if (modelId === 'gpt-image-1.5') {
-        parameters.quality = "MEDIUM";
-        // GPT Image-1.5 supports mode: FAST, QUALITY, ULTRA
-        parameters.mode = "QUALITY";
-      } 
-      
-      // Handle Styles
-      if (leonardoStyle && STYLE_MAP[leonardoStyle]) {
-        parameters.style_ids = [STYLE_MAP[leonardoStyle]];
-      } else {
-        // Default style for all V2 models if none specified
-        parameters.style_ids = ["111dc692-d470-4eec-b791-3475abac4c46"]; // Dynamic style
-      }
-
-      body = JSON.stringify({
-        modelId: actualModelId,
-        parameters,
-        public: false
-      });
-    } else {
-      body = JSON.stringify({
-        prompt: String(prompt),
-        negative_prompt: negative_prompt || '',
-        modelId: actualModelId,
-        width: Number(width) || 1024,
-        height: Number(height) || 1024,
-        num_images: 1,
-        guidance_scale: guidance_scale ? Number(guidance_scale) : undefined,
-      });
+    if (leonardoStyle && leonardoStyle !== 'NONE') {
+      requestBody.presetStyle = leonardoStyle;
+    } else if (isPhoenix) {
+      requestBody.presetStyle = 'DYNAMIC';
     }
+
+    if (seed !== undefined && seed !== null && !isNaN(Number(seed))) {
+      requestBody.seed = Number(seed);
+    }
+
+    if (guidance_scale !== undefined && guidance_scale !== null && !isNaN(Number(guidance_scale))) {
+      requestBody.guidance_scale = Number(guidance_scale);
+    }
+
+    const body = JSON.stringify(requestBody);
 
     const createRes = await fetch(endpoint, {
       method: 'POST',

@@ -227,52 +227,106 @@ export function MainContent() {
     try {
       const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
       const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-      const res = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: `Analyze and enhance this generation prompt: "${prompt}". 
-        Provide an improved, highly detailed cinematic prompt. 
-        Also provide a fitting negative prompt (e.g., ugly, blurry, poorly drawn).
-        Smartly detect and provide the best fitting parameters for this specific scene:
-        - Art style from: ${ART_STYLES.join(', ')}
-        - Lighting from: ${LIGHTING_OPTIONS.join(', ')}
-        - Camera angle from: ${CAMERA_ANGLES.join(', ')}
-        - Aspect ratio from: ${['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'].join(', ')}
-        - Image size from: ${['512px', '1K', '2K', '4K'].join(', ')}
-        - Leonardo style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE
-        
-        CRITICAL ASPECT RATIO RULES:
-        - If the prompt describes an epic scene, landscape, wide battle, or cinematic vista, you MUST select "16:9".
-        - If the prompt describes a character portrait, single character focus, or vertical subject, you MUST select "9:16".
-        - Otherwise, select "1:1" or another appropriate ratio.
+      
+      let data: any = null;
+      
+      try {
+        const res = await ai.models.generateContent({
+          model: 'gemini-3.1-pro-preview',
+          contents: `Analyze and enhance this generation prompt: "${prompt}". 
+          Provide an improved, highly detailed cinematic prompt. 
+          Also provide a fitting negative prompt (e.g., ugly, blurry, poorly drawn).
+          Smartly detect and provide the best fitting parameters for this specific scene:
+          - Art style from: ${ART_STYLES.join(', ')}
+          - Lighting from: ${LIGHTING_OPTIONS.join(', ')}
+          - Camera angle from: ${CAMERA_ANGLES.join(', ')}
+          - Aspect ratio from: ${['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'].join(', ')}
+          - Image size from: ${['512px', '1K', '2K', '4K'].join(', ')}
+          - Leonardo style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE
+          
+          CRITICAL ASPECT RATIO RULES:
+          - If the prompt describes an epic scene, landscape, wide battle, or cinematic vista, you MUST select "16:9".
+          - If the prompt describes a character portrait, single character focus, or vertical subject, you MUST select "9:16".
+          - Otherwise, select "1:1" or another appropriate ratio.
 
-        Return ONLY a JSON object with:
-        - "enhancedPrompt": string
-        - "negativePrompt": string
-        - "style": string
-        - "lighting": string
-        - "angle": string
-        - "aspectRatio": string
-        - "imageSize": string
-        - "leonardoStyle": string`,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              enhancedPrompt: { type: Type.STRING },
-              negativePrompt: { type: Type.STRING },
-              style: { type: Type.STRING },
-              lighting: { type: Type.STRING },
-              angle: { type: Type.STRING },
-              aspectRatio: { type: Type.STRING },
-              imageSize: { type: Type.STRING },
-              leonardoStyle: { type: Type.STRING }
+          Return ONLY a JSON object with:
+          - "enhancedPrompt": string
+          - "negativePrompt": string
+          - "style": string
+          - "lighting": string
+          - "angle": string
+          - "aspectRatio": string
+          - "imageSize": string
+          - "leonardoStyle": string`,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                enhancedPrompt: { type: Type.STRING },
+                negativePrompt: { type: Type.STRING },
+                style: { type: Type.STRING },
+                lighting: { type: Type.STRING },
+                angle: { type: Type.STRING },
+                aspectRatio: { type: Type.STRING },
+                imageSize: { type: Type.STRING },
+                leonardoStyle: { type: Type.STRING }
+              }
             }
           }
+        });
+        data = JSON.parse(res.text || '{}');
+      } catch (e: any) {
+        console.warn('Failed to enhance prompt with Pro model, trying Flash...', e.message);
+        try {
+          const res = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: `Analyze and enhance this generation prompt: "${prompt}". 
+            Provide an improved, highly detailed cinematic prompt. 
+            Also provide a fitting negative prompt.
+            Smartly detect and provide the best fitting parameters:
+            - Art style from: ${ART_STYLES.join(', ')}
+            - Lighting from: ${LIGHTING_OPTIONS.join(', ')}
+            - Camera angle from: ${CAMERA_ANGLES.join(', ')}
+            - Aspect ratio from: 1:1, 16:9, 9:16, 3:4, 4:3
+            - Image size: 512px, 1K, 2K
+            - Leonardo style: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE
+            
+            Return ONLY a JSON object with: enhancedPrompt, negativePrompt, style, lighting, angle, aspectRatio, imageSize, leonardoStyle`,
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  enhancedPrompt: { type: Type.STRING },
+                  negativePrompt: { type: Type.STRING },
+                  style: { type: Type.STRING },
+                  lighting: { type: Type.STRING },
+                  angle: { type: Type.STRING },
+                  aspectRatio: { type: Type.STRING },
+                  imageSize: { type: Type.STRING },
+                  leonardoStyle: { type: Type.STRING }
+                }
+              }
+            }
+          });
+          data = JSON.parse(res.text || '{}');
+        } catch (e2) {
+          console.error('Failed to enhance prompt for comparison (all models failed):', e2);
+          // Fallback to original prompt
+          data = {
+            enhancedPrompt: prompt,
+            negativePrompt: 'ugly, blurry, poorly drawn, low quality',
+            style: 'Cinematic',
+            lighting: 'Cinematic',
+            angle: 'Eye Level',
+            aspectRatio: '16:9',
+            imageSize: '1K',
+            leonardoStyle: 'DYNAMIC'
+          };
         }
-      });
-      const data = JSON.parse(res.text || '{}');
-      
+      }
+
       setComparisonPrompt(data.enhancedPrompt || prompt);
       setComparisonOptions(prev => ({
         ...prev,
@@ -285,7 +339,7 @@ export function MainContent() {
         leonardoStyle: data.leonardoStyle || 'DYNAMIC'
       }));
     } catch (error) {
-      console.error('Error generating enhanced prompt for comparison:', error);
+      console.error('Error pushing idea to compare:', error);
       setComparisonPrompt(prompt);
     } finally {
       setIsPushing(false);
