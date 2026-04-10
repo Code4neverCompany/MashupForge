@@ -101,6 +101,18 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
           const currentAspectRatio = options?.aspectRatio || '1:1';
           const dims = getLeonardoDimensions(modelId, currentAspectRatio);
 
+          // Map art style name → Leonardo UUID
+          const leonardoStyleUuids = (() => {
+            if (!options?.style) return undefined;
+            const modelConfig = LEONARDO_MODELS.find(m => m.id === modelId);
+            if (!modelConfig?.styles) return undefined;
+            const match = modelConfig.styles.find(s =>
+              s.name.toLowerCase() === options.style!.toLowerCase() ||
+              s.name.toLowerCase().includes(options.style!.toLowerCase())
+            );
+            return match ? [match.uuid] : undefined;
+          })();
+
           const res = await fetch('/api/leonardo', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -110,7 +122,7 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
               width: dims.width,
               height: dims.height,
               negative_prompt: options?.negativePrompt,
-              styleIds: options?.style ? [options.style] : undefined,
+              styleIds: leonardoStyleUuids,
               apiKey: settings.apiKeys.leonardo
             }),
           });
