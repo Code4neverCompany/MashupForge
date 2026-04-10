@@ -221,12 +221,9 @@ export function MainContent() {
     setIsPushing(true);
     setView('compare');
     try {
-      const res = await fetch('/api/ai/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gemini-3.1-pro-preview',
-          contents: `Analyze and enhance this generation prompt: "${prompt}".
+      const text = await streamAIToString('/api/ai/generate', {
+        model: 'gemini-3.1-pro-preview',
+        contents: `Analyze and enhance this generation prompt: "${prompt}".
         Provide an improved, highly detailed cinematic prompt.
         Also provide a fitting negative prompt (e.g., ugly, blurry, poorly drawn).
         Smartly detect and provide the best fitting parameters for this specific scene:
@@ -249,26 +246,24 @@ export function MainContent() {
         - "angle": string
         - "aspectRatio": string
         - "imageSize": string`,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: 'OBJECT',
-              properties: {
-                enhancedPrompt: { type: 'STRING' },
-                negativePrompt: { type: 'STRING' },
-                style: { type: 'STRING' },
-                lighting: { type: 'STRING' },
-                angle: { type: 'STRING' },
-                aspectRatio: { type: 'STRING' },
-                imageSize: { type: 'STRING' }
-              }
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'OBJECT',
+            properties: {
+              enhancedPrompt: { type: 'STRING' },
+              negativePrompt: { type: 'STRING' },
+              style: { type: 'STRING' },
+              lighting: { type: 'STRING' },
+              angle: { type: 'STRING' },
+              aspectRatio: { type: 'STRING' },
+              imageSize: { type: 'STRING' }
             }
-          },
-        }),
+          }
+        },
       });
-      if (!res.ok) throw new Error('Failed to enhance prompt');
-      const resData = await res.json();
-      const data = JSON.parse(resData.text || '{}');
+      const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const data = JSON.parse(cleaned || '{}');
       
       setComparisonPrompt(data.enhancedPrompt || prompt);
       setComparisonOptions(prev => ({
@@ -478,11 +473,12 @@ export function MainContent() {
     setImageStatus(img.id, 'animating');
     
     try {
+      let duration = settings.defaultAnimationDuration || 5;
+      let style = settings.defaultAnimationStyle || 'Standard';
+
       // Dynamically determine best duration and style
-      const dynamicRes = await fetch('/api/ai/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      try {
+        const dynamicText = await streamAIToString('/api/ai/generate', {
           model: 'gemini-3.1-pro-preview',
           contents: `Analyze this image prompt: "${img.prompt}".
         Determine the best video animation duration (3, 5, or 10 seconds) and the best animation style (Standard, Cinematic, Dynamic, Slow Motion, Fast Motion).
@@ -493,41 +489,35 @@ export function MainContent() {
           config: {
             responseMimeType: 'application/json',
           },
-        }),
-      });
-
-      let duration = settings.defaultAnimationDuration || 5;
-      let style = settings.defaultAnimationStyle || 'Standard';
-
-      try {
-        const dynamicSettingsRes = dynamicRes.ok ? await dynamicRes.json() : { text: '{}' };
-        const dynamicSettings = JSON.parse(dynamicSettingsRes.text || '{}');
+        });
+        const cleaned = dynamicText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        const dynamicSettings = JSON.parse(cleaned || '{}');
         if (dynamicSettings.duration && [3, 5, 10].includes(dynamicSettings.duration)) {
           duration = dynamicSettings.duration;
         }
         if (dynamicSettings.style) {
           style = dynamicSettings.style;
         }
-        
+
         // Update settings in UI to reflect the dynamically chosen values
-        updateSettings({ 
-          defaultAnimationDuration: duration as 3 | 5 | 10, 
-          defaultAnimationStyle: style 
+        updateSettings({
+          defaultAnimationDuration: duration as 3 | 5 | 10,
+          defaultAnimationStyle: style
         });
       } catch (e) {
         console.error('Failed to parse dynamic video settings', e);
       }
 
-      const promptRes = await fetch('/api/ai/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let videoPrompt = style === 'Standard' ? img.prompt : `${img.prompt}. Motion style: ${style}`;
+      try {
+        const enhanced = await streamAIToString('/api/ai/generate', {
           model: 'gemini-3-flash-preview',
           contents: `${settings.agentPrompt || 'You are a Master Content Creator.'} The user wants to animate an image based on this prompt: "${img.prompt}". Enhance this prompt for a video animation. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers for Star Wars, Marvel, DC, and Warhammer 40k. Motion style: ${style}. Return ONLY the enhanced animation prompt as a single string.`,
-        }),
-      });
-      const promptData = promptRes.ok ? await promptRes.json() : {};
-      const videoPrompt = promptData.text || (style === 'Standard' ? img.prompt : `${img.prompt}. Motion style: ${style}`);
+        });
+        if (enhanced.trim()) videoPrompt = enhanced.trim();
+      } catch (e) {
+        console.error('Failed to enhance video prompt, using fallback', e);
+      }
 
       const res = await fetch('/api/leonardo-video', {
         method: 'POST',
