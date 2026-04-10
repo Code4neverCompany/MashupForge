@@ -1,26 +1,20 @@
-import { GoogleGenAI } from '@google/genai';
 import { NextResponse } from 'next/server';
+import { callAI, errorResponse } from '@/lib/ai';
 
 export async function POST(req: Request) {
   try {
-    const { idea, apiKey: clientKey } = await req.json();
-    const apiKey = clientKey || process.env.GEMINI_API_KEY;
+    const { idea } = await req.json();
 
-    if (!apiKey) {
-      return NextResponse.json({ error: 'Gemini API key not configured.' }, { status: 500 });
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Analyze this image generation idea: "${idea}".
-        Generate a concise negative prompt (comma-separated list of things to avoid) to ensure high quality, avoiding common AI artifacts, blurry textures, or elements that would clash with this specific theme.
-        Return ONLY the negative prompt string.`,
+    const negativePrompt = await callAI({
+      userPrompt: `Given this image generation idea: "${idea}"
+Generate a concise negative prompt that would help avoid common issues in AI image generation.
+Focus on: blurry, low quality, deformed, extra limbs, bad anatomy, watermark, text overlay.
+Keep it under 100 words. Return ONLY the negative prompt text, nothing else.`,
+      maxTokens: 4000,
     });
 
-    return NextResponse.json({ negativePrompt: response.text || '' });
+    return NextResponse.json({ negativePrompt });
   } catch (error: any) {
-    console.error('Gemini negative prompt error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    return errorResponse(error);
   }
 }

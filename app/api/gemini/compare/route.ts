@@ -1,43 +1,27 @@
-import { GoogleGenAI } from '@google/genai';
 import { NextResponse } from 'next/server';
+import { callAI, errorResponse } from '@/lib/ai';
 
 export async function POST(req: Request) {
   try {
-    const { prompt, models, config, apiKey: clientKey } = await req.json();
-    const apiKey = clientKey || process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      return NextResponse.json({ error: 'Gemini API key not configured.' }, { status: 500 });
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
+    const { prompt, models, config } = await req.json();
+    
+    // For comparison, we generate multiple responses with the same prompt
+    // Since we use one model, we generate variations instead
     const results = [];
 
-    for (const model of models) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: { parts: [{ text: prompt }] },
-          config: config || {},
-        });
-
-        let base64 = '';
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-          if (part.inlineData) {
-            base64 = part.inlineData.data || '';
-            break;
-          }
-        }
-
-        results.push({ model, base64, error: base64 ? null : 'No image data' });
-      } catch (error: any) {
-        results.push({ model, base64: '', error: error.message || 'Generation failed' });
-      }
+    for (let i = 0; i < (models?.length || 2); i++) {
+      const variation = await callAI({
+        systemPrompt: config?.systemInstruction,
+        userPrompt: `Create a detailed image generation prompt based on this concept: "${prompt}".
+Variation ${i + 1}. Be creative and unique. Describe scene, style, lighting, composition.`,
+        maxTokens: 4000,
+        temperature: 0.5 + (i * 0.2), // Increase creativity for each variation
+      });
+      results.push({ text: variation, model: models?.[i] || `variation-${i + 1}` });
     }
 
     return NextResponse.json({ results });
   } catch (error: any) {
-    console.error('Gemini compare error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    return errorResponse(error);
   }
 }

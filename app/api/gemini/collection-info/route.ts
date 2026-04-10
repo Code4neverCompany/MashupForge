@@ -1,37 +1,24 @@
-import { GoogleGenAI } from '@google/genai';
 import { NextResponse } from 'next/server';
+import { callAI, parseJSONResponse, errorResponse } from '@/lib/ai';
 
 export async function POST(req: Request) {
   try {
-    const { context, apiKey: clientKey } = await req.json();
-    const apiKey = clientKey || process.env.GEMINI_API_KEY;
+    const { context } = await req.json();
 
-    if (!apiKey) {
-      return NextResponse.json({ error: 'Gemini API key not configured.' }, { status: 500 });
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Analyze these image details that belong to a new collection:
-        ${context}
-
-        Generate a fitting, catchy name (max 5 words) and a brief, engaging description (max 20 words) for this collection.
-        Incorporate the model or artist style if relevant to make it specific and informative.
-        Return ONLY a JSON object with "name" and "description" keys.`,
-      config: { responseMimeType: 'application/json' },
+    const text = await callAI({
+      userPrompt: `Based on these sample images/prompt: "${context}"
+Generate a creative collection name (short, catchy) and a brief description (1-2 sentences).
+Return a JSON object with "name" and "description" keys.`,
+      maxTokens: 4000,
+      expectJSON: true,
     });
 
-    const data = JSON.parse(response.text || '{}');
+    const data = parseJSONResponse(text);
     return NextResponse.json({
       name: data.name || 'New Collection',
       description: data.description || 'A collection of amazing mashups.',
     });
   } catch (error: any) {
-    console.error('Gemini collection info error:', error);
-    return NextResponse.json({
-      name: 'New Collection',
-      description: 'A collection of amazing mashups.',
-    });
+    return errorResponse(error);
   }
 }

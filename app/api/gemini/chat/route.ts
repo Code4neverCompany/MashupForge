@@ -1,57 +1,24 @@
-import { GoogleGenAI } from '@google/genai';
+import { NextResponse } from 'next/server';
+import { callAI, errorResponse } from '@/lib/ai';
 
 export async function POST(req: Request) {
   try {
-    const { message, history, systemInstruction, model, apiKey: clientKey } = await req.json();
-    const apiKey = clientKey || process.env.GEMINI_API_KEY;
+    const { message, history, systemInstruction } = await req.json();
 
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'Gemini API key not configured.' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+    // Build conversation from history
+    const conversation = (history || []).map((m: any) => m).join('\n');
+    const fullPrompt = conversation 
+      ? `${conversation}\nUser: ${message}\nAssistant:`
+      : message;
 
-    const ai = new GoogleGenAI({ apiKey });
-    const chat = ai.chats.create({
-      model: model || 'gemini-3.1-pro-preview',
-      config: { systemInstruction },
-      history: history || [],
+    const text = await callAI({
+      systemPrompt: systemInstruction,
+      userPrompt: fullPrompt,
+      maxTokens: 4000,
     });
 
-    const stream = await chat.sendMessageStream({ message });
-
-    const encoder = new TextEncoder();
-    const readableStream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of stream) {
-            const text = (chunk as any).text || '';
-            if (text) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
-            }
-          }
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-          controller.close();
-        } catch (error: any) {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`));
-          controller.close();
-        }
-      },
-    });
-
-    return new Response(readableStream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
-    });
+    return NextResponse.json({ text });
   } catch (error: any) {
-    console.error('Gemini chat error:', error);
-    return new Response(JSON.stringify({ error: error.message || 'Internal Server Error' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return errorResponse(error);
   }
 }
