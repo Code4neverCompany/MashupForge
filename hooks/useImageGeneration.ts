@@ -304,6 +304,19 @@ Return ONLY a JSON array of objects, each with:
 
           const dims = getLeonardoDimensions(selectedModel, currentAspectRatio);
 
+          // Map art style name to Leonardo UUID. ART_STYLES are display names
+          // like "Cinematic"; Leonardo needs UUIDs. Best-effort fuzzy match.
+          const leonardoStyleUuids = (() => {
+            if (!options?.style) return undefined;
+            const modelConfig = LEONARDO_MODELS.find(m => m.id === selectedModel);
+            if (!modelConfig?.styles) return undefined;
+            const match = modelConfig.styles.find(s =>
+              s.name.toLowerCase() === options.style!.toLowerCase() ||
+              s.name.toLowerCase().includes(options.style!.toLowerCase())
+            );
+            return match ? [match.uuid] : undefined;
+          })();
+
           const res = await fetch('/api/leonardo', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -313,7 +326,7 @@ Return ONLY a JSON array of objects, each with:
               modelId: selectedModel,
               width: dims.width,
               height: dims.height,
-              styleIds: options?.style ? [options.style] : undefined,
+              styleIds: leonardoStyleUuids,
               apiKey: settings.apiKeys.leonardo
             })
           });
@@ -441,6 +454,18 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
         const currentAspectRatio = options?.aspectRatio || '1:1';
         const dims = getLeonardoDimensions(selectedModel, currentAspectRatio);
 
+        // Map art style name to Leonardo UUID (same fix as generate path)
+        const leonardoStyleUuids = (() => {
+          if (!options?.style) return undefined;
+          const modelConfig = LEONARDO_MODELS.find(m => m.id === selectedModel);
+          if (!modelConfig?.styles) return undefined;
+          const match = modelConfig.styles.find(s =>
+            s.name.toLowerCase() === options.style!.toLowerCase() ||
+            s.name.toLowerCase().includes(options.style!.toLowerCase())
+          );
+          return match ? [match.uuid] : undefined;
+        })();
+
         const res = await fetch('/api/leonardo', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -450,7 +475,7 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
             modelId: selectedModel,
             width: dims.width,
             height: dims.height,
-            styleIds: options?.style ? [options.style] : undefined,
+            styleIds: leonardoStyleUuids,
             apiKey: settings.apiKeys.leonardo
           })
         });
