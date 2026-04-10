@@ -1,40 +1,129 @@
 /**
  * Shared AI client for the Mashup Studio.
- * Uses the configured AI provider (ZAI GLM-5.1 by default, Gemini as fallback).
- * 
- * Env vars:
- * - ZAI_API_KEY: Required for GLM-5.1 (default)
- * - ZAI_BASE_URL: Optional, defaults to https://api.z.ai/api/coding/paas/v4
- * - AI_MODEL: Optional, defaults to glm-5.1
- * - GEMINI_API_KEY: Optional fallback
+ *
+ * Primary path: Hermes AI Bridge at http://127.0.0.1:8090. The bridge owns
+ * provider selection (Ollama fast-path ~3s, ZAI smart-path ~15-30s),
+ * prompt enrichment, caching, and cross-provider fallback.
+ *
+ * Fallback path: direct ZAI /chat/completions. If the bridge is
+ * unreachable (connection refused, timeout, 5xx), we fall through to
+ * calling ZAI directly so the app keeps working in degraded mode. The
+ * fallback still uses SSE for true token-by-token streaming.
+ *
+ * The bridge itself is non-streaming, so callAIStream's "happy path"
+ * emits the full bridge response as a single ReadableStream chunk.
+ * Route handlers wrap it with toSSEResponse to satisfy the browser-side
+ * SSE contract (data: {text} events + [DONE] sentinel).
  */
 
 import { NextResponse } from 'next/server';
 
+// ── Config ───────────────────────────────────────────────────────────
+const BRIDGE_URL = process.env.HERMES_BRIDGE_URL || 'http://127.0.0.1:8090';
+
+// ZAI direct-call fallback (used when the bridge is unreachable)
 const ZAI_BASE_URL = process.env.ZAI_BASE_URL || 'https://api.z.ai/api/coding/paas/v4';
 const AI_MODEL = process.env.AI_MODEL || 'glm-5.1';
+
+// ── Types ────────────────────────────────────────────────────────────
+export type AIMode = 'chat' | 'enhance' | 'generate' | 'idea';
+export type AIProvider = 'ollama' | 'zai';
+
+export interface CallAIOptions {
+  systemPrompt?: string;
+  userPrompt: string;
+  maxTokens?: number;
+  /** Auto-routes to /chat (ollama) or /generate (zai) on the bridge. */
+  mode?: AIMode;
+  /** Force a specific provider, overriding the mode-based auto-route. */
+  provider?: AIProvider;
+  /** Ignored by the bridge; only consumed by the direct-ZAI fallback. */
+  temperature?: number;
+  signal?: AbortSignal;
+}
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
 }
 
-interface CallAIOptions {
-  systemPrompt?: string;
-  userPrompt: string;
-  maxTokens?: number;
-  temperature?: number;
-  signal?: AbortSignal;
+// ── Helpers ──────────────────────────────────────────────────────────
+function endpointFor(mode: AIMode | undefined): '/chat' | '/generate' {
+  if (mode === 'chat' || mode === 'enhance') return '/chat';
+  return '/generate';
 }
 
 /**
- * Call the AI provider with a simple prompt.
- * Returns the text content of the response.
+ * Classify an error from the bridge path as "bridge is down, try ZAI
+ * directly" (recoverable) vs "bridge is up but the request was rejected"
+ * (not recoverable — surface it).
  */
-export async function callAI(options: CallAIOptions): Promise<string> {
+function isBridgeDownError(err: any, status?: number): boolean {
+  if (status !== undefined && status >= 500) return true;
+  const msg = String(err?.message || err?.cause?.message || err || '').toLowerCase();
+  return /econnrefused|fetch failed|network|unreachable|timeout|enetunreach|socket hang up/.test(
+    msg
+  );
+}
+
+// ── Bridge calls ─────────────────────────────────────────────────────
+async function callBridge(options: CallAIOptions): Promise<string> {
+  const url = `${BRIDGE_URL}${endpointFor(options.mode)}`;
+
+  const body = JSON.stringify({
+    prompt: options.userPrompt,
+    systemPrompt: options.systemPrompt,
+    maxTokens: options.maxTokens,
+    mode: options.mode,
+    provider: options.provider,
+  });
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      signal: options.signal,
+    });
+  } catch (err: any) {
+    throw new Error(
+      `Hermes bridge unreachable at ${BRIDGE_URL}: ${err?.message || err}`
+    );
+  }
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    const e: any = new Error(
+      `Hermes bridge error (${res.status}): ${errText.slice(0, 300)}`
+    );
+    e.status = res.status;
+    throw e;
+  }
+
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  const text = typeof data.text === 'string' ? data.text : '';
+
+  // The bridge has no retry for GLM-5.1's "reasoning consumed all tokens"
+  // edge case — it just returns { text: "" }. Treat empty bridge responses
+  // as a recoverable failure so the caller falls through to the direct-ZAI
+  // path, which does have the reasoning_content retry.
+  if (text.length === 0) {
+    const e: any = new Error('Hermes bridge returned empty text');
+    e.status = 502;
+    throw e;
+  }
+  return text;
+}
+
+// ── Direct ZAI fallback (non-streaming) ──────────────────────────────
+async function callZAIDirect(options: CallAIOptions): Promise<string> {
   const apiKey = process.env.ZAI_API_KEY;
   if (!apiKey) {
-    throw new Error('ZAI_API_KEY not configured in .env.local');
+    throw new Error(
+      'Hermes bridge unreachable and ZAI_API_KEY not configured for fallback.'
+    );
   }
 
   const messages: ChatMessage[] = [];
@@ -43,10 +132,6 @@ export async function callAI(options: CallAIOptions): Promise<string> {
   }
   messages.push({ role: 'user', content: options.userPrompt });
 
-  // Default to 1000 tokens when the caller doesn't specify — 2000 was too
-  // generous and gave GLM-5.1's reasoning phase room to blow past the 25s
-  // route timeout on simple content generation. Routes that need more should
-  // pass maxTokens explicitly.
   const body: any = {
     model: AI_MODEL,
     messages,
@@ -57,7 +142,7 @@ export async function callAI(options: CallAIOptions): Promise<string> {
   const res = await fetch(`${ZAI_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
@@ -66,24 +151,22 @@ export async function callAI(options: CallAIOptions): Promise<string> {
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`AI API error (${res.status}): ${err}`);
+    throw new Error(`ZAI fallback error (${res.status}): ${err}`);
   }
 
   const data = await res.json();
   const message = data.choices?.[0]?.message;
   let content = message?.content || '';
   const reasoning = message?.reasoning_content || '';
-  
-  // GLM-5.1 is a reasoning model: it reasons first, then produces final content.
-  // If content is empty, the reasoning phase consumed all tokens — retry with
-  // more. Only double when the caller explicitly requested a budget; otherwise
-  // bump the default to a modest 1500 so we don't blow past the route timeout.
+
+  // GLM-5.1's reasoning phase can consume the whole budget and leave
+  // content empty. Retry once with a bigger budget before giving up.
   if (!content && reasoning) {
     body.max_tokens = options.maxTokens ? options.maxTokens * 2 : 1500;
     const retryRes = await fetch(`${ZAI_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
@@ -95,27 +178,23 @@ export async function callAI(options: CallAIOptions): Promise<string> {
     }
   }
 
-  if (!content) {
-    throw new Error('AI returned empty content after retry.');
-  }
-
+  if (!content) throw new Error('ZAI fallback returned empty content.');
   return content;
 }
 
-/**
- * Streaming variant of callAI. Sends stream:true to ZAI, parses the
- * OpenAI-compatible SSE response, and returns a ReadableStream of raw
- * content-delta strings. Route handlers wrap this in their own SSE encoding
- * (data: {text:"..."}\n\n) so the browser can render tokens as they arrive.
- *
- * Does NOT implement the "reasoning consumed all tokens" retry from callAI —
- * once we've started emitting the stream, we can't re-request. Callers should
- * pick reasonable maxTokens budgets (the per-route defaults already do this).
- */
-export function callAIStream(options: CallAIOptions): ReadableStream<string> {
+// ── Direct ZAI fallback (streaming) ──────────────────────────────────
+function callZAIDirectStream(options: CallAIOptions): ReadableStream<string> {
   const apiKey = process.env.ZAI_API_KEY;
   if (!apiKey) {
-    throw new Error('ZAI_API_KEY not configured in .env.local');
+    return new ReadableStream<string>({
+      start(controller) {
+        controller.error(
+          new Error(
+            'Hermes bridge unreachable and ZAI_API_KEY not configured for fallback.'
+          )
+        );
+      },
+    });
   }
 
   const messages: ChatMessage[] = [];
@@ -139,9 +218,9 @@ export function callAIStream(options: CallAIOptions): ReadableStream<string> {
         upstream = await fetch(`${ZAI_BASE_URL}/chat/completions`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${apiKey}`,
+            Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
-            'Accept': 'text/event-stream',
+            Accept: 'text/event-stream',
           },
           body: JSON.stringify(body),
           signal: options.signal,
@@ -153,7 +232,9 @@ export function callAIStream(options: CallAIOptions): ReadableStream<string> {
 
       if (!upstream.ok || !upstream.body) {
         const errText = await upstream.text().catch(() => '');
-        controller.error(new Error(`AI API error (${upstream.status}): ${errText}`));
+        controller.error(
+          new Error(`ZAI fallback error (${upstream.status}): ${errText}`)
+        );
         return;
       }
 
@@ -167,9 +248,6 @@ export function callAIStream(options: CallAIOptions): ReadableStream<string> {
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
 
-          // Split on SSE record separator. Keep the trailing partial line in
-          // the buffer so we don't drop half a JSON payload on chunk
-          // boundaries.
           let sepIndex: number;
           while ((sepIndex = buffer.indexOf('\n\n')) !== -1) {
             const rawEvent = buffer.slice(0, sepIndex);
@@ -190,8 +268,7 @@ export function callAIStream(options: CallAIOptions): ReadableStream<string> {
                   controller.enqueue(delta);
                 }
               } catch (_) {
-                // Ignore malformed lines — some providers emit keepalive
-                // comments or partial JSON during warm-up.
+                // Ignore malformed lines — some providers emit keepalives.
               }
             }
           }
@@ -204,11 +281,68 @@ export function callAIStream(options: CallAIOptions): ReadableStream<string> {
   });
 }
 
+// ── Public API ───────────────────────────────────────────────────────
+/**
+ * Call the AI provider via the Hermes bridge (primary) with direct-ZAI
+ * fallback. Returns the full text response.
+ */
+export async function callAI(options: CallAIOptions): Promise<string> {
+  try {
+    return await callBridge(options);
+  } catch (err: any) {
+    if (isBridgeDownError(err, err?.status)) {
+      console.warn('[ai] Hermes bridge unreachable — falling back to direct ZAI');
+      return callZAIDirect(options);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Streaming variant. Tries the bridge first (single-chunk emission since
+ * the bridge is non-streaming). If the bridge is unreachable, falls
+ * through to direct ZAI streaming for true token-by-token output.
+ */
+export function callAIStream(options: CallAIOptions): ReadableStream<string> {
+  return new ReadableStream<string>({
+    async start(controller) {
+      try {
+        const text = await callBridge(options);
+        if (text.length > 0) controller.enqueue(text);
+        controller.close();
+        return;
+      } catch (bridgeErr: any) {
+        if (!isBridgeDownError(bridgeErr, bridgeErr?.status)) {
+          controller.error(bridgeErr);
+          return;
+        }
+        console.warn(
+          '[ai] Hermes bridge unreachable — streaming directly from ZAI'
+        );
+      }
+
+      // Fallback path: pipe direct-ZAI SSE tokens into this controller.
+      const fallback = callZAIDirectStream(options);
+      const reader = fallback.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) controller.enqueue(value);
+        }
+        controller.close();
+      } catch (err) {
+        controller.error(err);
+      }
+    },
+  });
+}
+
 /**
  * Wrap a ReadableStream<string> (content deltas from callAIStream) as an
  * SSE-encoded ReadableStream<Uint8Array> suitable for returning from a
- * Next.js route handler. Emits `data: {"text":"<delta>"}\n\n` per token and
- * a final `data: [DONE]\n\n` sentinel. Errors are surfaced as
+ * Next.js route handler. Emits `data: {"text":"<delta>"}\n\n` per token
+ * and a final `data: [DONE]\n\n` sentinel. Errors are surfaced as
  * `data: {"error":"..."}\n\n` before [DONE] so clients don't hang.
  */
 export function toSSEResponse(textStream: ReadableStream<string>): Response {
@@ -220,11 +354,15 @@ export function toSSEResponse(textStream: ReadableStream<string>): Response {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: value })}\n\n`));
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ text: value })}\n\n`)
+          );
         }
       } catch (err: any) {
         const msg = err?.message || 'stream error';
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: msg })}\n\n`));
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ error: msg })}\n\n`)
+        );
       } finally {
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         controller.close();
@@ -236,7 +374,7 @@ export function toSSEResponse(textStream: ReadableStream<string>): Response {
     headers: {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
-      'Connection': 'keep-alive',
+      Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
     },
   });
@@ -246,7 +384,6 @@ export function toSSEResponse(textStream: ReadableStream<string>): Response {
  * Parse JSON from AI response, handling markdown code blocks.
  */
 export function parseJSONResponse(text: string): any {
-  // Strip markdown code blocks if present
   const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   return JSON.parse(cleaned);
 }
