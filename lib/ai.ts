@@ -24,6 +24,7 @@ interface CallAIOptions {
   userPrompt: string;
   maxTokens?: number;
   temperature?: number;
+  signal?: AbortSignal;
 }
 
 /**
@@ -56,6 +57,7 @@ export async function callAI(options: CallAIOptions): Promise<string> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
+    signal: options.signal,
   });
 
   if (!res.ok) {
@@ -80,6 +82,7 @@ export async function callAI(options: CallAIOptions): Promise<string> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: options.signal,
     });
     if (retryRes.ok) {
       const retryData = await retryRes.json();

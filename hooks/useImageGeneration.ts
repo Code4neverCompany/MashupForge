@@ -327,6 +327,10 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
 
           const data = await res.json();
           if (data.generationId) {
+            // Initial delay: Leonardo's Hasura layer needs ~3s to commit the
+            // generation before status polls return a usable result. Polling
+            // earlier triggers the auth-hook 500 path on the server.
+            await new Promise(resolve => setTimeout(resolve, 3000));
             let status = 'PENDING';
             let attempts = 0;
             while (status !== 'COMPLETE' && attempts < 150) {
@@ -462,6 +466,8 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
 
         const data = await res.json();
         if (data.generationId) {
+          // Initial delay: see comment in main generate path.
+          await new Promise(resolve => setTimeout(resolve, 3000));
           let status = 'PENDING';
           let attempts = 0;
           while (status !== 'COMPLETE' && attempts < 150) {

@@ -69,11 +69,16 @@ export async function POST(req: Request) {
       }
     }
 
-    const body = JSON.stringify({
+    const requestPayload = {
       model: apiModelId,
       parameters,
       public: false,
-    });
+    };
+    const body = JSON.stringify(requestPayload);
+
+    // Log the full request body so we can diagnose 400 VALIDATION_ERROR
+    // responses (e.g., the recurring nano-banana failures).
+    console.log('[Leonardo] POST request body:', body);
 
     // ── Call Leonardo v2 API ─────────────────────────────────────────────
     const createRes = await fetch('https://cloud.leonardo.ai/api/rest/v2/generations', {
