@@ -225,11 +225,12 @@ export function MainContent() {
   const [dragPostId, setDragPostId] = useState<string | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
   // Click-to-schedule: when the user clicks an empty calendar cell, open
-  // a modal with an image picker + platform toggles + time. null when
-  // closed.
+  // a modal with an image picker + platform toggles + time. `time` is a
+  // full HH:MM string so picking e.g. 14:30 doesn't silently truncate to
+  // the hour. null when closed.
   const [calendarSlotClick, setCalendarSlotClick] = useState<{
     date: string;
-    hour: number;
+    time: string;
     imageId?: string;
     platforms?: PostPlatform[];
   } | null>(null);
@@ -2846,7 +2847,10 @@ export function MainContent() {
                                         key={i}
                                         onClick={() => {
                                           if (isEmpty) {
-                                            setCalendarSlotClick({ date: dateStr, hour });
+                                            setCalendarSlotClick({
+                                              date: dateStr,
+                                              time: `${String(hour).padStart(2, '0')}:00`,
+                                            });
                                           }
                                         }}
                                         onDragOver={(e) => {
@@ -3018,7 +3022,7 @@ export function MainContent() {
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          setCalendarSlotClick({ date: dateStr, hour: 12 });
+                                          setCalendarSlotClick({ date: dateStr, time: '12:00' });
                                         }}
                                         className="opacity-0 group-hover/mc:opacity-100 w-5 h-5 rounded-full bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center transition-opacity"
                                         title="Schedule a post for this day"
@@ -3055,7 +3059,6 @@ export function MainContent() {
                         ? savedImages.find((i) => i.id === selectedImageId)
                         : undefined;
                       const selectedPlatforms = slot.platforms || available;
-                      const timeStr = `${String(slot.hour).padStart(2, '0')}:00`;
                       const day = new Date(`${slot.date}T00:00:00`);
                       const dayLabel = day.toLocaleDateString(undefined, {
                         weekday: 'long',
@@ -3069,7 +3072,7 @@ export function MainContent() {
                           id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                           imageId: selectedImage.id,
                           date: slot.date,
-                          time: timeStr,
+                          time: slot.time,
                           platforms: selectedPlatforms,
                           caption: formatPost(selectedImage),
                           status: 'scheduled',
@@ -3217,13 +3220,8 @@ export function MainContent() {
                                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Time</label>
                                   <input
                                     type="time"
-                                    value={timeStr}
-                                    onChange={(e) => {
-                                      const [h] = e.target.value.split(':').map(Number);
-                                      if (!Number.isNaN(h)) {
-                                        setCalendarSlotClick({ ...slot, hour: h });
-                                      }
-                                    }}
+                                    value={slot.time}
+                                    onChange={(e) => setCalendarSlotClick({ ...slot, time: e.target.value })}
                                     className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                                   />
                                 </div>
@@ -3420,7 +3418,7 @@ export function MainContent() {
 
                                   <div className="grid grid-cols-2 gap-2">
                                     <button
-                                      disabled={busy !== null || selPlatforms.length === 0}
+                                      disabled={!!busy || selPlatforms.length === 0}
                                       onClick={() => {
                                         const sch = getSchedule(key);
                                         scheduleCarousel(item, selPlatforms, sch.date, sch.time);
@@ -3430,7 +3428,7 @@ export function MainContent() {
                                       <Clock className="w-3.5 h-3.5" /> Schedule
                                     </button>
                                     <button
-                                      disabled={busy !== null || selPlatforms.length === 0}
+                                      disabled={!!busy || selPlatforms.length === 0}
                                       onClick={() => postCarouselNow(item, selPlatforms)}
                                       className="px-2 py-1.5 text-[11px] bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
                                     >
@@ -3622,14 +3620,14 @@ export function MainContent() {
                                   {/* Action row */}
                                   <div className="grid grid-cols-2 gap-2">
                                     <button
-                                      disabled={busy !== null || selPlatforms.length === 0 || !schedule.date || !schedule.time}
+                                      disabled={!!busy || selPlatforms.length === 0 || !schedule.date || !schedule.time}
                                       onClick={() => scheduleImage(img, selPlatforms, schedule.date, schedule.time)}
                                       className="px-2 py-1.5 text-[11px] bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1.5 transition-colors"
                                     >
                                       <Clock className="w-3.5 h-3.5" /> Schedule
                                     </button>
                                     <button
-                                      disabled={busy !== null || selPlatforms.length === 0}
+                                      disabled={!!busy || selPlatforms.length === 0}
                                       onClick={() => postImageNow(img, selPlatforms)}
                                       className="px-2 py-1.5 text-[11px] bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1.5 transition-colors"
                                     >
@@ -3845,7 +3843,8 @@ export function MainContent() {
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: idx * 0.1, ease: "easeOut" }}
-                    className={`group relative bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-500/30 ${
+                    onClick={() => setSelectedImage(img)}
+                    className={`group relative bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer hover:-translate-y-0.5 hover:border-emerald-500/30 ${
                       dragOverCollection ? 'ring-2 ring-emerald-500 border-emerald-500/60' : 'border-zinc-800/60 hover:border-zinc-700/50'
                     }`}
                     draggable={view === 'gallery'}
@@ -3856,8 +3855,7 @@ export function MainContent() {
                     }}
                   >
                     <div
-                      className={`aspect-square relative overflow-hidden bg-zinc-950 cursor-pointer ${img.approved ? 'ring-2 ring-emerald-500/60 ring-inset' : ''}`}
-                      onClick={() => setSelectedImage(img)}
+                      className={`aspect-square relative overflow-hidden bg-zinc-950 ${img.approved ? 'ring-2 ring-emerald-500/60 ring-inset' : ''}`}
                     >
                       {(img.status === 'generating' || img.status === 'animating') && (
                         <div className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center gap-3 p-4 text-center">
@@ -3929,6 +3927,21 @@ export function MainContent() {
                         />
                       )}
                       
+                      {/* Permanent approved indicator — bottom-left so
+                          it avoids the top-right action row AND the
+                          top-left batch-select checkbox in gallery view.
+                          Paired with the inset emerald ring on the image
+                          for a clear approved state. */}
+                      {img.approved && (
+                        <div
+                          className="absolute bottom-2 left-2 z-10 flex items-center gap-1 bg-emerald-500/90 backdrop-blur-sm text-white px-2 py-0.5 rounded-full shadow-lg"
+                          title="Approved"
+                        >
+                          <BookmarkCheck className="w-3 h-3" />
+                          <span className="text-[9px] font-medium">Approved</span>
+                        </div>
+                      )}
+
                       {/* Top Actions Overlay — compact icon row.
                           Buttons shrunk from w-10→w-8 and icons w-5→w-4
                           so all 7 fit comfortably on one line without
