@@ -101,6 +101,10 @@ export interface UserSettings {
       accessToken: string;
       accessSecret: string;
     };
+    pinterest?: {
+      accessToken: string;
+      boardId?: string;
+    };
     discordWebhook?: string;
   };
   defaultLeonardoModel: string;

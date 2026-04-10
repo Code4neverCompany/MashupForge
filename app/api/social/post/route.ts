@@ -158,6 +158,68 @@ export async function POST(req: Request) {
       results.twitter = tweet;
     }
 
+    if (platforms.includes('pinterest')) {
+      if (!credentials?.pinterest?.accessToken) {
+        throw new Error('Pinterest access token missing');
+      }
+
+      // Pinterest needs a public image URL. Reuse the first image item
+      // (Pinterest v5 pins are single-image); upload to uguu if we only
+      // have a buffer.
+      if (imageItems.length === 0) {
+        throw new Error('Pinterest: no image to pin');
+      }
+
+      const first = imageItems[0];
+      let publicUrl = first.url || null;
+      if (!publicUrl) {
+        try {
+          const formData = new FormData();
+          const blob = new Blob([new Uint8Array(first.buffer)], { type: first.mimeType });
+          formData.append('files[]', blob, 'pin.jpg');
+          const uploadRes = await fetch('https://uguu.se/upload.php', {
+            method: 'POST',
+            body: formData,
+          });
+          if (!uploadRes.ok) throw new Error('uguu upload failed');
+          const uploadData = await uploadRes.json();
+          if (!uploadData?.success || !uploadData?.files?.[0]?.url) {
+            throw new Error('uguu returned invalid response');
+          }
+          publicUrl = uploadData.files[0].url;
+        } catch (err: any) {
+          throw new Error(`Failed to host image for Pinterest: ${err.message}`);
+        }
+      }
+
+      const firstLine = (caption || '').split('\n')[0] || 'Mashup';
+      const title = firstLine.length > 100 ? firstLine.slice(0, 97) + '…' : firstLine;
+
+      const pinBody: Record<string, any> = {
+        title,
+        description: caption || '',
+        media_source: { source_type: 'image_url', url: publicUrl },
+      };
+      if (credentials.pinterest.boardId) {
+        pinBody.board_id = credentials.pinterest.boardId;
+      }
+
+      const pinRes = await fetch('https://api.pinterest.com/v5/pins', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${credentials.pinterest.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(pinBody),
+      });
+      const pinData = await pinRes.json().catch(() => ({}));
+      if (!pinRes.ok) {
+        const msg = pinData?.message || pinData?.error || `Pinterest API returned ${pinRes.status}`;
+        throw new Error(`Pinterest: ${msg}`);
+      }
+      results.pinterest = pinData;
+    }
+
     if (platforms.includes('discord')) {
       if (!credentials?.discord?.webhookUrl) {
         throw new Error('Discord webhook URL missing');

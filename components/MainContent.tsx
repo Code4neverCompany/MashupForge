@@ -48,7 +48,10 @@ import {
   Copy,
   Check,
   FileJson,
-  Wand2
+  Wand2,
+  Clock,
+  Send,
+  Instagram
 } from 'lucide-react';
 import {
   useMashup,
@@ -160,6 +163,146 @@ export function MainContent() {
   // Image id currently copied (for the brief "Copied" affordance on the
   // Post Ready tab). Auto-clears after a short timeout.
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // ── Post Ready scheduling state ────────────────────────────────────
+  type PostPlatform = 'instagram' | 'pinterest' | 'twitter' | 'discord';
+
+  // Per-card platform selection (defaults set when the card first renders).
+  const [postPlatformSel, setPostPlatformSel] = useState<Record<string, PostPlatform[]>>({});
+  // Per-card date/time pickers.
+  const [postSchedule, setPostSchedule] = useState<Record<string, { date: string; time: string }>>({});
+  // Per-card posting spinner state ('posting' | 'scheduling' | null).
+  const [postBusy, setPostBusy] = useState<Record<string, 'posting' | 'scheduling' | null>>({});
+  // Transient status line per card ('Posted!', 'Scheduled for ...', error msg).
+  const [postStatus, setPostStatus] = useState<Record<string, string | null>>({});
+  // Batch "Schedule All" mini-modal state.
+  const [showScheduleAll, setShowScheduleAll] = useState(false);
+  const [scheduleAllForm, setScheduleAllForm] = useState<{ date: string; time: string; platforms: PostPlatform[] }>({
+    date: '',
+    time: '',
+    platforms: [],
+  });
+
+  const hasPlatformCreds = (p: PostPlatform): boolean => {
+    switch (p) {
+      case 'instagram':
+        return !!(settings.apiKeys.instagram?.accessToken && settings.apiKeys.instagram?.igAccountId);
+      case 'pinterest':
+        return !!settings.apiKeys.pinterest?.accessToken;
+      case 'twitter':
+        return !!(
+          settings.apiKeys.twitter?.appKey &&
+          settings.apiKeys.twitter?.appSecret &&
+          settings.apiKeys.twitter?.accessToken &&
+          settings.apiKeys.twitter?.accessSecret
+        );
+      case 'discord':
+        return !!settings.apiKeys.discordWebhook;
+    }
+  };
+
+  const availablePlatforms = (): PostPlatform[] => {
+    return (['instagram', 'pinterest', 'twitter', 'discord'] as PostPlatform[]).filter(hasPlatformCreds);
+  };
+
+  /** Return the per-card selection, initialising to "all available" on first access. */
+  const getSelectedPlatforms = (id: string): PostPlatform[] => {
+    if (postPlatformSel[id]) return postPlatformSel[id];
+    return availablePlatforms();
+  };
+
+  const togglePlatformFor = (id: string, p: PostPlatform) => {
+    setPostPlatformSel((prev) => {
+      const current = prev[id] || availablePlatforms();
+      const next = current.includes(p) ? current.filter((x) => x !== p) : [...current, p];
+      return { ...prev, [id]: next };
+    });
+  };
+
+  /** Default schedule — today's date, an hour from now. Memoised per image id. */
+  const getSchedule = (id: string): { date: string; time: string } => {
+    if (postSchedule[id]) return postSchedule[id];
+    const d = new Date(Date.now() + 60 * 60 * 1000);
+    const date = d.toISOString().slice(0, 10);
+    const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    return { date, time };
+  };
+
+  const setScheduleFor = (id: string, patch: Partial<{ date: string; time: string }>) => {
+    setPostSchedule((prev) => ({
+      ...prev,
+      [id]: { ...getSchedule(id), ...patch },
+    }));
+  };
+
+  const buildCredentialsPayload = () => ({
+    instagram: settings.apiKeys.instagram,
+    twitter: settings.apiKeys.twitter,
+    pinterest: settings.apiKeys.pinterest,
+    discord: { webhookUrl: settings.apiKeys.discordWebhook },
+  });
+
+  /** Post a single image immediately to the selected platforms. */
+  const postImageNow = async (img: GeneratedImage, platforms: PostPlatform[]) => {
+    if (platforms.length === 0) return;
+    setPostBusy((prev) => ({ ...prev, [img.id]: 'posting' }));
+    setPostStatus((prev) => ({ ...prev, [img.id]: null }));
+    try {
+      const res = await fetch('/api/social/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caption: formatPost(img),
+          platforms,
+          mediaUrl: img.url,
+          mediaBase64: img.base64,
+          credentials: buildCredentialsPayload(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Post failed');
+      setPostStatus((prev) => ({
+        ...prev,
+        [img.id]: `Posted to ${platforms.join(', ')} ✓`,
+      }));
+    } catch (err: any) {
+      setPostStatus((prev) => ({
+        ...prev,
+        [img.id]: `Error: ${err?.message || 'failed'}`,
+      }));
+    } finally {
+      setPostBusy((prev) => ({ ...prev, [img.id]: null }));
+    }
+  };
+
+  /** Persist a new ScheduledPost in settings.scheduledPosts. */
+  const scheduleImage = (img: GeneratedImage, platforms: PostPlatform[], date: string, time: string) => {
+    if (!date || !time || platforms.length === 0) return;
+    const scheduled: ScheduledPost = {
+      id: `sched-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      imageId: img.id,
+      date,
+      time,
+      platforms,
+      caption: formatPost(img),
+      status: 'scheduled',
+    };
+    const next = [...(settings.scheduledPosts || []), scheduled];
+    updateSettings({ scheduledPosts: next });
+    setPostStatus((prev) => ({
+      ...prev,
+      [img.id]: `Scheduled for ${date} ${time}`,
+    }));
+  };
+
+  /** Look up the most recent scheduled post for an image id. */
+  const latestScheduleFor = (imageId: string): ScheduledPost | undefined => {
+    const all = settings.scheduledPosts || [];
+    for (let i = all.length - 1; i >= 0; i--) {
+      if (all[i].imageId === imageId) return all[i];
+    }
+    return undefined;
+  };
 
   /** Write text to clipboard and flash a "Copied" state on the given key. */
   const copyWithFeedback = async (text: string, feedbackKey: string) => {
@@ -494,6 +637,7 @@ export function MainContent() {
                   credentials: {
                     instagram: settings.apiKeys.instagram,
                     twitter: settings.apiKeys.twitter,
+                    pinterest: settings.apiKeys.pinterest,
                     discord: { webhookUrl: settings.apiKeys.discordWebhook }
                   }
                 })
@@ -1629,17 +1773,30 @@ export function MainContent() {
               {view === 'post-ready' && (() => {
                 const all = savedImages;
                 const ready = all.filter((i) => i.isPostReady === true);
-                const captionedCount = all.filter((i) => !!i.postCaption).length;
+                const available = availablePlatforms();
 
                 const copyAllPosts = () => {
                   const formatted = ready.map(formatPost).join('\n\n---\n\n');
                   copyWithFeedback(formatted, '__all__');
                 };
 
-                const markAllCaptionedReady = () => {
-                  all
-                    .filter((i) => i.postCaption && !i.isPostReady)
-                    .forEach((img) => patchImage(img, { isPostReady: true }));
+                const postAllNow = async () => {
+                  for (const img of ready) {
+                    const sel = getSelectedPlatforms(img.id);
+                    if (sel.length > 0) {
+                      // Sequential — each platform call can be slow and we
+                      // want per-card status badges to update in order.
+                      // eslint-disable-next-line no-await-in-loop
+                      await postImageNow(img, sel);
+                    }
+                  }
+                };
+
+                const platformBadgeClass = (p: PostPlatform) => {
+                  if (p === 'instagram') return 'bg-pink-600/90';
+                  if (p === 'pinterest') return 'bg-red-600/90';
+                  if (p === 'twitter') return 'bg-sky-600/90';
+                  return 'bg-indigo-600/90';
                 };
 
                 return (
@@ -1680,15 +1837,39 @@ export function MainContent() {
                           <FileJson className="w-3.5 h-3.5" /> Export JSON
                         </button>
                         <button
-                          onClick={markAllCaptionedReady}
-                          disabled={captionedCount === ready.length}
-                          className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5 transition-colors"
-                          title="Mark every captioned image as ready"
+                          onClick={() => {
+                            // Seed the mini-modal with the default schedule
+                            // (one hour from now) and all available platforms.
+                            const d = new Date(Date.now() + 60 * 60 * 1000);
+                            setScheduleAllForm({
+                              date: d.toISOString().slice(0, 10),
+                              time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+                              platforms: available,
+                            });
+                            setShowScheduleAll(true);
+                          }}
+                          disabled={ready.length === 0 || available.length === 0}
+                          className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                          title="Schedule every post-ready image"
                         >
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Mark All Ready
+                          <Clock className="w-3.5 h-3.5" /> Schedule All
+                        </button>
+                        <button
+                          onClick={postAllNow}
+                          disabled={ready.length === 0 || available.length === 0}
+                          className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                          title="Post every image to its selected platforms"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Post All Now
                         </button>
                       </div>
                     </div>
+
+                    {available.length === 0 && (
+                      <div className="px-4 py-3 bg-amber-900/20 border border-amber-800/40 rounded-lg text-xs text-amber-300">
+                        No social platform credentials configured. Add Instagram or Pinterest keys in Settings to enable posting.
+                      </div>
+                    )}
 
                     {/* Empty state */}
                     {ready.length === 0 ? (
@@ -1715,152 +1896,341 @@ export function MainContent() {
                         </div>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {ready.map((img) => {
-                          const isWorking = preparingPostId === img.id;
+                          const isRegen = preparingPostId === img.id;
+                          const selPlatforms = getSelectedPlatforms(img.id);
+                          const schedule = getSchedule(img.id);
+                          const busy = postBusy[img.id];
+                          const status = postStatus[img.id];
+                          const scheduled = latestScheduleFor(img.id);
+                          // Status badge — latest scheduled post takes precedence
+                          // so the user sees posted/failed/scheduled feedback
+                          // for retrospective runs even after reload.
+                          const badge = scheduled?.status === 'posted'
+                            ? { text: 'Posted', color: 'bg-emerald-600' }
+                            : scheduled?.status === 'failed'
+                              ? { text: 'Failed', color: 'bg-red-600' }
+                              : scheduled?.status === 'scheduled'
+                                ? { text: `Scheduled ${scheduled.date} ${scheduled.time}`, color: 'bg-amber-600' }
+                                : { text: 'Ready', color: 'bg-emerald-600' };
                           return (
                             <div
                               key={img.id}
-                              className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col"
+                              className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col md:flex-row"
                             >
-                              <div className="relative aspect-square bg-zinc-950">
+                              {/* Image */}
+                              <div className="relative md:w-48 md:shrink-0 aspect-square bg-zinc-950">
                                 {img.url ? (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img
                                     src={img.url}
                                     alt={img.prompt}
-                                    className="w-full h-full object-cover"
+                                    onClick={() => setSelectedImage(img)}
+                                    className="w-full h-full object-cover cursor-zoom-in"
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center">
                                     <ImageIcon className="w-8 h-8 text-zinc-700" />
                                   </div>
                                 )}
-                                <span className="absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-600/90 text-[10px] font-medium text-white rounded-full">
-                                  <Check className="w-3 h-3" /> Ready
+                                <span className={`absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 ${badge.color}/90 text-[10px] font-medium text-white rounded-full`}>
+                                  <Check className="w-3 h-3" /> {badge.text}
                                 </span>
                               </div>
 
-                              <div className="flex-1 p-4 space-y-3">
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                    Caption
-                                  </label>
-                                  <textarea
-                                    value={img.postCaption || ''}
-                                    onChange={(e) => patchImage(img, { postCaption: e.target.value })}
-                                    placeholder="No caption yet…"
-                                    rows={3}
-                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50 resize-y"
-                                  />
-                                </div>
-
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                    Hashtags
-                                  </label>
-                                  {(img.postHashtags || []).length > 0 ? (
-                                    <div className="flex flex-wrap gap-1">
-                                      {img.postHashtags!.map((tag, i) => (
-                                        <span
-                                          key={`${tag}-${i}`}
-                                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-[10px] text-zinc-300"
-                                        >
-                                          {tag}
-                                          <button
-                                            onClick={() => removeHashtag(img, i)}
-                                            className="text-zinc-500 hover:text-red-400"
-                                          >
-                                            <X className="w-2.5 h-2.5" />
-                                          </button>
-                                        </span>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <p className="text-[11px] text-zinc-600 italic">No hashtags.</p>
-                                  )}
-                                </div>
-
-                                {(img.tags || []).length > 0 && (
+                              {/* Right column */}
+                              <div className="flex-1 flex flex-col">
+                                {/* Caption + hashtags */}
+                                <div className="flex-1 p-4 space-y-3 border-b border-zinc-800">
                                   <div className="space-y-1">
                                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                      Image Tags
+                                      Caption
                                     </label>
-                                    <div className="flex flex-wrap gap-1">
-                                      {img.tags!.map((t, i) => (
-                                        <span
-                                          key={`${t}-${i}`}
-                                          className="px-2 py-0.5 bg-indigo-900/30 border border-indigo-800/50 rounded text-[10px] text-indigo-300"
-                                        >
-                                          {t}
-                                        </span>
-                                      ))}
+                                    <textarea
+                                      value={img.postCaption || ''}
+                                      onChange={(e) => patchImage(img, { postCaption: e.target.value })}
+                                      placeholder="No caption yet…"
+                                      rows={3}
+                                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50 resize-y"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                      Hashtags
+                                    </label>
+                                    {(img.postHashtags || []).length > 0 ? (
+                                      <div className="flex flex-wrap gap-1">
+                                        {img.postHashtags!.map((tag, i) => (
+                                          <span
+                                            key={`${tag}-${i}`}
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-[10px] text-zinc-300"
+                                          >
+                                            {tag}
+                                            <button
+                                              onClick={() => removeHashtag(img, i)}
+                                              className="text-zinc-500 hover:text-red-400"
+                                            >
+                                              <X className="w-2.5 h-2.5" />
+                                            </button>
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="text-[11px] text-zinc-600 italic">No hashtags.</p>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Platform + scheduling */}
+                                <div className="p-4 space-y-3">
+                                  {/* Platform toggles — only show ones with creds */}
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                      Platforms
+                                    </label>
+                                    {available.length === 0 ? (
+                                      <p className="text-[11px] text-amber-400">
+                                        Configure a platform in Settings first.
+                                      </p>
+                                    ) : (
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {available.map((p) => {
+                                          const checked = selPlatforms.includes(p);
+                                          return (
+                                            <button
+                                              key={p}
+                                              type="button"
+                                              onClick={() => togglePlatformFor(img.id, p)}
+                                              className={`px-2.5 py-1 text-[10px] rounded-full border transition-colors ${
+                                                checked
+                                                  ? `${platformBadgeClass(p)} text-white border-transparent`
+                                                  : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
+                                              }`}
+                                            >
+                                              {checked && <Check className="w-3 h-3 inline mr-1" />}
+                                              {p}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Date + time */}
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                        Date
+                                      </label>
+                                      <input
+                                        type="date"
+                                        value={schedule.date}
+                                        onChange={(e) => setScheduleFor(img.id, { date: e.target.value })}
+                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                        Time
+                                      </label>
+                                      <input
+                                        type="time"
+                                        value={schedule.time}
+                                        onChange={(e) => setScheduleFor(img.id, { time: e.target.value })}
+                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                                      />
                                     </div>
                                   </div>
-                                )}
-                              </div>
 
-                              <div className="border-t border-zinc-800 p-3 grid grid-cols-4 gap-2">
-                                <button
-                                  onClick={() =>
-                                    copyWithFeedback(img.postCaption || '', `cap-${img.id}`)
-                                  }
-                                  disabled={!img.postCaption}
-                                  className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
-                                  title="Copy caption only"
-                                >
-                                  {copiedId === `cap-${img.id}` ? (
-                                    <Check className="w-3 h-3 text-emerald-400" />
-                                  ) : (
-                                    <Copy className="w-3 h-3" />
+                                  {/* Action row */}
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                      disabled={busy !== null || selPlatforms.length === 0 || !schedule.date || !schedule.time}
+                                      onClick={() => scheduleImage(img, selPlatforms, schedule.date, schedule.time)}
+                                      className="px-2 py-1.5 text-[11px] bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1.5 transition-colors"
+                                    >
+                                      <Clock className="w-3.5 h-3.5" /> Schedule
+                                    </button>
+                                    <button
+                                      disabled={busy !== null || selPlatforms.length === 0}
+                                      onClick={() => postImageNow(img, selPlatforms)}
+                                      className="px-2 py-1.5 text-[11px] bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1.5 transition-colors"
+                                    >
+                                      {busy === 'posting' ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      ) : (
+                                        <Send className="w-3.5 h-3.5" />
+                                      )}
+                                      Post Now
+                                    </button>
+                                  </div>
+
+                                  {/* Secondary row: copy, regen, unready */}
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                      onClick={() => copyWithFeedback(formatPost(img), `all-${img.id}`)}
+                                      disabled={!img.postCaption}
+                                      className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
+                                    >
+                                      {copiedId === `all-${img.id}` ? (
+                                        <Check className="w-3 h-3 text-emerald-400" />
+                                      ) : (
+                                        <Copy className="w-3 h-3" />
+                                      )}
+                                      Copy
+                                    </button>
+                                    <button
+                                      disabled={isRegen}
+                                      onClick={async () => {
+                                        setPreparingPostId(img.id);
+                                        try {
+                                          await generatePostContent(img);
+                                        } finally {
+                                          setPreparingPostId(null);
+                                        }
+                                      }}
+                                      className="px-2 py-1.5 text-[10px] bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
+                                    >
+                                      {isRegen ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        <RefreshCw className="w-3 h-3" />
+                                      )}
+                                      Regen
+                                    </button>
+                                    <button
+                                      onClick={() => patchImage(img, { isPostReady: false })}
+                                      className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-red-500/80 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
+                                    >
+                                      <MinusCircle className="w-3 h-3" />
+                                      Unready
+                                    </button>
+                                  </div>
+
+                                  {/* Inline status line */}
+                                  {status && (
+                                    <p className={`text-[11px] ${status.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'}`}>
+                                      {status}
+                                    </p>
                                   )}
-                                  Caption
-                                </button>
-                                <button
-                                  onClick={() => copyWithFeedback(formatPost(img), `all-${img.id}`)}
-                                  disabled={!img.postCaption}
-                                  className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
-                                  title="Copy caption + hashtags"
-                                >
-                                  {copiedId === `all-${img.id}` ? (
-                                    <Check className="w-3 h-3 text-emerald-400" />
-                                  ) : (
-                                    <Copy className="w-3 h-3" />
-                                  )}
-                                  All
-                                </button>
-                                <button
-                                  disabled={isWorking}
-                                  onClick={async () => {
-                                    setPreparingPostId(img.id);
-                                    try {
-                                      await generatePostContent(img);
-                                    } finally {
-                                      setPreparingPostId(null);
-                                    }
-                                  }}
-                                  className="px-2 py-1.5 text-[10px] bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
-                                  title="Regenerate caption"
-                                >
-                                  {isWorking ? (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  ) : (
-                                    <RefreshCw className="w-3 h-3" />
-                                  )}
-                                  Regen
-                                </button>
-                                <button
-                                  onClick={() => patchImage(img, { isPostReady: false })}
-                                  className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-red-500/80 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
-                                  title="Remove from Post Ready"
-                                >
-                                  <MinusCircle className="w-3 h-3" />
-                                  Unready
-                                </button>
+                                </div>
                               </div>
                             </div>
                           );
                         })}
+                      </div>
+                    )}
+
+                    {/* Schedule-All mini modal */}
+                    {showScheduleAll && (
+                      <div
+                        className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4"
+                        onClick={() => setShowScheduleAll(false)}
+                      >
+                        <div
+                          className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md p-5 space-y-4"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                              <Clock className="w-5 h-5 text-amber-400" />
+                              Schedule {ready.length} posts
+                            </h3>
+                            <button
+                              onClick={() => setShowScheduleAll(false)}
+                              className="p-1 text-zinc-400 hover:text-white"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Date</label>
+                              <input
+                                type="date"
+                                value={scheduleAllForm.date}
+                                onChange={(e) => setScheduleAllForm({ ...scheduleAllForm, date: e.target.value })}
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-2 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Time</label>
+                              <input
+                                type="time"
+                                value={scheduleAllForm.time}
+                                onChange={(e) => setScheduleAllForm({ ...scheduleAllForm, time: e.target.value })}
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-2 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Platforms</label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {available.map((p) => {
+                                const checked = scheduleAllForm.platforms.includes(p);
+                                return (
+                                  <button
+                                    key={p}
+                                    type="button"
+                                    onClick={() =>
+                                      setScheduleAllForm({
+                                        ...scheduleAllForm,
+                                        platforms: checked
+                                          ? scheduleAllForm.platforms.filter((x) => x !== p)
+                                          : [...scheduleAllForm.platforms, p],
+                                      })
+                                    }
+                                    className={`px-2.5 py-1 text-[10px] rounded-full border transition-colors ${
+                                      checked
+                                        ? `${platformBadgeClass(p)} text-white border-transparent`
+                                        : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
+                                    }`}
+                                  >
+                                    {checked && <Check className="w-3 h-3 inline mr-1" />}
+                                    {p}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <p className="text-[11px] text-zinc-500">
+                            Every post-ready image will be scheduled for the same timestamp. The auto-post worker will publish them one at a time when the time hits.
+                          </p>
+
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => setShowScheduleAll(false)}
+                              className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              disabled={
+                                scheduleAllForm.platforms.length === 0 ||
+                                !scheduleAllForm.date ||
+                                !scheduleAllForm.time
+                              }
+                              onClick={() => {
+                                for (const img of ready) {
+                                  scheduleImage(
+                                    img,
+                                    scheduleAllForm.platforms,
+                                    scheduleAllForm.date,
+                                    scheduleAllForm.time
+                                  );
+                                }
+                                setShowScheduleAll(false);
+                              }}
+                              className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5"
+                            >
+                              <Clock className="w-3.5 h-3.5" /> Schedule All
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2551,6 +2921,30 @@ export function MainContent() {
                       />
                     </div>
                     <p className="text-[10px] text-zinc-500 mt-1">Requires a Facebook Developer App linked to an Instagram Business account.</p>
+                  </div>
+
+                  {/* Pinterest */}
+                  <div className="space-y-2 pt-3 border-t border-zinc-800/60">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Pinterest API</label>
+                    <div className="grid grid-cols-1 gap-2">
+                      <input
+                        type="password"
+                        value={settings.apiKeys.pinterest?.accessToken || ''}
+                        onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, pinterest: { ...settings.apiKeys.pinterest, accessToken: e.target.value } as any } })}
+                        placeholder="Pinterest Access Token"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                      />
+                      <input
+                        type="text"
+                        value={settings.apiKeys.pinterest?.boardId || ''}
+                        onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, pinterest: { ...settings.apiKeys.pinterest, boardId: e.target.value } as any } })}
+                        placeholder="Board ID (optional — defaults to account's first board)"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                      />
+                    </div>
+                    <p className="text-[10px] text-zinc-500 mt-1">
+                      Create an app at developers.pinterest.com with <code>pins:write</code> and <code>boards:read</code> scopes.
+                    </p>
                   </div>
                 </div>
               </div>
