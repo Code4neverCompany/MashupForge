@@ -120,15 +120,37 @@ export async function start(): Promise<void> {
     ? `${BASE_SYSTEM_PROMPT}\n\n${userSystemPrompt}`
     : BASE_SYSTEM_PROMPT;
 
+  // Read pi's auth.json to find which provider the user logged into.
+  // This way pi uses its own OAuth/API-key setup, not our env vars.
+  let piProvider = '';
+  try {
+    const { existsSync, readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { homedir } = await import('node:os');
+    const authFile = join(homedir(), '.pi', 'agent', 'auth.json');
+    if (existsSync(authFile)) {
+      const auth = JSON.parse(readFileSync(authFile, 'utf8'));
+      const providers = Object.keys(auth);
+      if (providers.length > 0) {
+        piProvider = providers[0]; // Use first logged-in provider
+      }
+    }
+  } catch { /* no auth file — pi will error gracefully */ }
+
   const args = [
     '--mode', 'rpc',
     '--no-session',
     '--no-tools',
-    '--system-prompt', fullSystemPrompt,
   ];
 
-  // Strip AI-related env vars so pi doesn't auto-select a provider.
-  // Pi should use its own auth setup (pi /login or ~/.pi/agent/auth.json).
+  if (piProvider) {
+    args.push('--provider', piProvider);
+  }
+
+  args.push('--system-prompt', fullSystemPrompt);
+
+  // Strip AI-related env vars so pi doesn't auto-select a different provider.
+  // Pi should use its own auth setup (pi /login → ~/.pi/agent/auth.json).
   const cleanEnv = { ...process.env };
   for (const key of Object.keys(cleanEnv)) {
     if (
