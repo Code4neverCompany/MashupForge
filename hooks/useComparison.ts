@@ -9,6 +9,7 @@ import {
   type WatermarkSettings,
   GEMINI_MODELS,
   LEONARDO_MODELS,
+  getLeonardoDimensions,
 } from '../types/mashup';
 
 function getModelName(id: string, provider: 'gemini' | 'leonardo') {
@@ -105,19 +106,8 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
           let seed = 0;
 
           if (isLeonardo) {
-            const modelNameLower = modelName.toLowerCase();
-            const isXL = modelNameLower.includes('xl') || modelNameLower.includes('lightning') || modelId === 'gemini-image-2' || modelId === 'nano-banana-2';
-
-            let width = isXL ? 1024 : 768;
-            let height = isXL ? 1024 : 768;
             const currentAspectRatio = options?.aspectRatio || '1:1';
-
-            if (currentAspectRatio === '16:9') { width = isXL ? 1376 : 1024; height = isXL ? 768 : 576; }
-            else if (currentAspectRatio === '9:16') { width = isXL ? 768 : 576; height = isXL ? 1376 : 1024; }
-            else if (currentAspectRatio === '4:3') { width = isXL ? 1200 : 896; height = isXL ? 896 : 672; }
-            else if (currentAspectRatio === '3:4') { width = isXL ? 896 : 672; height = isXL ? 1200 : 896; }
-            else if (currentAspectRatio === '4:1') { width = isXL ? 1584 : 1024; height = isXL ? 672 : 256; }
-            else if (currentAspectRatio === '1:4') { width = isXL ? 672 : 256; height = isXL ? 1584 : 1024; }
+            const dims = getLeonardoDimensions(modelId, currentAspectRatio);
 
             const res = await fetch('/api/leonardo', {
               method: 'POST',
@@ -125,9 +115,10 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
               body: JSON.stringify({
                 prompt: finalPrompt,
                 modelId,
-                width,
-                height,
-                negativePrompt: options?.negativePrompt,
+                width: dims.width,
+                height: dims.height,
+                negative_prompt: options?.negativePrompt,
+                styleIds: options?.style ? [options.style] : undefined,
                 apiKey: settings.apiKeys.leonardo
               }),
             });

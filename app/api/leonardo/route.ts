@@ -4,12 +4,22 @@ import { NextResponse } from 'next/server';
  * Leonardo AI Image Generation API Route
  * 
  * Supports 3 API-documented models:
- * - Nano Banana 2 (nano-banana-2): 19 styles, 10 aspect ratios, max 8 images
- * - Nano Banana Pro (gemini-image-2): 19 styles, 3 aspect ratios, max 8 images  
+ * - Nano Banana 2 (nano-banana-2): 20 styles, 10 aspect ratios, max 8 images
+ * - Nano Banana Pro (gemini-image-2): 20 styles, 3 aspect ratios, max 8 images  
  * - GPT Image-1.5 (gpt-image-1.5): no styles, quality param, 3 aspect ratios, max 4 images
  * 
  * All use v2 endpoint: https://cloud.leonardo.ai/api/rest/v2/generations
+ * 
+ * Client sends internal model id (e.g. 'nano-banana-pro').
+ * Route maps to apiModelId (e.g. 'gemini-image-2') for Leonardo API.
  */
+
+// Map internal id → Leonardo API model id
+const MODEL_ID_MAP: Record<string, string> = {
+  'nano-banana-2': 'nano-banana-2',
+  'nano-banana-pro': 'gemini-image-2',
+  'gpt-image-1.5': 'gpt-image-1.5',
+};
 
 export async function POST(req: Request) {
   try {
@@ -33,6 +43,9 @@ export async function POST(req: Request) {
       }, { status: 500 });
     }
 
+    // Map internal model id to Leonardo API model id
+    const apiModelId = MODEL_ID_MAP[modelId] || modelId;
+
     // ── Build v2 request body ────────────────────────────────────────────
     const parameters: Record<string, any> = {
       prompt: String(prompt),
@@ -41,6 +54,11 @@ export async function POST(req: Request) {
       quantity: Math.min(Number(quantity) || 1, 8),
       prompt_enhance: "OFF",
     };
+
+    // Add negative prompt if provided
+    if (negative_prompt && String(negative_prompt).trim()) {
+      parameters.negative_prompt = String(negative_prompt).trim();
+    }
 
     // Model-specific parameters
     if (modelId === 'gpt-image-1.5') {
@@ -52,11 +70,10 @@ export async function POST(req: Request) {
       if (Array.isArray(styleIds) && styleIds.length > 0) {
         parameters.style_ids = styleIds;
       }
-      // No style_ids = Leonardo defaults
     }
 
     const body = JSON.stringify({
-      model: modelId,
+      model: apiModelId,
       parameters,
       public: false,
     });
