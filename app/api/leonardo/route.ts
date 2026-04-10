@@ -14,9 +14,12 @@ import { NextResponse } from 'next/server';
  * Route maps to apiModelId (e.g. 'gemini-image-2') for Leonardo API.
  */
 
-// Map internal id → Leonardo API model id
+// Map internal id → Leonardo API model id (exact strings required by
+// https://cloud.leonardo.ai/api/rest/v2/generations — see Leonardo docs for
+// nano-banana and nano-banana-pro). Sending 'nano-banana-2' verbatim to the
+// v2 API returns 400 VALIDATION_ERROR: the API expects 'gemini-2.5-flash-image'.
 const MODEL_ID_MAP: Record<string, string> = {
-  'nano-banana-2': 'nano-banana-2',
+  'nano-banana-2': 'gemini-2.5-flash-image',
   'nano-banana-pro': 'gemini-image-2',
   'gpt-image-1.5': 'gpt-image-1.5',
 };
@@ -76,8 +79,11 @@ export async function POST(req: Request) {
     };
     const body = JSON.stringify(requestPayload);
 
-    // Log the full request body so we can diagnose 400 VALIDATION_ERROR
-    // responses (e.g., the recurring nano-banana failures).
+    // Log everything needed to diagnose 400 VALIDATION_ERROR responses from
+    // the v2 API: the internal modelId the client sent, the apiModelId we
+    // mapped it to, and the exact JSON body we're about to POST.
+    console.log('[Leonardo] modelId (internal):', modelId);
+    console.log('[Leonardo] apiModelId (sent):', apiModelId);
     console.log('[Leonardo] POST request body:', body);
 
     // ── Call Leonardo v2 API ─────────────────────────────────────────────

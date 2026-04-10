@@ -30,12 +30,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       const err = await getRes.text();
       console.error(`Leonardo status error (v${usedV2 ? '2' : '1'}, ${getRes.status}):`, err);
 
-      // Leonardo's Hasura layer transiently returns 500 "Invalid response from
-      // authorization hook" while a generation is still being committed to the
-      // datastore. The generation is not actually broken — a subsequent poll
-      // usually succeeds. Treat this as PENDING (200) so the client keeps polling
-      // instead of bailing out of the loop.
-      if (getRes.status === 500 && err.includes('authorization hook')) {
+      // Leonardo's Hasura layer transiently returns 500s ("Invalid response
+      // from authorization hook", "unexpected", etc.) while a generation is
+      // still being committed to the datastore — a subsequent poll usually
+      // succeeds. 404/425 also mean "not ready yet" for v2 generations. Treat
+      // all of these as PENDING so the client keeps polling instead of
+      // bailing out of the loop.
+      if (
+        getRes.status === 500 ||
+        getRes.status === 502 ||
+        getRes.status === 503 ||
+        getRes.status === 504 ||
+        getRes.status === 404 ||
+        getRes.status === 425
+      ) {
         return NextResponse.json({ status: 'PENDING' });
       }
 
