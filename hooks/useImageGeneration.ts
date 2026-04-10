@@ -8,6 +8,7 @@ import {
   type UserSettings,
   type WatermarkSettings,
   LEONARDO_MODELS,
+  MODEL_PROMPT_GUIDES,
   getLeonardoDimensions,
   RECOMMENDED_NICHES,
   RECOMMENDED_GENRES,
@@ -15,6 +16,36 @@ import {
 
 function getModelName(id: string): string {
   return LEONARDO_MODELS.find(m => m.id === id)?.name || id;
+}
+
+/**
+ * Rewrite a base prompt with pi using the target model's strengths
+ * guide. Falls back to the original on error so an AI glitch never
+ * blocks image generation.
+ */
+async function enhancePromptForModel(
+  basePrompt: string,
+  modelId: string,
+  style?: string
+): Promise<string> {
+  const guide = MODEL_PROMPT_GUIDES[modelId];
+  if (!guide) return basePrompt;
+  try {
+    const enhanced = await streamAIToString(
+      `You are an expert AI image prompt engineer. Rewrite this prompt to get the BEST result from ${getModelName(modelId)}.
+
+MODEL STRENGTHS: ${guide}
+${style ? `ART STYLE: ${style}` : ''}
+
+ORIGINAL: "${basePrompt}"
+
+Return ONLY the rewritten prompt.`,
+      { mode: 'enhance' }
+    );
+    return enhanced.trim() || basePrompt;
+  } catch {
+    return basePrompt;
+  }
 }
 
 /**
@@ -316,6 +347,13 @@ Return ONLY a JSON array of objects, each with:
         const selectedModel = options?.leonardoModel || settings.defaultLeonardoModel;
         const modelName = getModelName(selectedModel);
 
+        // Rewrite the prompt for this model's strengths before sending
+        // it to Leonardo. Skipped when options.skipEnhance is set.
+        setProgress(`Optimizing prompt for ${modelName}...`);
+        const modelPrompt = options?.skipEnhance
+          ? item.prompt
+          : await enhancePromptForModel(item.prompt, selectedModel, options?.style);
+
         setProgress(`Generating image ${i + 1} of ${itemsToGenerate.length} with ${modelName}...`);
         try {
           const generatedNegativePrompt = item.negativePrompt || options?.negativePrompt;
@@ -339,7 +377,7 @@ Return ONLY a JSON array of objects, each with:
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              prompt: item.prompt,
+              prompt: modelPrompt,
               negative_prompt: generatedNegativePrompt,
               modelId: selectedModel,
               width: dims.width,
@@ -388,7 +426,7 @@ Return ONLY a JSON array of objects, each with:
                 setImages(prev => prev.map(img => img.id === placeholders[i].id ? {
                   id: `img-${Date.now()}-${i}`,
                   url: finalUrl,
-                  prompt: item.prompt,
+                  prompt: modelPrompt,
                   tags: generatedTags,
                   imageId: statusData.imageId,
                   seed: statusData.seed,
@@ -465,6 +503,13 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
         ? `${enhancedPrompt}\nDo not include: ${options.negativePrompt}`
         : enhancedPrompt;
 
+      // Apply the per-model prompt tuning on top of the reroll
+      // enhancement so the rerolled image is also optimised for the
+      // target Leonardo variant.
+      const modelPrompt = options?.skipEnhance
+        ? finalPrompt
+        : await enhancePromptForModel(finalPrompt, selectedModel, options?.style);
+
       let newImg: GeneratedImage | null = null;
 
       try {
@@ -487,7 +532,7 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: finalPrompt,
+            prompt: modelPrompt,
             negative_prompt: options?.negativePrompt,
             modelId: selectedModel,
             width: dims.width,
@@ -534,7 +579,7 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
               newImg = {
                 id: `img-${Date.now()}-reroll`,
                 url: finalUrl,
-                prompt: enhancedPrompt,
+                prompt: modelPrompt,
                 tags: generatedTags,
                 imageId: statusData.imageId,
                 seed: statusData.seed,

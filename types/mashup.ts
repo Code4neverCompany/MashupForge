@@ -316,6 +316,38 @@ export const LEONARDO_MODELS: LeonardoModelConfig[] = [
   },
 ];
 
+/**
+ * Per-model prompt engineering guides. Before sending a prompt to
+ * Leonardo we ask pi to rewrite it using the guide for the target
+ * model, which substantially narrows quality variance between models.
+ *
+ * Keys must match LEONARDO_MODELS[].id, not apiModelId — we want to
+ * optimise for the user-facing model choice.
+ */
+export const MODEL_PROMPT_GUIDES: Record<string, string> = {
+  'nano-banana-2': `This model works best with concise, visually descriptive prompts focused on:
+- Clear subject description with specific visual attributes (colors, textures, materials)
+- Explicit lighting and atmosphere keywords (dramatic lighting, golden hour, neon glow)
+- Art style keywords (digital art, concept art, cinematic, illustration style)
+- Avoid overly long prompts — keep it focused and vivid
+- Negative prompts are effective for this model`,
+
+  'nano-banana-pro': `This model excels with:
+- Detailed scene composition (foreground/midground/background)
+- Photorealistic rendering keywords (photorealistic, 8k, ultra detailed, sharp focus)
+- Complex multi-subject scenes with spatial relationships
+- Specific camera and lens descriptors (85mm, shallow depth of field, wide angle)
+- Atmospheric effects (volumetric lighting, lens flare, depth of field)`,
+
+  'gpt-image-1.5': `This model is best at:
+- Photorealistic image generation with accurate text rendering
+- Precise spatial composition and perspective
+- Complex scenes with multiple interacting elements
+- Use natural language descriptions — this model understands context well
+- Specify text/labels/logos explicitly and they will render correctly
+- Avoid negative prompts — not well supported`,
+};
+
 /** Get a Leonardo model config by its id */
 export function getLeonardoModel(modelId: string): LeonardoModelConfig | undefined {
   return LEONARDO_MODELS.find(m => m.id === modelId || m.apiModelId === modelId);

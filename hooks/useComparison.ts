@@ -2,17 +2,50 @@
 
 import { useState, useEffect } from 'react';
 import { get, set } from 'idb-keyval';
+import { streamAIToString } from '@/lib/aiClient';
 import {
   type GeneratedImage,
   type GenerateOptions,
   type UserSettings,
   type WatermarkSettings,
   LEONARDO_MODELS,
+  MODEL_PROMPT_GUIDES,
   getLeonardoDimensions,
 } from '../types/mashup';
 
 function getModelName(id: string) {
   return LEONARDO_MODELS.find(m => m.id === id)?.name || id;
+}
+
+/**
+ * Ask pi to rewrite the base prompt using the model-specific guide.
+ * Silently falls back to the original on any failure so an AI glitch
+ * never blocks image generation.
+ */
+async function enhancePromptForModel(
+  basePrompt: string,
+  modelId: string,
+  style?: string
+): Promise<string> {
+  const guide = MODEL_PROMPT_GUIDES[modelId];
+  if (!guide) return basePrompt;
+  try {
+    const enhanced = await streamAIToString(
+      `You are an expert AI image prompt engineer. Rewrite this image generation prompt to get the BEST possible result from this specific AI model.
+
+MODEL: ${getModelName(modelId)}
+MODEL STRENGTHS: ${guide}
+${style ? `ART STYLE: ${style}` : ''}
+
+ORIGINAL PROMPT: "${basePrompt}"
+
+Rewrite the prompt to leverage this model's strengths. Keep the same subject and intent. Return ONLY the rewritten prompt, nothing else. No explanations, no quotes around it.`,
+      { mode: 'enhance' }
+    );
+    return enhanced.trim() || basePrompt;
+  } catch {
+    return basePrompt;
+  }
 }
 
 interface UseComparisonDeps {
@@ -91,6 +124,14 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
         const modelId = modelIds[i];
         const modelName = getModelName(modelId);
 
+        // Rewrite the prompt per model so each Leonardo variant gets
+        // a version tuned to its strengths (photorealism vs. stylised,
+        // keyword-heavy vs. natural language, etc.).
+        setProgress(`Optimizing prompt for ${modelName}...`);
+        const modelPrompt = options?.skipEnhance
+          ? finalPrompt
+          : await enhancePromptForModel(finalPrompt, modelId, options?.style);
+
         setProgress(`Generating with ${modelName}...`);
 
         try {
@@ -117,7 +158,7 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              prompt: finalPrompt,
+              prompt: modelPrompt,
               modelId,
               width: dims.width,
               height: dims.height,
@@ -155,7 +196,9 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
               id: `comp-${Date.now()}-${modelId}`,
               comparisonId,
               url: imageUrl,
-              prompt: finalPrompt,
+              // Store the model-tuned prompt so the user can see exactly
+              // what was sent to Leonardo, not the original form.
+              prompt: modelPrompt,
               imageId,
               seed,
               status: 'ready',
