@@ -2030,8 +2030,9 @@ export function MainContent() {
               {view === 'captioning' && (() => {
                 // Source of truth: savedImages (persisted). Captioning is a
                 // curated workflow — ephemeral gallery images shouldn't
-                // pollute this tab.
-                const all = savedImages;
+                // pollute this tab. Images promoted to Post Ready are
+                // excluded so the two tabs form a clean pipeline.
+                const all = savedImages.filter((i) => !i.isPostReady);
                 const captioned = all.filter((i) => !!i.postCaption);
                 const uncaptioned = all.filter((i) => !i.postCaption);
                 const visible =
