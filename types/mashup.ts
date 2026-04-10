@@ -20,7 +20,7 @@ export interface GeneratedImage {
   comparisonId?: string;
   status?: 'generating' | 'animating' | 'ready';
   modelInfo?: {
-    provider: 'gemini' | 'leonardo';
+    provider: 'leonardo';
     modelId: string;
     modelName: string;
   };
@@ -43,9 +43,8 @@ export interface GenerateOptions {
   negativePrompt?: string;
   aspectRatio?: string;
   imageSize?: string;
-  provider?: 'gemini' | 'leonardo';
+  provider?: 'leonardo';
   leonardoModel?: string;
-  geminiModel?: string;
   skipEnhance?: boolean;
   style?: string;
   lighting?: string;
@@ -89,9 +88,8 @@ export interface ScheduledPost {
 }
 
 export interface UserSettings {
-  enabledProviders: ('gemini' | 'leonardo')[];
+  enabledProviders: 'leonardo'[];
   apiKeys: {
-    gemini?: string;
     leonardo?: string;
     instagram?: {
       accessToken: string;
@@ -105,9 +103,7 @@ export interface UserSettings {
     };
     discordWebhook?: string;
   };
-  defaultProvider: 'gemini' | 'leonardo';
   defaultLeonardoModel: string;
-  defaultGeminiModel: string;
   defaultVideoModel?: string;
   defaultAnimationDuration?: 3 | 5 | 10;
   defaultAnimationStyle?: string;
@@ -138,20 +134,6 @@ export interface PipelineProgress {
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────
-
-export const GEMINI_MODELS = [
-  { id: 'gemini-3.1-flash-image-preview', name: 'Gemini 3.1 Flash Image (Nano Banana 2)' },
-  { id: 'gemini-3-pro-image-preview', name: 'Gemini 3 Pro Image (Nano Banana Pro)' },
-  { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image (Nano Banana)' },
-];
-
-export const PAID_MODELS = [
-  'gemini-3.1-flash-image-preview',
-  'gemini-3-pro-image-preview',
-  'gemini-3-flash-preview',
-  'veo-3.1-fast-generate-preview',
-  'veo-3.1-generate-preview'
-];
 
 export const RECOMMENDED_NICHES = [
   'Multiverse Mashup',
@@ -321,11 +303,9 @@ export const IMAGE_SIZES = ['1K', '2K', '4K'];
 // ── Default Settings ────────────────────────────────────────────────────────
 
 export const defaultSettings: UserSettings = {
-  enabledProviders: ['gemini', 'leonardo'],
+  enabledProviders: ['leonardo'],
   apiKeys: {},
-  defaultProvider: 'gemini',
   defaultLeonardoModel: 'nano-banana-2',
-  defaultGeminiModel: 'gemini-3.1-flash-image-preview',
   defaultAnimationDuration: 3,
   defaultAnimationStyle: 'DYNAMIC',
   defaultVideoModel: 'kling-video-o-3',

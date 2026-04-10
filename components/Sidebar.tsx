@@ -16,7 +16,7 @@ interface Message {
 }
 
 export function Sidebar() {
-  const [activeTab, setActiveTab] = useState<Tab>('chat');
+  const [activeTab, setActiveTab] = useState<Tab>('content');
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [contentMessages, setContentMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -44,22 +44,16 @@ export function Sidebar() {
       const userMsgObj = { id: Date.now().toString(), role: 'user' as const, text: userMsg };
       setChatMessages((prev) => [...prev, userMsgObj]);
       try {
-        const history = chatMessages.map(m => ({
-          role: m.role,
-          parts: [{ text: m.text }]
-        }));
-
         const systemInstruction = `${settings.agentPrompt || 'You are an expert on all fantasy and sci-fi universes (Marvel, DC, Star Wars, Warhammer 40k, etc.). Help the user brainstorm crossover ideas and answer questions.'}
               Niches: ${settings.agentNiches?.join(', ') || 'None'}.
               Genres: ${settings.agentGenres?.join(', ') || 'None'}.`;
 
-        const response = await fetch('/api/gemini/chat', {
+        const response = await fetch('/api/ai/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: userMsg,
-            history,
-            systemInstruction,
+            prompt: userMsg,
+            systemPrompt: systemInstruction,
           }),
         });
 
@@ -68,34 +62,9 @@ export function Sidebar() {
           throw new Error(err.error || 'Chat request failed');
         }
 
-        let fullText = '';
+        const data = await response.json();
         const modelMsgId = (Date.now() + 1).toString();
-        setChatMessages((prev) => [...prev, { id: modelMsgId, role: 'model', text: '' }]);
-
-        const reader = response.body!.getReader();
-        const decoder = new TextDecoder();
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const text = decoder.decode(value, { stream: true });
-          for (const line of text.split('\n')) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') break;
-              try {
-                const parsed = JSON.parse(data);
-                fullText += parsed.text || '';
-                setChatMessages((prev) => {
-                  const newMsgs = [...prev];
-                  newMsgs[newMsgs.length - 1].text = fullText;
-                  return newMsgs;
-                });
-              } catch {}
-            }
-          }
-        }
+        setChatMessages((prev) => [...prev, { id: modelMsgId, role: 'model', text: data.text || '' }]);
       } catch (error) {
         console.error('Chat error:', error);
         setChatMessages((prev) => [...prev, { id: Date.now().toString(), role: 'model', text: 'Error: Could not get response.' }]);
@@ -118,16 +87,11 @@ export function Sidebar() {
         - "concept": The highly detailed image generation prompt.
         Return ONLY the JSON array.`;
 
-        const res = await fetch('/api/gemini/generate', {
+        const res = await fetch('/api/ai/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'gemini-3-flash-preview',
-            contents: prompt,
-            config: {
-              tools: [{ googleSearch: {} }],
-              responseMimeType: 'application/json',
-            },
+            prompt,
           }),
         });
 
@@ -138,7 +102,6 @@ export function Sidebar() {
 
         const response = await res.json();
         const text = response.text || '[]';
-        const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
 
         let ideaCount = 0;
         try {
@@ -159,7 +122,6 @@ export function Sidebar() {
           id: Date.now().toString(),
           role: 'model', 
           text: cleanTextLines.join('\n').trim(), 
-          groundingChunks: chunks
         }]);
       } catch (error) {
         console.error('Content Generator error:', error);
@@ -185,15 +147,6 @@ export function Sidebar() {
       <div className={`fixed md:static inset-y-0 left-0 z-50 w-[85vw] sm:w-80 border-r border-zinc-800 bg-zinc-900/95 md:bg-zinc-900/50 flex flex-col h-full shrink-0 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="flex p-2 gap-2 border-b border-zinc-800">
           <button
-            onClick={() => setActiveTab('chat')}
-            className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
-              activeTab === 'chat' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4" />
-            Chat
-          </button>
-          <button
             onClick={() => setActiveTab('content')}
             className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
               activeTab === 'content' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
@@ -201,6 +154,15 @@ export function Sidebar() {
           >
             <Search className="w-4 h-4" />
             Content
+          </button>
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
+              activeTab === 'chat' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            Chat
           </button>
           <button
             onClick={() => setActiveTab('history')}

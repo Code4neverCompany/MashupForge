@@ -41,10 +41,10 @@ export function useCollections(settings: UserSettings) {
         ).join('\n');
       }
 
-      const res = await fetch('/api/gemini/collection-info', {
+      const res = await fetch('/api/ai/collection-info', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ context, apiKey: settings.apiKeys.gemini }),
+        body: JSON.stringify({ context }),
       });
 
       if (!res.ok) throw new Error('Failed to generate collection info');

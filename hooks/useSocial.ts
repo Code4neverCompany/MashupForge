@@ -12,13 +12,12 @@ export function useSocial({ settings, saveImage, setImages }: UseSocialDeps) {
   const generatePostContent = async (image: GeneratedImage): Promise<GeneratedImage | undefined> => {
     if (!image.prompt) return;
 
-    const res = await fetch('/api/gemini/caption', {
+    const res = await fetch('/api/ai/caption', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt: image.prompt,
         channelName: settings.channelName || 'MultiverseMashupAI',
-        apiKey: settings.apiKeys.gemini,
       }),
     });
 

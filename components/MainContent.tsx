@@ -48,7 +48,6 @@ import {
 import {
   useMashup,
   GeneratedImage,
-  GEMINI_MODELS,
   LEONARDO_MODELS,
   Collection,
   GenerateOptions,
@@ -152,7 +151,7 @@ export function MainContent() {
   const handleGenerateIdea = async () => {
     setIsGeneratingIdea(true);
     try {
-      const res = await fetch('/api/gemini/generate', {
+      const res = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -182,7 +181,7 @@ export function MainContent() {
   const autoSelectParameters = async (mashupIdea: string) => {
     setIsAutoSelecting(true);
     try {
-      const res = await fetch('/api/gemini/generate', {
+      const res = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -228,7 +227,7 @@ export function MainContent() {
     setIsPushing(true);
     setView('compare');
     try {
-      const res = await fetch('/api/gemini/generate', {
+      const res = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -371,7 +370,7 @@ export function MainContent() {
     return () => clearInterval(interval);
   }, [settings.scheduledPosts, settings.apiKeys, savedImages, updateSettings]);
 
-  const ALL_MODELS = [...GEMINI_MODELS, ...LEONARDO_MODELS];
+  const ALL_MODELS = [...LEONARDO_MODELS];
 
   const RECOMMENDED_NICHES = [
     'Multiverse Mashup', 
@@ -486,7 +485,7 @@ export function MainContent() {
     
     try {
       // Dynamically determine best duration and style
-      const dynamicRes = await fetch('/api/gemini/generate', {
+      const dynamicRes = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -525,7 +524,7 @@ export function MainContent() {
         console.error('Failed to parse dynamic video settings', e);
       }
 
-      const promptRes = await fetch('/api/gemini/generate', {
+      const promptRes = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -597,7 +596,7 @@ export function MainContent() {
           const ensureTags = async (prompt: string, existingTags?: string[]) => {
             if (existingTags && existingTags.length > 0) return existingTags;
             try {
-              const tagRes = await fetch('/api/gemini/tag', {
+              const tagRes = await fetch('/api/ai/tag', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ prompt })
@@ -667,18 +666,18 @@ export function MainContent() {
         <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
           <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800 overflow-x-auto hide-scrollbar snap-x">
             <button
-              onClick={() => setView('compare')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'compare' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-            >
-              <Sparkles className="w-4 h-4 hidden sm:block" />
-              Studio
-            </button>
-            <button
               onClick={() => setView('ideas')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'ideas' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
               <Lightbulb className="w-4 h-4 hidden sm:block" />
               Ideas
+            </button>
+            <button
+              onClick={() => setView('compare')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'compare' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+            >
+              <Sparkles className="w-4 h-4 hidden sm:block" />
+              Studio
             </button>
             <button
               onClick={() => setView('gallery')}
@@ -1935,84 +1934,19 @@ export function MainContent() {
             </div>
             
             <div className="p-6 space-y-6 overflow-y-auto">
-              {/* Provider Selection */}
-              <div className="space-y-4">
-                <label className="text-sm font-medium text-zinc-300">Active Providers</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={() => {
-                      const newProviders = settings.enabledProviders.includes('gemini')
-                        ? settings.enabledProviders.filter(p => p !== 'gemini')
-                        : [...settings.enabledProviders, 'gemini'];
-                      if (newProviders.length === 0) return;
-                      updateSettings({ 
-                        enabledProviders: newProviders as any,
-                        defaultProvider: !newProviders.includes(settings.defaultProvider) 
-                          ? (newProviders[0] as any) 
-                          : settings.defaultProvider
-                      });
-                    }}
-                    className={`p-4 rounded-xl border transition-all flex flex-col items-center gap-2 ${
-                      settings.enabledProviders.includes('gemini')
-                        ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700'
-                    }`}
-                  >
-                    <Zap className="w-6 h-6" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-center">Gemini Image Generation</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const newProviders = settings.enabledProviders.includes('leonardo')
-                        ? settings.enabledProviders.filter(p => p !== 'leonardo')
-                        : [...settings.enabledProviders, 'leonardo'];
-                      if (newProviders.length === 0) return;
-                      updateSettings({ 
-                        enabledProviders: newProviders as any,
-                        defaultProvider: !newProviders.includes(settings.defaultProvider) 
-                          ? (newProviders[0] as any) 
-                          : settings.defaultProvider
-                      });
-                    }}
-                    className={`p-4 rounded-xl border transition-all flex flex-col items-center gap-2 ${
-                      settings.enabledProviders.includes('leonardo')
-                        ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700'
-                    }`}
-                  >
-                    <Palette className="w-6 h-6" />
-                    <span className="text-xs font-bold uppercase tracking-wider">Leonardo.AI</span>
-                  </button>
-                </div>
-              </div>
-
               {/* API Keys Section */}
               <div className="space-y-4 pt-4 border-t border-zinc-800">
                 <label className="text-sm font-medium text-zinc-300">API Keys</label>
-                {settings.enabledProviders.includes('gemini') && (
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Gemini API Key</label>
-                    <input
-                      type="password"
-                      value={settings.apiKeys.gemini || ''}
-                      onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, gemini: e.target.value } })}
-                      placeholder="••••••••••••••••"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                    />
-                  </div>
-                )}
-                {settings.enabledProviders.includes('leonardo') && (
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Leonardo API Key</label>
-                    <input
-                      type="password"
-                      value={settings.apiKeys.leonardo || ''}
-                      onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, leonardo: e.target.value } })}
-                      placeholder="••••••••••••••••"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                    />
-                  </div>
-                )}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Leonardo API Key</label>
+                  <input
+                    type="password"
+                    value={settings.apiKeys.leonardo || ''}
+                    onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, leonardo: e.target.value } })}
+                    placeholder="••••••••••••••••"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  />
+                </div>
                 
                 <div className="space-y-4 pt-4 border-t border-zinc-800">
                   <h4 className="text-sm font-bold text-white">Free Social Posting Setup</h4>
@@ -2042,64 +1976,20 @@ export function MainContent() {
 
               <div className="space-y-4 pt-4 border-t border-zinc-800">
                 <h4 className="text-lg font-medium text-white mb-2">Image Generation Settings</h4>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Default Provider</label>
+                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Default Leonardo Model</label>
                     <select
-                      value={settings.defaultProvider}
-                      onChange={(e) => updateSettings({ defaultProvider: e.target.value as 'gemini' | 'leonardo' })}
+                      value={settings.defaultLeonardoModel}
+                      onChange={(e) => updateSettings({ defaultLeonardoModel: e.target.value })}
                       className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                     >
-                      {settings.enabledProviders.includes('gemini') && <option value="gemini">Google Gemini</option>}
-                      {settings.enabledProviders.includes('leonardo') && <option value="leonardo">Leonardo.AI</option>}
+                      {LEONARDO_MODELS.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
                     </select>
                   </div>
-
-                  {settings.enabledProviders.includes('gemini') && (
-                    <div className="space-y-2">
-                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Default Gemini Model</label>
-                      <select
-                        value={settings.defaultGeminiModel}
-                        onChange={(e) => updateSettings({ defaultGeminiModel: e.target.value })}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                      >
-                        {GEMINI_MODELS.map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {settings.enabledProviders.includes('leonardo') && (
-                    <>
-                      <div className="space-y-2">
-                        <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Default Leonardo Model</label>
-                        <select
-                          value={settings.defaultLeonardoModel}
-                          onChange={(e) => updateSettings({ defaultLeonardoModel: e.target.value })}
-                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                        >
-                          {LEONARDO_MODELS.map(m => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Default Leonardo Model</label>
-                        <select
-                          value={settings.defaultLeonardoModel}
-                          onChange={(e) => updateSettings({ defaultLeonardoModel: e.target.value })}
-                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                        >
-                          {LEONARDO_MODELS.map(m => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </>
-                  )}
                 </div>
               </div>
 

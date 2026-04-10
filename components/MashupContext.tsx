@@ -16,8 +16,6 @@ export {
   type MashupContextType,
   type PipelineLogEntry,
   type PipelineProgress,
-  GEMINI_MODELS,
-  PAID_MODELS,
   RECOMMENDED_NICHES,
   RECOMMENDED_GENRES,
   LEONARDO_MODELS,

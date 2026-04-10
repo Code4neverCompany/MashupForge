@@ -99,7 +99,7 @@ You are given a content idea concept. Expand it into a single, highly detailed i
 The prompt should be vivid, specific, and optimized for AI image generation.
 Return ONLY the prompt text, nothing else.`;
 
-    const res = await fetch('/api/gemini/generate', {
+    const res = await fetch('/api/ai/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -113,7 +113,6 @@ Generate a single detailed image prompt for this idea.`,
         config: {
           temperature: 1.0,
         },
-        apiKey: settings.apiKeys.gemini,
       }),
     });
 

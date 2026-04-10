@@ -7,15 +7,11 @@ import {
   type GenerateOptions,
   type UserSettings,
   type WatermarkSettings,
-  GEMINI_MODELS,
   LEONARDO_MODELS,
   getLeonardoDimensions,
 } from '../types/mashup';
 
-function getModelName(id: string, provider: 'gemini' | 'leonardo') {
-  if (provider === 'gemini') {
-    return GEMINI_MODELS.find(m => m.id === id)?.name || id;
-  }
+function getModelName(id: string) {
   return LEONARDO_MODELS.find(m => m.id === id)?.name || id;
 }
 
@@ -82,9 +78,9 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
       status: 'generating',
       url: '',
       modelInfo: {
-        provider: LEONARDO_MODELS.some(m => m.id === modelId) ? 'leonardo' : 'gemini',
+        provider: 'leonardo',
         modelId,
-        modelName: getModelName(modelId, LEONARDO_MODELS.some(m => m.id === modelId) ? 'leonardo' : 'gemini')
+        modelName: getModelName(modelId)
       }
     }));
     setComparisonResults(prev => [...placeholders, ...prev]);
@@ -93,86 +89,60 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
     try {
       for (let i = 0; i < modelIds.length; i++) {
         const modelId = modelIds[i];
-        const isLeonardo = LEONARDO_MODELS.some(m => m.id === modelId);
-        const provider = isLeonardo ? 'leonardo' : 'gemini';
-        const modelName = getModelName(modelId, provider);
+        const modelName = getModelName(modelId);
 
         setProgress(`Generating with ${modelName}...`);
 
         try {
           let imageUrl = '';
-          let base64Data = '';
           let imageId = '';
           let seed = 0;
 
-          if (isLeonardo) {
-            const currentAspectRatio = options?.aspectRatio || '1:1';
-            const dims = getLeonardoDimensions(modelId, currentAspectRatio);
+          const currentAspectRatio = options?.aspectRatio || '1:1';
+          const dims = getLeonardoDimensions(modelId, currentAspectRatio);
 
-            const res = await fetch('/api/leonardo', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                prompt: finalPrompt,
-                modelId,
-                width: dims.width,
-                height: dims.height,
-                negative_prompt: options?.negativePrompt,
-                styleIds: options?.style ? [options.style] : undefined,
-                apiKey: settings.apiKeys.leonardo
-              }),
-            });
+          const res = await fetch('/api/leonardo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: finalPrompt,
+              modelId,
+              width: dims.width,
+              height: dims.height,
+              negative_prompt: options?.negativePrompt,
+              styleIds: options?.style ? [options.style] : undefined,
+              apiKey: settings.apiKeys.leonardo
+            }),
+          });
 
-            if (res.ok) {
-              const data = await res.json();
-              if (data.generationId) {
-                let status = 'PENDING';
-                let attempts = 0;
-                while (status !== 'COMPLETE' && attempts < 150) {
-                  await new Promise(resolve => setTimeout(resolve, 2000));
-                  attempts++;
-                  const statusRes = await fetch(`/api/leonardo/${data.generationId}`);
-                  if (!statusRes.ok) break;
-                  const statusData = await statusRes.json();
-                  status = statusData.status;
-                  if (status === 'COMPLETE') {
-                    imageUrl = statusData.url;
-                    imageId = statusData.imageId;
-                    seed = statusData.seed;
-                  } else if (status === 'FAILED') {
-                    break;
-                  }
+          if (res.ok) {
+            const data = await res.json();
+            if (data.generationId) {
+              let status = 'PENDING';
+              let attempts = 0;
+              while (status !== 'COMPLETE' && attempts < 150) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                attempts++;
+                const statusRes = await fetch(`/api/leonardo/${data.generationId}`);
+                if (!statusRes.ok) break;
+                const statusData = await statusRes.json();
+                status = statusData.status;
+                if (status === 'COMPLETE') {
+                  imageUrl = statusData.url;
+                  imageId = statusData.imageId;
+                  seed = statusData.seed;
+                } else if (status === 'FAILED') {
+                  break;
                 }
-              }
-            }
-          } else {
-            const imgRes = await fetch('/api/gemini/generate-image', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model: modelId,
-                prompt: finalPrompt,
-                config: {
-                  imageConfig: { aspectRatio: options?.aspectRatio || "1:1" },
-                },
-              }),
-            });
-
-            if (imgRes.ok) {
-              const imgData = await imgRes.json();
-              if (imgData.base64) {
-                base64Data = imgData.base64;
-                imageUrl = `data:image/jpeg;base64,${base64Data}`;
               }
             }
           }
 
-          if (imageUrl || base64Data) {
+          if (imageUrl) {
             const newImg: GeneratedImage = {
               id: `comp-${Date.now()}-${modelId}`,
               comparisonId,
               url: imageUrl,
-              base64: base64Data || undefined,
               prompt: finalPrompt,
               imageId,
               seed,
@@ -180,7 +150,7 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
               negativePrompt: options?.negativePrompt,
               aspectRatio: options?.aspectRatio,
               imageSize: options?.imageSize,
-              modelInfo: { provider, modelId, modelName }
+              modelInfo: { provider: 'leonardo', modelId, modelName }
             };
             setComparisonResults(prev => prev.map(img => img.id === placeholders[i].id ? newImg : img));
           } else {
