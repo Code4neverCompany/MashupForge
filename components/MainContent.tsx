@@ -156,8 +156,9 @@ export function MainContent() {
     lastError: string | null;
   }
   const [piStatus, setPiStatus] = useState<PiStatus | null>(null);
-  const [piBusy, setPiBusy] = useState<null | 'install' | 'start' | 'stop'>(null);
+  const [piBusy, setPiBusy] = useState<null | 'install' | 'start' | 'stop' | 'setup'>(null);
   const [piError, setPiError] = useState<string | null>(null);
+  const [piSetupMsg, setPiSetupMsg] = useState<string | null>(null);
 
   const refreshPiStatus = async () => {
     try {
@@ -213,6 +214,22 @@ export function MainContent() {
     try {
       await fetch('/api/pi/stop', { method: 'POST' });
       await refreshPiStatus();
+    } finally {
+      setPiBusy(null);
+    }
+  };
+
+  const handlePiSetup = async () => {
+    setPiBusy('setup');
+    setPiError(null);
+    try {
+      const res = await fetch('/api/pi/setup', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || data.success === false) {
+        setPiError(data.error || 'Setup failed');
+      } else {
+        setPiSetupMsg(data.tmuxSession || 'pi-setup');
+      }
     } finally {
       setPiBusy(null);
     }
@@ -2113,11 +2130,29 @@ export function MainContent() {
                   </button>
                 </div>
 
-                {piStatus && !piStatus.authenticated && (
-                  <p className="text-[11px] text-amber-400">
-                    Pi has no API keys. Set <code>ZAI_API_KEY</code> (or <code>GOOGLE_API_KEY</code>, etc.)
-                    in your environment, or run <code>pi config</code> to authenticate interactively.
-                  </p>
+                {piStatus && !piStatus.authenticated && piStatus.installed && (
+                  <button
+                    onClick={handlePiSetup}
+                    disabled={piBusy !== null}
+                    className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+                  >
+                    {piBusy === 'setup' ? 'Opening…' : 'Setup Pi.dev'}
+                  </button>
+                )}
+
+                {piSetupMsg && (
+                  <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 space-y-1">
+                    <p className="text-[11px] text-amber-300 font-medium">Pi Setup gestartet</p>
+                    <p className="text-[11px] text-zinc-300">
+      Terminal öffnen und verbinden:
+                    </p>
+                    <code className="block text-[11px] text-emerald-400 bg-zinc-950 px-2 py-1 rounded">
+                      tmux attach -t pi-setup
+                    </code>
+                    <p className="text-[10px] text-zinc-500">
+      Pi führt dich durch Provider-Auswahl und Login. Danach "Start Pi" drücken.
+                    </p>
+                  </div>
                 )}
 
                 {piError && (

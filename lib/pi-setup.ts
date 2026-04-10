@@ -49,16 +49,8 @@ export function isPiInstalled(): boolean {
  * so if either of those is set, we treat that as "authenticated" too.
  */
 export function isPiAuthenticated(): boolean {
-  if (
-    process.env.ZAI_API_KEY ||
-    process.env.GOOGLE_API_KEY ||
-    process.env.ANTHROPIC_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    process.env.GROQ_API_KEY
-  ) {
-    return true;
-  }
-
+  // Only check pi's own auth file. Do NOT check env vars —
+  // pi must be set up through its own setup flow (pi /login or pi config).
   const authFile = join(homedir(), '.pi', 'agent', 'auth.json');
   try {
     if (!existsSync(authFile)) return false;

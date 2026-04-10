@@ -127,8 +127,26 @@ export async function start(): Promise<void> {
     '--system-prompt', fullSystemPrompt,
   ];
 
+  // Strip AI-related env vars so pi doesn't auto-select a provider.
+  // Pi should use its own auth setup (pi /login or ~/.pi/agent/auth.json).
+  const cleanEnv = { ...process.env };
+  for (const key of Object.keys(cleanEnv)) {
+    if (
+      key.endsWith('_API_KEY') ||
+      key === 'ZAI_API_KEY' ||
+      key === 'GOOGLE_API_KEY' ||
+      key === 'GEMINI_API_KEY' ||
+      key === 'ANTHROPIC_API_KEY' ||
+      key === 'OPENAI_API_KEY' ||
+      key === 'GROQ_API_KEY' ||
+      key === 'CEREBRAS_API_KEY'
+    ) {
+      delete cleanEnv[key];
+    }
+  }
+
   const child = spawn(piPath, args, {
-    env: process.env,
+    env: cleanEnv,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
