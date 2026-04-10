@@ -1,7 +1,15 @@
 'use client';
 
+declare global {
+  interface Window {
+    aistudio?: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
+
 import { useState } from 'react';
-import { GoogleGenAI, Type } from '@google/genai';
 import {
   type GeneratedImage,
   type GenerateOptions,
@@ -113,24 +121,15 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
     if (!img) return;
 
     try {
-      const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Analyze this image prompt: "${img.prompt}".
-        Generate a set of 5-8 fitting tags for a gallery.
-        Include:
-        - Universe/Franchise (e.g., "Warhammer 40k" - NEVER use "Warhammer 40,000", "Star Wars", "Marvel")
-        - Character names
-        - Style (e.g., "Cinematic", "Cyberpunk", "Grimdark")
-        - Themes (e.g., "Battle", "Portrait", "Landscape")
-        Return ONLY a JSON array of strings.`,
-        config: {
-          responseMimeType: 'application/json',
-        },
+      const res = await fetch('/api/gemini/tag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: img.prompt }),
       });
 
-      let tags = JSON.parse(response.text || '[]');
+      if (!res.ok) throw new Error('Tag request failed');
+      const data = await res.json();
+      let tags = data.tags || [];
       if (Array.isArray(tags)) {
         tags = tags.map((t: string) => t === 'Warhammer 40,000' ? 'Warhammer 40k' : t);
         updateImageTags(id, tags);
@@ -146,15 +145,14 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
 
   const generateNegativePrompt = async (idea: string) => {
     try {
-      const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-      const res = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Analyze this image generation idea: "${idea}".
-        Generate a concise negative prompt (comma-separated list of things to avoid) to ensure high quality, avoiding common AI artifacts, blurry textures, or elements that would clash with this specific theme.
-        Return ONLY the negative prompt string.`,
+      const res = await fetch('/api/gemini/negative-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idea }),
       });
-      return res.text || '';
+      if (!res.ok) return '';
+      const data = await res.json();
+      return data.negativePrompt || '';
     } catch (e) {
       console.error('Failed to generate negative prompt', e);
       return '';
@@ -179,9 +177,6 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
     setProgress(append ? 'Generating image...' : 'Brainstorming crossover concepts...');
 
     try {
-      const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-
       let itemsToGenerate: {
         prompt: string,
         aspectRatio?: string,
@@ -195,12 +190,14 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
       const ensureTags = async (prompt: string, existingTags?: string[]) => {
         if (existingTags && existingTags.length > 0) return existingTags;
         try {
-          const tagRes = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Analyze this image prompt: "${prompt}". Generate a set of 5-8 fitting tags for a gallery. Include Universe/Franchise, Character names, Style, and Themes. Return ONLY a JSON array of strings.`,
-            config: { responseMimeType: 'application/json' }
+          const tagRes = await fetch('/api/gemini/tag', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt }),
           });
-          return JSON.parse(tagRes.text || '[]');
+          if (!tagRes.ok) return ['Mashup'];
+          const tagData = await tagRes.json();
+          return tagData.tags || ['Mashup'];
         } catch (e) {
           console.error('Failed to auto-tag during generation', e);
           return ['Mashup'];
@@ -228,9 +225,12 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
       if (options?.skipEnhance && customPrompts) {
         itemsToGenerate = customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio }));
       } else if (!customPrompts || customPrompts.length === 0) {
-        const promptRes = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: `${systemContext}
+        const promptFetch = await fetch('/api/gemini/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'gemini-3-flash-preview',
+            contents: `${systemContext}
           Generate 4 completely distinct, highly detailed image generation prompts.
           Ensure maximum variety in characters, franchises, and settings. Do NOT repeat characters.
           Return ONLY a JSON array of 4 objects, each with:
@@ -242,27 +242,30 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
           - "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)
 
           Random Seed: ${Math.random()}`,
-          config: {
-            tools: [{ googleSearch: {} }],
-            toolConfig: { includeServerSideToolInvocations: true },
-            temperature: 1.2,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  prompt: { type: Type.STRING },
-                  aspectRatio: { type: Type.STRING },
-                  tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  selectedNiches: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  selectedGenres: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  negativePrompt: { type: Type.STRING }
-                }
+            config: {
+              tools: [{ googleSearch: {} }],
+              toolConfig: { includeServerSideToolInvocations: true },
+              temperature: 1.2,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: 'ARRAY',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    prompt: { type: 'STRING' },
+                    aspectRatio: { type: 'STRING' },
+                    tags: { type: 'ARRAY', items: { type: 'STRING' } },
+                    selectedNiches: { type: 'ARRAY', items: { type: 'STRING' } },
+                    selectedGenres: { type: 'ARRAY', items: { type: 'STRING' } },
+                    negativePrompt: { type: 'STRING' }
+                  }
+                },
               },
             },
-          },
+          }),
         });
+        if (!promptFetch.ok) throw new Error('Failed to generate prompts');
+        const promptRes = await promptFetch.json();
 
         try {
           itemsToGenerate = JSON.parse(promptRes.text || '[]');
@@ -282,9 +285,12 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
 
         itemsToGenerate = itemsToGenerate.slice(0, 4);
       } else {
-        const promptRes = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: `${systemContext}
+        const promptFetch2 = await fetch('/api/gemini/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'gemini-3-flash-preview',
+            contents: `${systemContext}
           The user wants to generate images based on these ideas: ${JSON.stringify(customPrompts)}.
           Enhance these ideas into highly detailed, cinematic image generation prompts.
           Return ONLY a JSON array of objects, each with:
@@ -294,25 +300,28 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
           - "selectedNiches": array of strings
           - "selectedGenres": array of strings
           - "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)`,
-          config: {
-            temperature: 1.2,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  prompt: { type: Type.STRING },
-                  aspectRatio: { type: Type.STRING },
-                  tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  selectedNiches: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  selectedGenres: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  negativePrompt: { type: Type.STRING }
-                }
+            config: {
+              temperature: 1.2,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: 'ARRAY',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    prompt: { type: 'STRING' },
+                    aspectRatio: { type: 'STRING' },
+                    tags: { type: 'ARRAY', items: { type: 'STRING' } },
+                    selectedNiches: { type: 'ARRAY', items: { type: 'STRING' } },
+                    selectedGenres: { type: 'ARRAY', items: { type: 'STRING' } },
+                    negativePrompt: { type: 'STRING' }
+                  }
+                },
               },
             },
-          },
+          }),
         });
+        if (!promptFetch2.ok) throw new Error('Failed to enhance prompts');
+        const promptRes = await promptFetch2.json();
 
         try {
           itemsToGenerate = JSON.parse(promptRes.text || '[]');
@@ -423,7 +432,7 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
                 while (status !== 'COMPLETE' && attempts < 150) {
                   await new Promise(resolve => setTimeout(resolve, 2000));
                   attempts++;
-                  const statusRes = await fetch(`/api/leonardo/${data.generationId}?apiKey=${settings.apiKeys.leonardo || ''}`);
+                  const statusRes = await fetch(`/api/leonardo/${data.generationId}`);
                   if (!statusRes.ok) {
                     const errText = await statusRes.text();
                     throw new Error(`Failed to check status: ${errText.slice(0, 100)}`);
@@ -477,12 +486,6 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
               }
             }
 
-            const apiKey = (PAID_MODELS.includes(selectedGeminiModel) && process.env.API_KEY)
-              ? process.env.API_KEY
-              : (process.env.API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY);
-
-            const imageAi = new GoogleGenAI({ apiKey });
-
             const imageConfig: any = {};
 
             let finalAspectRatio = currentAspectRatio;
@@ -498,23 +501,23 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
               imageConfig.imageSize = options?.imageSize || '1K';
             }
 
-            const imgRes = await imageAi.models.generateContent({
-              model: selectedGeminiModel,
-              contents: {
-                parts: [{ text: finalPrompt }],
-              },
-              config: {
-                imageConfig,
-              },
+            const imgRes = await fetch('/api/gemini/generate-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: selectedGeminiModel,
+                prompt: finalPrompt,
+                config: { imageConfig },
+              }),
             });
 
-            let base64Data = '';
-            for (const part of imgRes.candidates?.[0]?.content?.parts || []) {
-              if (part.inlineData) {
-                base64Data = part.inlineData.data || '';
-                break;
-              }
+            if (!imgRes.ok) {
+              const errData = await imgRes.json().catch(() => ({}));
+              throw new Error(errData.error || 'Gemini image generation failed');
             }
+
+            const imgData = await imgRes.json();
+            const base64Data = imgData.base64 || '';
 
             if (base64Data) {
               let finalUrl = `data:image/jpeg;base64,${base64Data}`;
@@ -583,31 +586,35 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
 
       const useGeminiApi = !isLeonardo && selectedModel.startsWith('gemini-');
 
-      const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-
       const ensureTags = async (prompt: string, existingTags?: string[]) => {
         if (existingTags && existingTags.length > 0) return existingTags;
         try {
-          const tagRes = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Analyze this image prompt: "${prompt}". Generate a set of 5-8 fitting tags for a gallery. Include Universe/Franchise, Character names, Style, and Themes. Return ONLY a JSON array of strings.`,
-            config: { responseMimeType: 'application/json' }
+          const tagRes = await fetch('/api/gemini/tag', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt }),
           });
-          return JSON.parse(tagRes.text || '[]');
+          if (!tagRes.ok) return ['Mashup'];
+          const tagData = await tagRes.json();
+          return tagData.tags || ['Mashup'];
         } catch (e) {
           console.error('Failed to auto-tag during generation', e);
           return ['Mashup'];
         }
       };
 
-      const promptRes = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `${settings.agentPrompt || 'You are a Master Content Creator.'}
+      const promptFetch = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3-flash-preview',
+          contents: `${settings.agentPrompt || 'You are a Master Content Creator.'}
         Platform Niches: ${settings.agentNiches?.join(', ') || 'None'}.
         Target Genres: ${settings.agentGenres?.join(', ') || 'None'}.
         The user wants to re-roll an image based on this idea: "${prompt}". Enhance this idea into a highly detailed, cinematic image generation prompt. You MUST strictly limit the content to ONLY these franchises: Star Wars, Marvel, DC, and Warhammer 40k. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers. Return ONLY the enhanced prompt as a single string.`,
+        }),
       });
+      const promptRes = promptFetch.ok ? await promptFetch.json() : {};
       const enhancedPrompt = promptRes.text || prompt;
 
       const finalPrompt = options?.negativePrompt
@@ -682,7 +689,7 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
             while (status !== 'COMPLETE' && attempts < 150) {
               await new Promise(resolve => setTimeout(resolve, 2000));
               attempts++;
-              const statusRes = await fetch(`/api/leonardo/${data.generationId}?apiKey=${settings.apiKeys.leonardo || ''}`);
+              const statusRes = await fetch(`/api/leonardo/${data.generationId}`);
               if (!statusRes.ok) {
                 const errText = await statusRes.text();
                 throw new Error(`Failed to check status: ${errText.slice(0, 100)}`);
@@ -726,8 +733,6 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
       }
 
       if (useGeminiApi) {
-        const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-        const imageAi = new GoogleGenAI({ apiKey: geminiApiKey });
         const selectedGeminiModel = selectedModel;
         const imageConfig: any = {};
 
@@ -744,21 +749,23 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
           imageConfig.imageSize = options?.imageSize || '1K';
         }
 
-        const imgRes = await imageAi.models.generateContent({
-          model: selectedGeminiModel,
-          contents: finalPrompt,
-          config: {
-            imageConfig,
-          },
+        const imgRes = await fetch('/api/gemini/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: selectedGeminiModel,
+            prompt: finalPrompt,
+            config: { imageConfig },
+          }),
         });
 
-        let base64Data = '';
-        for (const part of imgRes.candidates?.[0]?.content?.parts || []) {
-          if (part.inlineData) {
-            base64Data = part.inlineData.data || '';
-            break;
-          }
+        if (!imgRes.ok) {
+          const errData = await imgRes.json().catch(() => ({}));
+          throw new Error(errData.error || 'Gemini image generation failed');
         }
+
+        const imgData = await imgRes.json();
+        const base64Data = imgData.base64 || '';
 
         if (base64Data) {
           let finalUrl = `data:image/jpeg;base64,${base64Data}`;

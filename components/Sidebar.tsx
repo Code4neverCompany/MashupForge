@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, Type } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
 import { Send, Search, MessageSquare, Loader2, ExternalLink, Image as ImageIcon, Sparkles, Columns, RefreshCw } from 'lucide-react';
 import { useMashup, LEONARDO_MODELS } from './MashupContext';
@@ -22,7 +21,6 @@ export function Sidebar() {
   const [contentMessages, setContentMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const chatRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { generateImages, settings, setView, generateComparison, generateNegativePrompt, setComparisonPrompt, setComparisonOptions, addIdea, isSidebarOpen, setIsSidebarOpen } = useMashup();
 
@@ -43,33 +41,60 @@ export function Sidebar() {
     setIsLoading(true);
 
     if (activeTab === 'chat') {
-      setChatMessages((prev) => [...prev, { id: Date.now().toString(), role: 'user', text: userMsg }]);
+      const userMsgObj = { id: Date.now().toString(), role: 'user' as const, text: userMsg };
+      setChatMessages((prev) => [...prev, userMsgObj]);
       try {
-        const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-        if (!chatRef.current) {
-          chatRef.current = ai.chats.create({
-            model: 'gemini-3.1-pro-preview',
-            config: {
-              systemInstruction: `${settings.agentPrompt || 'You are an expert on all fantasy and sci-fi universes (Marvel, DC, Star Wars, Warhammer 40k, etc.). Help the user brainstorm crossover ideas and answer questions.'} 
+        const history = chatMessages.map(m => ({
+          role: m.role,
+          parts: [{ text: m.text }]
+        }));
+
+        const systemInstruction = `${settings.agentPrompt || 'You are an expert on all fantasy and sci-fi universes (Marvel, DC, Star Wars, Warhammer 40k, etc.). Help the user brainstorm crossover ideas and answer questions.'}
               Niches: ${settings.agentNiches?.join(', ') || 'None'}.
-              Genres: ${settings.agentGenres?.join(', ') || 'None'}.`,
-            },
-          });
+              Genres: ${settings.agentGenres?.join(', ') || 'None'}.`;
+
+        const response = await fetch('/api/gemini/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: userMsg,
+            history,
+            systemInstruction,
+          }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Chat request failed');
         }
 
-        const stream = await chatRef.current.sendMessageStream({ message: userMsg });
         let fullText = '';
         const modelMsgId = (Date.now() + 1).toString();
         setChatMessages((prev) => [...prev, { id: modelMsgId, role: 'model', text: '' }]);
 
-        for await (const chunk of stream) {
-          fullText += (chunk as any).text || '';
-          setChatMessages((prev) => {
-            const newMsgs = [...prev];
-            newMsgs[newMsgs.length - 1].text = fullText;
-            return newMsgs;
-          });
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value, { stream: true });
+          for (const line of text.split('\n')) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') break;
+              try {
+                const parsed = JSON.parse(data);
+                fullText += parsed.text || '';
+                setChatMessages((prev) => {
+                  const newMsgs = [...prev];
+                  newMsgs[newMsgs.length - 1].text = fullText;
+                  return newMsgs;
+                });
+              } catch {}
+            }
+          }
         }
       } catch (error) {
         console.error('Chat error:', error);
@@ -81,14 +106,11 @@ export function Sidebar() {
       // Content Generator
       setContentMessages((prev) => [...prev, { id: Date.now().toString(), role: 'user', text: userMsg }]);
       try {
-        const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-        
         const prompt = `${settings.agentPrompt || 'You are a Master Content Creator.'}
-        The user is asking for content ideas about: ${userMsg}. 
+        The user is asking for content ideas about: ${userMsg}.
         Platform Niches: ${settings.agentNiches?.join(', ') || 'None'}.
         Target Genres: ${settings.agentGenres?.join(', ') || 'None'}.
-        
+
         Based on your personality, niches, and genres, brainstorm 3-5 rapid content creation ideas.
         You MUST strictly limit the content to ONLY these franchises: Star Wars, Marvel, DC, and Warhammer 40k.
         Format the ideas as a JSON array of objects, each with two keys:
@@ -96,15 +118,25 @@ export function Sidebar() {
         - "concept": The highly detailed image generation prompt.
         Return ONLY the JSON array.`;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: prompt,
-          config: {
-            tools: [{ googleSearch: {} }],
-            responseMimeType: 'application/json',
-          },
+        const res = await fetch('/api/gemini/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: {
+              tools: [{ googleSearch: {} }],
+              responseMimeType: 'application/json',
+            },
+          }),
         });
 
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Content generation failed');
+        }
+
+        const response = await res.json();
         const text = response.text || '[]';
         const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
 

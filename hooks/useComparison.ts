@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { get, set } from 'idb-keyval';
-import { GoogleGenAI } from '@google/genai';
 import {
   type GeneratedImage,
   type GenerateOptions,
@@ -137,7 +136,7 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
                 while (status !== 'COMPLETE' && attempts < 150) {
                   await new Promise(resolve => setTimeout(resolve, 2000));
                   attempts++;
-                  const statusRes = await fetch(`/api/leonardo/${data.generationId}?apiKey=${settings.apiKeys.leonardo || ''}`);
+                  const statusRes = await fetch(`/api/leonardo/${data.generationId}`);
                   if (!statusRes.ok) break;
                   const statusData = await statusRes.json();
                   status = statusData.status;
@@ -152,21 +151,23 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
               }
             }
           } else {
-            const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-            const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-            const imgRes = await ai.models.generateContent({
-              model: modelId,
-              contents: finalPrompt,
-              config: {
-                imageConfig: { aspectRatio: options?.aspectRatio || "1:1" },
-              },
+            const imgRes = await fetch('/api/gemini/generate-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: modelId,
+                prompt: finalPrompt,
+                config: {
+                  imageConfig: { aspectRatio: options?.aspectRatio || "1:1" },
+                },
+              }),
             });
 
-            for (const part of imgRes.candidates?.[0]?.content?.parts || []) {
-              if (part.inlineData) {
-                base64Data = part.inlineData.data || '';
+            if (imgRes.ok) {
+              const imgData = await imgRes.json();
+              if (imgData.base64) {
+                base64Data = imgData.base64;
                 imageUrl = `data:image/jpeg;base64,${base64Data}`;
-                break;
               }
             }
           }

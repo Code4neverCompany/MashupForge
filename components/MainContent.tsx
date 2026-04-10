@@ -60,7 +60,6 @@ import {
   ASPECT_RATIOS,
   IMAGE_SIZES
 } from './MashupContext';
-import { GoogleGenAI, Type } from '@google/genai';
 
 export function MainContent() {
   const { 
@@ -152,17 +151,21 @@ export function MainContent() {
   const handleGenerateIdea = async () => {
     setIsGeneratingIdea(true);
     try {
-      const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `You are a Master Content Creator. Generate a highly creative, peak, and up-to-date crossover mashup idea. You MUST strictly limit the content to ONLY these franchises: Star Wars, Marvel, DC, and Warhammer 40k. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers between these specific franchises. Incorporate trending concepts or recent news from these franchises by searching the web for the latest trends, movies, or rumors. Make it highly detailed, cinematic, and unique. CRITICAL DIVERSITY MANDATE: You must generate a completely random and diverse idea. Do NOT use common or overused characters like Dr. Doom, Darth Vader, or Batman. Dig deep into the lore of these franchises to find unique character combinations and unexpected scenarios. Return ONLY the idea as a single string. Random Seed: ${Math.random()}`,
-        config: {
-          tools: [{ googleSearch: {} }],
-          toolConfig: { includeServerSideToolInvocations: true },
-          temperature: 1.2,
-        }
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3-flash-preview',
+          contents: `You are a Master Content Creator. Generate a highly creative, peak, and up-to-date crossover mashup idea. You MUST strictly limit the content to ONLY these franchises: Star Wars, Marvel, DC, and Warhammer 40k. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers between these specific franchises. Incorporate trending concepts or recent news from these franchises by searching the web for the latest trends, movies, or rumors. Make it highly detailed, cinematic, and unique. CRITICAL DIVERSITY MANDATE: You must generate a completely random and diverse idea. Do NOT use common or overused characters like Dr. Doom, Darth Vader, or Batman. Dig deep into the lore of these franchises to find unique character combinations and unexpected scenarios. Return ONLY the idea as a single string. Random Seed: ${Math.random()}`,
+          config: {
+            tools: [{ googleSearch: {} }],
+            toolConfig: { includeServerSideToolInvocations: true },
+            temperature: 1.2,
+          },
+        }),
       });
+      if (!res.ok) throw new Error('Failed to generate idea');
+      const response = await res.json();
       const newIdea = response.text?.trim() || '';
       setComparisonPrompt(newIdea);
       if (newIdea) {
@@ -178,32 +181,32 @@ export function MainContent() {
   const autoSelectParameters = async (mashupIdea: string) => {
     setIsAutoSelecting(true);
     try {
-      const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Analyze this mashup idea: "${mashupIdea}".
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3-flash-preview',
+          contents: `Analyze this mashup idea: "${mashupIdea}".
         First, identify the core mood (e.g., dark, whimsical, tense, romantic) and genre (e.g., cyberpunk, high fantasy, noir) implied by the idea.
         Then, SMARTLY select the most appropriate parameters that specifically enhance this mood and genre, rather than just defaulting to generic cinematic qualities.
         Select the best Art Style from: ${ART_STYLES.join(', ')}.
         Select the best Lighting from: ${LIGHTING_OPTIONS.join(', ')}.
         Select the best Camera Angle from: ${CAMERA_ANGLES.join(', ')}.
         Select the best Aspect Ratio from: ${ASPECT_RATIOS.join(', ')}.
-        Select the best Leonardo Style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE.
-        
-        Also, generate a fitting negative prompt (what to avoid in the image) for this specific concept.
-        
+
         CRITICAL ASPECT RATIO RULES:
         - If the prompt describes an epic scene, landscape, wide battle, or cinematic vista, you MUST select "16:9".
         - If the prompt describes a character portrait, single character focus, or vertical subject, you MUST select "9:16".
         - Otherwise, select "1:1" or another appropriate ratio.
 
-        Return ONLY a JSON object with keys: style, lighting, angle, aspectRatio, negativePrompt, leonardoStyle.`,
-        config: {
-          responseMimeType: 'application/json',
-        },
+        Return ONLY a JSON object with keys: style, lighting, angle, aspectRatio.`,
+          config: {
+            responseMimeType: 'application/json',
+          },
+        }),
       });
-      
+      if (!res.ok) throw new Error('Failed to auto-select parameters');
+      const response = await res.json();
       const params = JSON.parse(response.text || '{}');
       setComparisonOptions(prev => ({
         ...prev,
@@ -225,108 +228,55 @@ export function MainContent() {
     setIsPushing(true);
     setView('compare');
     try {
-      const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-      
-      let data: any = null;
-      
-      try {
-        const res = await ai.models.generateContent({
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           model: 'gemini-3.1-pro-preview',
-          contents: `Analyze and enhance this generation prompt: "${prompt}". 
-          Provide an improved, highly detailed cinematic prompt. 
-          Also provide a fitting negative prompt (e.g., ugly, blurry, poorly drawn).
-          Smartly detect and provide the best fitting parameters for this specific scene:
-          - Art style from: ${ART_STYLES.join(', ')}
-          - Lighting from: ${LIGHTING_OPTIONS.join(', ')}
-          - Camera angle from: ${CAMERA_ANGLES.join(', ')}
-          - Aspect ratio from: ${['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'].join(', ')}
-          - Image size from: ${['512px', '1K', '2K', '4K'].join(', ')}
-          - Leonardo style from: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE
-          
-          CRITICAL ASPECT RATIO RULES:
-          - If the prompt describes an epic scene, landscape, wide battle, or cinematic vista, you MUST select "16:9".
-          - If the prompt describes a character portrait, single character focus, or vertical subject, you MUST select "9:16".
-          - Otherwise, select "1:1" or another appropriate ratio.
+          contents: `Analyze and enhance this generation prompt: "${prompt}".
+        Provide an improved, highly detailed cinematic prompt.
+        Also provide a fitting negative prompt (e.g., ugly, blurry, poorly drawn).
+        Smartly detect and provide the best fitting parameters for this specific scene:
+        - Art style from: ${ART_STYLES.join(', ')}
+        - Lighting from: ${LIGHTING_OPTIONS.join(', ')}
+        - Camera angle from: ${CAMERA_ANGLES.join(', ')}
+        - Aspect ratio from: ${['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'].join(', ')}
+        - Image size from: ${['512px', '1K', '2K', '4K'].join(', ')}
 
-          Return ONLY a JSON object with:
-          - "enhancedPrompt": string
-          - "negativePrompt": string
-          - "style": string
-          - "lighting": string
-          - "angle": string
-          - "aspectRatio": string
-          - "imageSize": string
-          - "leonardoStyle": string`,
+        CRITICAL ASPECT RATIO RULES:
+        - If the prompt describes an epic scene, landscape, wide battle, or cinematic vista, you MUST select "16:9".
+        - If the prompt describes a character portrait, single character focus, or vertical subject, you MUST select "9:16".
+        - Otherwise, select "1:1" or another appropriate ratio.
+
+        Return ONLY a JSON object with:
+        - "enhancedPrompt": string
+        - "negativePrompt": string
+        - "style": string
+        - "lighting": string
+        - "angle": string
+        - "aspectRatio": string
+        - "imageSize": string`,
           config: {
             responseMimeType: 'application/json',
             responseSchema: {
-              type: Type.OBJECT,
+              type: 'OBJECT',
               properties: {
-                enhancedPrompt: { type: Type.STRING },
-                negativePrompt: { type: Type.STRING },
-                style: { type: Type.STRING },
-                lighting: { type: Type.STRING },
-                angle: { type: Type.STRING },
-                aspectRatio: { type: Type.STRING },
-                imageSize: { type: Type.STRING },
-                leonardoStyle: { type: Type.STRING }
+                enhancedPrompt: { type: 'STRING' },
+                negativePrompt: { type: 'STRING' },
+                style: { type: 'STRING' },
+                lighting: { type: 'STRING' },
+                angle: { type: 'STRING' },
+                aspectRatio: { type: 'STRING' },
+                imageSize: { type: 'STRING' }
               }
             }
-          }
-        });
-        data = JSON.parse(res.text || '{}');
-      } catch (e: any) {
-        console.warn('Failed to enhance prompt with Pro model, trying Flash...', e.message);
-        try {
-          const res = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Analyze and enhance this generation prompt: "${prompt}". 
-            Provide an improved, highly detailed cinematic prompt. 
-            Also provide a fitting negative prompt.
-            Smartly detect and provide the best fitting parameters:
-            - Art style from: ${ART_STYLES.join(', ')}
-            - Lighting from: ${LIGHTING_OPTIONS.join(', ')}
-            - Camera angle from: ${CAMERA_ANGLES.join(', ')}
-            - Aspect ratio from: 1:1, 16:9, 9:16, 3:4, 4:3
-            - Image size: 512px, 1K, 2K
-            - Leonardo style: DYNAMIC, RAYTRACED, CINEMATIC, PHOTOREALISTIC, ANIME, CREATIVE, VIBRANT, PORTRAIT, SKETCH_BW, NONE
-            
-            Return ONLY a JSON object with: enhancedPrompt, negativePrompt, style, lighting, angle, aspectRatio, imageSize, leonardoStyle`,
-            config: {
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  enhancedPrompt: { type: Type.STRING },
-                  negativePrompt: { type: Type.STRING },
-                  style: { type: Type.STRING },
-                  lighting: { type: Type.STRING },
-                  angle: { type: Type.STRING },
-                  aspectRatio: { type: Type.STRING },
-                  imageSize: { type: Type.STRING },
-                  leonardoStyle: { type: Type.STRING }
-                }
-              }
-            }
-          });
-          data = JSON.parse(res.text || '{}');
-        } catch (e2) {
-          console.error('Failed to enhance prompt for comparison (all models failed):', e2);
-          // Fallback to original prompt
-          data = {
-            enhancedPrompt: prompt,
-            negativePrompt: 'ugly, blurry, poorly drawn, low quality',
-            style: 'Cinematic',
-            lighting: 'Cinematic',
-            angle: 'Eye Level',
-            aspectRatio: '16:9',
-            imageSize: '1K',
-            leonardoStyle: 'DYNAMIC'
-          };
-        }
-      }
-
+          },
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to enhance prompt');
+      const resData = await res.json();
+      const data = JSON.parse(resData.text || '{}');
+      
       setComparisonPrompt(data.enhancedPrompt || prompt);
       setComparisonOptions(prev => ({
         ...prev,
@@ -536,27 +486,29 @@ export function MainContent() {
     setImageStatus(img.id, 'animating');
     
     try {
-      const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-
       // Dynamically determine best duration and style
-      const dynamicSettingsRes = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: `Analyze this image prompt: "${img.prompt}".
+      const dynamicRes = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3.1-pro-preview',
+          contents: `Analyze this image prompt: "${img.prompt}".
         Determine the best video animation duration (3, 5, or 10 seconds) and the best animation style (Standard, Cinematic, Dynamic, Slow Motion, Fast Motion).
         - Use 3 or 5 seconds for simple actions or portraits.
         - Use 10 seconds for complex scenes, epic landscapes, or slow-motion.
         - Choose a style that fits the mood (e.g., Cinematic for epic scenes, Dynamic for action, Slow Motion for dramatic moments).
         Return ONLY a JSON object with keys "duration" (number) and "style" (string).`,
-        config: {
-          responseMimeType: 'application/json',
-        }
+          config: {
+            responseMimeType: 'application/json',
+          },
+        }),
       });
 
       let duration = settings.defaultAnimationDuration || 5;
       let style = settings.defaultAnimationStyle || 'Standard';
 
       try {
+        const dynamicSettingsRes = dynamicRes.ok ? await dynamicRes.json() : { text: '{}' };
         const dynamicSettings = JSON.parse(dynamicSettingsRes.text || '{}');
         if (dynamicSettings.duration && [3, 5, 10].includes(dynamicSettings.duration)) {
           duration = dynamicSettings.duration;
@@ -574,11 +526,16 @@ export function MainContent() {
         console.error('Failed to parse dynamic video settings', e);
       }
 
-      const promptRes = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `${settings.agentPrompt || 'You are a Master Content Creator.'} The user wants to animate an image based on this prompt: "${img.prompt}". Enhance this prompt for a video animation. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers for Star Wars, Marvel, DC, and Warhammer 40k. Motion style: ${style}. Return ONLY the enhanced animation prompt as a single string.`,
+      const promptRes = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3-flash-preview',
+          contents: `${settings.agentPrompt || 'You are a Master Content Creator.'} The user wants to animate an image based on this prompt: "${img.prompt}". Enhance this prompt for a video animation. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers for Star Wars, Marvel, DC, and Warhammer 40k. Motion style: ${style}. Return ONLY the enhanced animation prompt as a single string.`,
+        }),
       });
-      const videoPrompt = promptRes.text || (style === 'Standard' ? img.prompt : `${img.prompt}. Motion style: ${style}`);
+      const promptData = promptRes.ok ? await promptRes.json() : {};
+      const videoPrompt = promptData.text || (style === 'Standard' ? img.prompt : `${img.prompt}. Motion style: ${style}`);
 
       const res = await fetch('/api/leonardo-video', {
         method: 'POST',
@@ -614,7 +571,7 @@ export function MainContent() {
         while (status !== 'COMPLETE' && attempts < 60) {
           await new Promise(resolve => setTimeout(resolve, 5000));
           attempts++;
-          const statusRes = await fetch(`/api/leonardo/${data.generationId}?apiKey=${settings.apiKeys.leonardo || ''}`);
+          const statusRes = await fetch(`/api/leonardo/${data.generationId}`);
           if (!statusRes.ok) {
             const errText = await statusRes.text();
             throw new Error(`Failed to check status: ${errText.slice(0, 100)}`);
@@ -641,12 +598,13 @@ export function MainContent() {
           const ensureTags = async (prompt: string, existingTags?: string[]) => {
             if (existingTags && existingTags.length > 0) return existingTags;
             try {
-              const tagRes = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
-                contents: `Analyze this image prompt: "${prompt}". Generate a set of 5-8 fitting tags for a gallery. Include Universe/Franchise, Character names, Style, and Themes. Return ONLY a JSON array of strings.`,
-                config: { responseMimeType: 'application/json' }
+              const tagRes = await fetch('/api/gemini/tag', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt })
               });
-              return JSON.parse(tagRes.text || '[]');
+              const tagData = await tagRes.json();
+              return tagData.tags || ['Mashup'];
             } catch (e) {
               console.error('Failed to auto-tag during generation', e);
               return ['Mashup'];
@@ -3255,27 +3213,30 @@ function PostReadyView() {
   const handleRecommendTime = async () => {
     setIsRecommending(true);
     try {
-      const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
       const prompt = `Analyze this social media post:
       Caption: "${editedCaption}"
       Platforms: ${selectedPlatforms.join(', ')}
-      
+
       Suggest the optimal date and time to post this for maximum engagement.
       Current date/time: ${new Date().toISOString()}
-      
+
       Return ONLY a JSON object with:
       - date: "YYYY-MM-DD" (must be today or in the future)
       - time: "HH:MM" (24-hour format)
       - reason: "A short 1-sentence explanation"`;
 
-      const res = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        config: { responseMimeType: 'application/json' }
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3.1-pro-preview',
+          contents: prompt,
+          config: { responseMimeType: 'application/json' },
+        }),
       });
-      
-      const data = JSON.parse(res.text || '{}');
+      if (!res.ok) throw new Error('Failed to get recommendation');
+      const resData = await res.json();
+      const data = JSON.parse(resData.text || '{}');
       if (data.date) setScheduleDate(data.date);
       if (data.time) setScheduleTime(data.time);
       if (data.reason) setRecommendationReason(data.reason);

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { get, set } from 'idb-keyval';
-import { GoogleGenAI } from '@google/genai';
 import { type Collection, type GeneratedImage, type UserSettings } from '../types/mashup';
 
 export function useCollections(settings: UserSettings) {
@@ -33,9 +32,6 @@ export function useCollections(settings: UserSettings) {
 
   const autoGenerateCollectionInfo = async (sampleImages: GeneratedImage[] | string[]) => {
     try {
-      const geminiApiKey = settings.apiKeys.gemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY!;
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-
       let context = '';
       if (sampleImages.length > 0 && typeof sampleImages[0] === 'string') {
         context = (sampleImages as string[]).map((p, i) => `${i+1}. ${p}`).join('\n');
@@ -45,20 +41,14 @@ export function useCollections(settings: UserSettings) {
         ).join('\n');
       }
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Analyze these image details that belong to a new collection:
-        ${context}
-
-        Generate a fitting, catchy name (max 5 words) and a brief, engaging description (max 20 words) for this collection.
-        Incorporate the model or artist style if relevant to make it specific and informative.
-        Return ONLY a JSON object with "name" and "description" keys.`,
-        config: {
-          responseMimeType: 'application/json',
-        },
+      const res = await fetch('/api/gemini/collection-info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ context, apiKey: settings.apiKeys.gemini }),
       });
 
-      const data = JSON.parse(response.text || '{}');
+      if (!res.ok) throw new Error('Failed to generate collection info');
+      const data = await res.json();
       return {
         name: data.name || 'New Collection',
         description: data.description || 'A collection of amazing mashups.'
