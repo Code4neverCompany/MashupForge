@@ -22,20 +22,6 @@ export type PiMode =
   | 'negative-prompt'
   | 'collection-info';
 
-/**
- * Module-level user system prompt from the Settings UI. Applied to every
- * prompt call in addition to the mode directive on the server side.
- */
-let clientSystemPrompt: string | undefined;
-
-export function setClientSystemPrompt(text?: string) {
-  clientSystemPrompt = text?.trim() || undefined;
-}
-
-export function getClientSystemPrompt(): string | undefined {
-  return clientSystemPrompt;
-}
-
 export interface StreamAIOptions {
   mode?: PiMode;
   systemPrompt?: string;
@@ -46,23 +32,24 @@ export interface StreamAIOptions {
  * Stream text deltas from /api/pi/prompt. Yields each token/chunk as it
  * arrives so callers can render progressively. The generator ends when
  * the server emits `[DONE]`.
+ *
+ * The per-request `systemPrompt` (e.g. `settings.agentPrompt`) is
+ * forwarded verbatim and layered on top of the mode directive on the
+ * server side. There is no longer a separate "global" client-side
+ * system prompt — callers pass the single `agentPrompt` when they need
+ * one.
  */
 export async function* streamAI(
   message: string,
   options?: StreamAIOptions
 ): AsyncGenerator<string, void, void> {
-  // Merge per-call systemPrompt with the module-level user system prompt.
-  const merged = [clientSystemPrompt, options?.systemPrompt]
-    .filter(Boolean)
-    .join('\n\n') || undefined;
-
   const res = await fetch('/api/pi/prompt', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
     body: JSON.stringify({
       message,
       mode: options?.mode,
-      systemPrompt: merged,
+      systemPrompt: options?.systemPrompt,
     }),
     signal: options?.signal,
   });

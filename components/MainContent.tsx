@@ -736,7 +736,7 @@ export function MainContent() {
       const res = await fetch('/api/pi/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ systemPrompt: settings.aiSystemPrompt || '' }),
+        body: JSON.stringify({ systemPrompt: settings.agentPrompt || '' }),
       });
       const data = await res.json();
       if (!res.ok || data.success === false) {
@@ -1807,86 +1807,63 @@ export function MainContent() {
                         />
                       </div>
 
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-red-400/70 flex items-center gap-2">
-                          <Ban className="w-4 h-4" />
-                          Negative Prompt (Optional)
-                        </label>
-                        <input
-                          type="text"
-                          value={comparisonOptions.negativePrompt || ''}
-                          onChange={(e) => setComparisonOptions(prev => ({ ...prev, negativePrompt: e.target.value }))}
-                          placeholder="What to avoid (e.g. blurry, low quality, extra limbs)..."
-                          className="w-full bg-zinc-950/80 border border-red-500/20 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30 shadow-inner shadow-red-500/5"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                            <Palette className="w-3 h-3" /> Art Style
-                          </label>
-                          <select
-                            value={comparisonOptions.style || ART_STYLES[0]}
-                            onChange={(e) => setComparisonOptions(prev => ({ ...prev, style: e.target.value }))}
-                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
-                          >
-                            {ART_STYLES.map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
+                      {/* AI-Optimized Parameters — read-only indicators.
+                          pi auto-tunes per model during generation via
+                          lib/modelOptimizer, so there's nothing to pick
+                          manually. The pills show what the latest
+                          autoSelect/handlePushIdeaToCompare populated. */}
+                      <div className="bg-zinc-900/50 border border-zinc-800/40 rounded-xl p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-xs text-zinc-500">
+                          <Sparkles className="w-3 h-3" />
+                          <span className="uppercase tracking-wider font-medium">AI-Optimized Parameters</span>
+                          <span className="text-[10px] text-zinc-600">— pi auto-tunes per model</span>
                         </div>
-
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                            <Sun className="w-3 h-3" /> Lighting
-                          </label>
-                          <select
-                            value={comparisonOptions.lighting || LIGHTING_OPTIONS[0]}
-                            onChange={(e) => setComparisonOptions(prev => ({ ...prev, lighting: e.target.value }))}
-                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
-                          >
-                            {LIGHTING_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                            <Camera className="w-3 h-3" /> Camera Angle
-                          </label>
-                          <select
-                            value={comparisonOptions.angle || CAMERA_ANGLES[0]}
-                            onChange={(e) => setComparisonOptions(prev => ({ ...prev, angle: e.target.value }))}
-                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
-                          >
-                            {CAMERA_ANGLES.map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                            <ImageIcon className="w-3 h-3" /> Aspect Ratio
-                          </label>
-                          <select
-                            value={comparisonOptions.aspectRatio}
-                            onChange={(e) => setComparisonOptions(prev => ({ ...prev, aspectRatio: e.target.value }))}
-                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
-                          >
-                            {['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'].map(ar => <option key={ar} value={ar}>{ar}</option>)}
-                          </select>
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                            <Maximize className="w-3 h-3" /> Image Size
-                          </label>
-                          <select
-                            value={comparisonOptions.imageSize}
-                            onChange={(e) => setComparisonOptions(prev => ({ ...prev, imageSize: e.target.value }))}
-                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
-                          >
-                            {['512px', '1K', '2K', '4K'].map(size => <option key={size} value={size}>{size}</option>)}
-                          </select>
-                        </div>
-
+                        {comparisonModels.length > 0 ? (
+                          <div className="space-y-2">
+                            {comparisonModels.map((modelId) => {
+                              const model = LEONARDO_MODELS.find(
+                                (m) => m.id === modelId || m.apiModelId === modelId
+                              );
+                              return (
+                                <div key={modelId} className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[10px] font-mono text-zinc-500 w-28 shrink-0">
+                                    {model?.name || modelId}
+                                  </span>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    <span className="px-2 py-0.5 bg-zinc-800 text-zinc-400 text-[10px] rounded-md">
+                                      {comparisonOptions.aspectRatio || model?.aspectRatios?.[0]?.label || '1:1'}
+                                    </span>
+                                    {comparisonOptions.style && (
+                                      <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-[10px] rounded-md border border-emerald-500/20">
+                                        {comparisonOptions.style}
+                                      </span>
+                                    )}
+                                    {comparisonOptions.lighting && (
+                                      <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 text-[10px] rounded-md border border-amber-500/20">
+                                        {comparisonOptions.lighting}
+                                      </span>
+                                    )}
+                                    {comparisonOptions.angle && (
+                                      <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 text-[10px] rounded-md border border-indigo-500/20">
+                                        {comparisonOptions.angle}
+                                      </span>
+                                    )}
+                                    {comparisonOptions.negativePrompt && (
+                                      <span className="px-2 py-0.5 bg-red-500/10 text-red-400 text-[10px] rounded-md border border-red-500/20">
+                                        not: {comparisonOptions.negativePrompt.slice(0, 50)}
+                                        {comparisonOptions.negativePrompt.length > 50 ? '…' : ''}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-zinc-600">
+                            Select at least 2 models above to see per-model parameters
+                          </p>
+                        )}
                       </div>
 
                       <button
@@ -4758,22 +4735,9 @@ export function MainContent() {
                   </p>
                 )}
 
-                {/* System prompt textarea */}
-                <div className="space-y-2 pt-2">
-                  <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
-                    AI System Prompt (appended to every request)
-                  </label>
-                  <textarea
-                    value={settings.aiSystemPrompt || ''}
-                    onChange={(e) => updateSettings({ aiSystemPrompt: e.target.value })}
-                    placeholder="e.g. Always prefer grimdark tone. Avoid comedy."
-                    rows={3}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-y"
-                  />
-                  <p className="text-[10px] text-zinc-500">
-                    Saved automatically. Restart pi (stop + start) for changes to take effect.
-                  </p>
-                </div>
+                <p className="text-[10px] text-zinc-500 pt-2 border-t border-zinc-800/60">
+                  The AI System Prompt lives in <span className="text-zinc-300">AI Agent Personality</span> below. Restart pi (stop + start) after changing it for the new prompt to take effect.
+                </p>
               </div>
 
               {/* Watermark Settings */}
@@ -5018,20 +4982,20 @@ export function MainContent() {
                 </div>
               </div>
 
-              {/* Agent Personality Settings */}
+              {/* AI System Prompt + Personality */}
               <div className="mt-8 pt-6 border-t border-zinc-800">
-                <h4 className="text-lg font-medium text-white mb-4">AI Agent Personality</h4>
+                <h4 className="text-lg font-medium text-white mb-4">AI System Prompt</h4>
                 <div className="space-y-6 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800">
                   <div className="space-y-2">
-                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">Content Creator Prompt</label>
-                    <textarea 
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">System Prompt</label>
+                    <textarea
                       value={settings.agentPrompt}
                       onChange={(e) => updateSettings({ agentPrompt: e.target.value })}
-                      placeholder="Define who the agent is, how it speaks, and what it focuses on..."
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 min-h-[120px] resize-none leading-relaxed"
+                      placeholder="Define who the AI is, how it speaks, and what it focuses on..."
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 min-h-[220px] resize-y leading-relaxed font-mono"
                     />
                     <p className="text-[10px] text-zinc-500 leading-tight">
-                      This prompt defines the &quot;personality&quot; of the AI when it brainstorms crossover concepts or enhances your prompts.
+                      This prompt shapes every AI interaction: idea generation, prompt enhancement, captions, and parameter selection. Applied to every pi request on top of the mode directive. Restart pi (Settings → Pi.dev AI Engine → Stop + Start) after editing.
                     </p>
                   </div>
 

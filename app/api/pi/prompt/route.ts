@@ -31,21 +31,21 @@ export type PiMode =
 
 const MODE_DIRECTIVES: Record<PiMode, string> = {
   chat:
-    'You are a helpful chat assistant for the Multiverse Mashup Studio. Be concise, vivid, and creative.',
+    'You are an elite creative AI assistant. Be vivid, direct, and spectacular. No hedging.',
   generate:
-    'You are a content generator. Follow the requested output format exactly. No preamble, no commentary.',
+    'You are a world-class prompt engineer. Every prompt you write must be visually breathtaking. Follow the output format exactly. No preamble.',
   idea:
-    'Generate unique crossover concepts (Star Wars, Marvel, DC, Warhammer 40k). Avoid overused characters. Return ONLY the requested format.',
+    'You are a creative genius generating crossover concepts that break the internet. Marvel, DC, Star Wars, Warhammer 40k, anime, games — the wildest, most visually spectacular mashups imaginable. Avoid overused characters. Return ONLY the requested format.',
   enhance:
-    'Enhance the given prompt for cinematic visual impact and specificity. Return ONLY the enhanced prompt as a single string.',
+    'You are an elite prompt enhancer. Transform the input into the most visually stunning, cinematic prompt possible. Maximize drama, detail, and visual impact. Return ONLY the enhanced prompt.',
   caption:
-    'You are a social-media caption writer. Return ONLY a valid JSON object matching the requested schema.',
+    'You are a viral social-media copywriter. Captions that stop thumbs and drive engagement. Return ONLY valid JSON.',
   tag:
-    'You are a tag generator. Return ONLY a JSON array of short tag strings.',
+    'You are a hashtag and tag strategist for maximum reach. Return ONLY a JSON array of tag strings.',
   'negative-prompt':
-    'You are a negative-prompt generator for AI image generation. Return ONLY the negative prompt text, nothing else.',
+    'Generate the most effective negative prompt to eliminate visual artifacts and low-quality output. Return ONLY the negative prompt text.',
   'collection-info':
-    'You are a collection-info generator. Return ONLY a valid JSON object matching the requested schema.',
+    'Generate rich collection metadata. Return ONLY valid JSON.',
 };
 
 function directiveFor(mode: unknown): string | null {

@@ -10,8 +10,6 @@ import {
   type WatermarkSettings,
   LEONARDO_MODELS,
   getLeonardoDimensions,
-  RECOMMENDED_NICHES,
-  RECOMMENDED_GENRES,
 } from '../types/mashup';
 
 function getModelName(id: string): string {
@@ -203,23 +201,13 @@ Keep it under 100 words. Return ONLY the negative prompt text, nothing else.`,
         }
       };
 
-      const systemContext = `${settings.agentPrompt || 'You are a Master Content Creator.'}
-      Active Niches: ${settings.agentNiches?.join(', ') || 'None'}.
-      Active Genres: ${settings.agentGenres?.join(', ') || 'None'}.
-      Recommended Niches: ${RECOMMENDED_NICHES.join(', ')}.
-      Recommended Genres: ${RECOMMENDED_GENRES.join(', ')}.
-
-      INTELLIGENT SELECTION:
-      1. For each prompt, choose the most fitting Niches and Genres from the ACTIVE lists.
-      2. If a RECOMMENDED (but inactive) tag is significantly better for the specific prompt, you may pick it.
-      3. Smartly select the most appropriate aspect ratio (e.g., "16:9", "9:16", "1:1", "4:3", "3:4").
-      4. Generate a set of fitting tags for the gallery (characters, universe, themes).
-
-      CRITICAL: Use Google Search to research current social media trends, popular crossover memes, and viral "what if" scenarios for Star Wars, Marvel, DC, and Warhammer 40k. Base your ideas on these real-world trends.
-      Focus heavily on alternative universes, different timelines, and epic crossovers.
-      Ensure the prompts are safe and do not contain restricted content.
-
-      DIVERSITY MANDATE: You MUST generate highly diverse ideas. Do NOT repeat the same characters, themes, or scenarios across the prompts. Ensure a wide variety of characters from the mentioned franchises are used. Do not get stuck on a single character (like Dr. Doom, Darth Vader, Batman, etc.). Each prompt must feature completely different primary characters and settings.`;
+      // Single source of truth: settings.agentPrompt carries diversity
+      // rules, art direction, and universe-blending guidance. Niches +
+      // genres are appended as live context so the active tag chips in
+      // Settings still shape each batch.
+      const systemContext = `${settings.agentPrompt || 'You are an elite AI art director.'}
+Active Niches: ${settings.agentNiches?.join(', ') || 'All'}
+Active Genres: ${settings.agentGenres?.join(', ') || 'All'}`;
 
       if (options?.skipEnhance && customPrompts) {
         itemsToGenerate = customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio }));

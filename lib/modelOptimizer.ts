@@ -63,26 +63,31 @@ export async function enhancePromptForModel(
 
   try {
     const result = await streamAIToString(
-      `You are an expert AI image prompt engineer. Optimize this prompt for the best result with this specific model.
+      `You are the world's best AI image prompt engineer. Your job: take this prompt and make it UNSTOPPABLE for this specific model.
 
-MODEL: ${getModelName(modelId)}
-MODEL STRENGTHS: ${guide}
+TARGET MODEL: ${getModelName(modelId)}
+MODEL CAPABILITIES: ${guide}
 
-SUPPORTED PARAMETERS:
+AVAILABLE PARAMETERS:
 - Aspect ratios: ${supportedRatios}
 - Art styles: ${supportedStyles}
-- Negative prompts: ${supportsNegPrompt ? 'Effective' : 'Not supported — do not include'}
+- Negative prompts: ${supportsNegPrompt ? 'YES — use aggressively' : 'NO — do not include'}
 
 ORIGINAL PROMPT: "${basePrompt}"
-${options?.style ? `USER SELECTED STYLE: ${options.style}` : ''}
-${options?.aspectRatio ? `USER SELECTED RATIO: ${options.aspectRatio}` : ''}
-${options?.negativePrompt ? `USER NEGATIVE PROMPT: ${options.negativePrompt}` : ''}
+${options?.style ? `HINT — user prefers style: ${options.style}` : ''}
+${options?.aspectRatio ? `HINT — user prefers ratio: ${options.aspectRatio}` : ''}
+${options?.negativePrompt ? `HINT — user negative prompt: ${options.negativePrompt}` : ''}
 
-Return ONLY a JSON object with:
-- "prompt": the rewritten prompt optimized for this model
-- "style": the best art style from the supported list (or null if none fits)
-- "aspectRatio": the best aspect ratio from the supported list based on the scene composition
-- "negativePrompt": a smart negative prompt${supportsNegPrompt ? '' : ' (MUST be null for this model)'}`,
+REWRITE THE PROMPT to absolutely maximize visual impact for this model. Then pick the perfect parameters.
+
+RULES:
+- The prompt must be jaw-dropping. Add cinematic detail, dramatic atmosphere, rich textures.
+- Pick the aspect ratio that makes the scene most impactful (wide landscapes = 16:9, portraits = 9:16, etc.)
+- Pick the art style from the supported list that elevates the concept furthest.
+- If negative prompts are supported, write one that eliminates ALL quality issues.
+
+Return ONLY a JSON object:
+{ "prompt": "...", "style": "...", "aspectRatio": "...", "negativePrompt": "..." }`,
       { mode: 'enhance' }
     );
 
