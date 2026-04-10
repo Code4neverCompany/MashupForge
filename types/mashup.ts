@@ -120,7 +120,22 @@ export interface UserSettings {
   scheduledPosts?: ScheduledPost[];
 }
 
-export type ViewType = 'studio' | 'gallery' | 'compare' | 'captioning' | 'post-ready' | 'ideas';
+export type ViewType = 'studio' | 'gallery' | 'compare' | 'captioning' | 'post-ready' | 'ideas' | 'pipeline';
+
+export interface PipelineLogEntry {
+  timestamp: Date;
+  step: string;
+  ideaId: string;
+  status: 'success' | 'error';
+  message: string;
+}
+
+export interface PipelineProgress {
+  current: number;
+  total: number;
+  currentStep: string;
+  currentIdea: string;
+}
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -321,4 +336,14 @@ export interface MashupContextType {
   clearIdeas: () => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  pipelineEnabled: boolean;
+  pipelineRunning: boolean;
+  pipelineQueue: Idea[];
+  pipelineProgress: PipelineProgress | null;
+  pipelineLog: PipelineLogEntry[];
+  pipelineDelay: number;
+  setPipelineDelay: (delay: number) => void;
+  togglePipeline: () => void;
+  startPipeline: () => void;
+  stopPipeline: () => void;
 }

@@ -14,6 +14,8 @@ export {
   type UserSettings,
   type ViewType,
   type MashupContextType,
+  type PipelineLogEntry,
+  type PipelineProgress,
   GEMINI_MODELS,
   PAID_MODELS,
   RECOMMENDED_NICHES,
@@ -37,6 +39,7 @@ import { useImageGeneration, applyWatermark } from '../hooks/useImageGeneration'
 import { useComparison } from '../hooks/useComparison';
 import { useIdeas } from '../hooks/useIdeas';
 import { useSocial } from '../hooks/useSocial';
+import { usePipeline } from '../hooks/usePipeline';
 
 const MashupContext = createContext<MashupContextType | null>(null);
 
@@ -112,6 +115,17 @@ export function MashupProvider({ children }: { children: ReactNode }) {
   const socialHook = useSocial({ settings, saveImage, setImages });
   const { generatePostContent } = socialHook;
 
+  const pipelineHook = usePipeline({
+    ideas,
+    settings,
+    updateSettings,
+    updateIdeaStatus,
+    generateImages,
+    generatePostContent,
+    savedImages,
+    images,
+  });
+
   // Compose loading state
   const isLoaded = isSettingsLoaded && isImagesLoaded && isCollectionsLoaded && ideasHook.isIdeasLoaded;
 
@@ -186,6 +200,16 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     clearIdeas,
     isSidebarOpen,
     setIsSidebarOpen,
+    pipelineEnabled: pipelineHook.pipelineEnabled,
+    pipelineRunning: pipelineHook.pipelineRunning,
+    pipelineQueue: pipelineHook.pipelineQueue,
+    pipelineProgress: pipelineHook.pipelineProgress,
+    pipelineLog: pipelineHook.pipelineLog,
+    pipelineDelay: pipelineHook.pipelineDelay,
+    setPipelineDelay: pipelineHook.setPipelineDelay,
+    togglePipeline: pipelineHook.togglePipeline,
+    startPipeline: pipelineHook.startPipeline,
+    stopPipeline: pipelineHook.stopPipeline,
   };
 
   return (

@@ -45,10 +45,10 @@ import {
   Grid,
   Menu
 } from 'lucide-react';
-import { 
-  useMashup, 
-  GeneratedImage, 
-  GEMINI_MODELS, 
+import {
+  useMashup,
+  GeneratedImage,
+  GEMINI_MODELS,
   LEONARDO_MODELS,
   LEONARDO_STYLES,
   Collection,
@@ -60,6 +60,7 @@ import {
   ASPECT_RATIOS,
   IMAGE_SIZES
 } from './MashupContext';
+import { PipelinePanel } from './PipelinePanel';
 
 export function MainContent() {
   const { 
@@ -702,6 +703,13 @@ export function MainContent() {
               <Save className="w-4 h-4 hidden sm:block" />
               Post Ready
             </button>
+            <button
+              onClick={() => setView('pipeline')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'pipeline' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+            >
+              <Zap className="w-4 h-4 hidden sm:block" />
+              Pipeline
+            </button>
           </div>
 
           <button
@@ -1290,6 +1298,7 @@ export function MainContent() {
 
               {view === 'captioning' && <CaptioningView setView={setView} />}
               {view === 'post-ready' && <PostReadyView />}
+              {view === 'pipeline' && <PipelinePanel />}
 
               {(view === 'studio' || view === 'gallery') && (
                 displayedImages.length === 0 && !isGenerating ? (
