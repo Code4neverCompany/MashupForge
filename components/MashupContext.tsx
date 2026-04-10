@@ -38,7 +38,7 @@ import { useComparison } from '../hooks/useComparison';
 import { useIdeas } from '../hooks/useIdeas';
 import { useSocial } from '../hooks/useSocial';
 import { usePipeline } from '../hooks/usePipeline';
-import { setClientAIModel } from '../lib/aiClient';
+import { setClientSystemPrompt } from '../lib/aiClient';
 
 const MashupContext = createContext<MashupContextType | null>(null);
 
@@ -56,12 +56,11 @@ export function MashupProvider({ children }: { children: ReactNode }) {
   // Core hooks — order matters for dependencies
   const { settings, updateSettings, isSettingsLoaded } = useSettings();
 
-  // Mirror the user's selected AI provider/model into the streamAI client
-  // so every fetch to /api/ai/* automatically forwards the preference to
-  // the Hermes bridge.
+  // Mirror the user's custom system prompt into the streamAI client so
+  // every /api/pi/prompt call layers it on top of the mode directive.
   useEffect(() => {
-    setClientAIModel(settings.aiProvider, settings.aiModel);
-  }, [settings.aiProvider, settings.aiModel]);
+    setClientSystemPrompt(settings.aiSystemPrompt);
+  }, [settings.aiSystemPrompt]);
   const imagesHook = useImages();
   const {
     savedImages,

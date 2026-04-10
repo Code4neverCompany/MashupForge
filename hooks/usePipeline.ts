@@ -100,18 +100,15 @@ You are given a content idea concept. Expand it into a single, highly detailed i
 The prompt should be vivid, specific, and optimized for AI image generation.
 Return ONLY the prompt text, nothing else.`;
 
-    const text = await streamAIToString('/api/ai/generate', {
-      model: 'gemini-3-flash-preview',
-      contents: `${systemContext}
+    const text = await streamAIToString(
+      `${systemContext}
 
 Idea concept: ${idea.concept}
 ${idea.context ? `Additional context: ${idea.context}` : ''}
 
 Generate a single detailed image prompt for this idea.`,
-      config: {
-        temperature: 1.0,
-      },
-    });
+      { mode: 'enhance' }
+    );
 
     return text.trim() || idea.concept;
   }, [settings]);

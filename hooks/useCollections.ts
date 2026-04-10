@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { get, set } from 'idb-keyval';
 import { type Collection, type GeneratedImage, type UserSettings } from '../types/mashup';
+import { streamAIToString } from '@/lib/aiClient';
 
 export function useCollections(settings: UserSettings) {
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -41,14 +42,14 @@ export function useCollections(settings: UserSettings) {
         ).join('\n');
       }
 
-      const res = await fetch('/api/ai/collection-info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ context }),
-      });
-
-      if (!res.ok) throw new Error('Failed to generate collection info');
-      const data = await res.json();
+      const text = await streamAIToString(
+        `Based on these sample images/prompt: "${context}"
+Generate a creative collection name (short, catchy) and a brief description (1-2 sentences).
+Return a JSON object with "name" and "description" keys.`,
+        { mode: 'collection-info' }
+      );
+      const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const data = JSON.parse(cleaned || '{}');
       return {
         name: data.name || 'New Collection',
         description: data.description || 'A collection of amazing mashups.'

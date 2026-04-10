@@ -104,10 +104,11 @@ export interface UserSettings {
     discordWebhook?: string;
   };
   defaultLeonardoModel: string;
-  /** Hermes bridge provider (zai, google, anthropic, groq, openai, ...) */
-  aiProvider?: string;
-  /** Hermes bridge model id within the chosen provider (e.g. 'glm-5.1'). */
-  aiModel?: string;
+  /**
+   * User-authored system prompt appended to every pi request. Layered on
+   * top of the built-in mode directive. Leave blank to use defaults.
+   */
+  aiSystemPrompt?: string;
   defaultVideoModel?: string;
   defaultAnimationDuration?: 3 | 5 | 10;
   defaultAnimationStyle?: string;

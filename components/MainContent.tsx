@@ -141,31 +141,82 @@ export function MainContent() {
   const [isAutoSelecting, setIsAutoSelecting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   // Track which image is currently having its caption generated so we can
-  // show a per-card spinner while the non-streaming /api/ai/caption call
-  // runs. Keyed by image id.
+  // show a per-card spinner while the pi caption request runs. Keyed by
+  // image id.
   const [preparingPostId, setPreparingPostId] = useState<string | null>(null);
 
-  // Hermes bridge model catalog, populated once on mount from GET /models.
-  // Shape: { [provider: string]: Array<{ id: string; name: string }> }
-  const [aiCatalog, setAiCatalog] = useState<Record<string, Array<{ id: string; name: string }>>>({});
-  const [aiCatalogError, setAiCatalogError] = useState<string | null>(null);
+  // Pi.dev runtime status, polled when the Settings panel is open.
+  interface PiStatus {
+    installed: boolean;
+    authenticated: boolean;
+    running: boolean;
+    provider: string | null;
+    model: string | null;
+    modelsAvailable: number;
+    lastError: string | null;
+  }
+  const [piStatus, setPiStatus] = useState<PiStatus | null>(null);
+  const [piBusy, setPiBusy] = useState<null | 'install' | 'start' | 'stop'>(null);
+  const [piError, setPiError] = useState<string | null>(null);
+
+  const refreshPiStatus = async () => {
+    try {
+      const res = await fetch('/api/pi/status');
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const data = await res.json();
+      setPiStatus(data);
+    } catch (err: any) {
+      setPiError(err?.message || 'Failed to fetch pi status');
+    }
+  };
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/ai/models');
-        if (!res.ok) throw new Error(`status ${res.status}`);
-        const data = await res.json();
-        if (!cancelled) setAiCatalog(data.models || {});
-      } catch (err: any) {
-        if (!cancelled) setAiCatalogError(err?.message || 'Failed to load AI models');
+    if (showSettings) refreshPiStatus();
+  }, [showSettings]);
+
+  const handlePiInstall = async () => {
+    setPiBusy('install');
+    setPiError(null);
+    try {
+      const res = await fetch('/api/pi/install', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || data.success === false) {
+        setPiError(data.stderr || data.error || 'Install failed');
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      await refreshPiStatus();
+    } finally {
+      setPiBusy(null);
+    }
+  };
+
+  const handlePiStart = async () => {
+    setPiBusy('start');
+    setPiError(null);
+    try {
+      const res = await fetch('/api/pi/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ systemPrompt: settings.aiSystemPrompt || '' }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.success === false) {
+        setPiError(data.error || 'Start failed');
+      }
+      await refreshPiStatus();
+    } finally {
+      setPiBusy(null);
+    }
+  };
+
+  const handlePiStop = async () => {
+    setPiBusy('stop');
+    try {
+      await fetch('/api/pi/stop', { method: 'POST' });
+      await refreshPiStatus();
+    } finally {
+      setPiBusy(null);
+    }
+  };
 
   const PREDEFINED_PROMPTS = [
     "Darth Vader as a Space Marine in the Warhammer 40k universe, grimdark style",
@@ -178,15 +229,10 @@ export function MainContent() {
   const handleGenerateIdea = async () => {
     setIsGeneratingIdea(true);
     try {
-      const text = await streamAIToString('/api/ai/generate', {
-        model: 'gemini-3-flash-preview',
-        contents: `You are a Master Content Creator. Generate a highly creative, peak, and up-to-date crossover mashup idea. You MUST strictly limit the content to ONLY these franchises: Star Wars, Marvel, DC, and Warhammer 40k. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers between these specific franchises. Incorporate trending concepts or recent news from these franchises by searching the web for the latest trends, movies, or rumors. Make it highly detailed, cinematic, and unique. CRITICAL DIVERSITY MANDATE: You must generate a completely random and diverse idea. Do NOT use common or overused characters like Dr. Doom, Darth Vader, or Batman. Dig deep into the lore of these franchises to find unique character combinations and unexpected scenarios. Return ONLY the idea as a single string. Random Seed: ${Math.random()}`,
-        config: {
-          tools: [{ googleSearch: {} }],
-          toolConfig: { includeServerSideToolInvocations: true },
-          temperature: 1.2,
-        },
-      });
+      const text = await streamAIToString(
+        `Generate a highly creative, peak, up-to-date crossover mashup idea strictly limited to these franchises: Star Wars, Marvel, DC, and Warhammer 40k. Focus on "what if" scenarios, alternative universes, different timelines, and epic crossovers. Make it highly detailed, cinematic, and unique. CRITICAL DIVERSITY MANDATE: completely random and diverse. Do NOT use common or overused characters like Dr. Doom, Darth Vader, or Batman. Dig deep into franchise lore. Return ONLY the idea as a single string. Random Seed: ${Math.random()}`,
+        { mode: 'idea' }
+      );
       const newIdea = text.trim();
       setComparisonPrompt(newIdea);
       if (newIdea) {
@@ -202,9 +248,8 @@ export function MainContent() {
   const autoSelectParameters = async (mashupIdea: string) => {
     setIsAutoSelecting(true);
     try {
-      const text = await streamAIToString('/api/ai/generate', {
-        model: 'gemini-3-flash-preview',
-        contents: `Analyze this mashup idea: "${mashupIdea}".
+      const text = await streamAIToString(
+        `Analyze this mashup idea: "${mashupIdea}".
         First, identify the core mood (e.g., dark, whimsical, tense, romantic) and genre (e.g., cyberpunk, high fantasy, noir) implied by the idea.
         Then, SMARTLY select the most appropriate parameters that specifically enhance this mood and genre, rather than just defaulting to generic cinematic qualities.
         Select the best Art Style from: ${ART_STYLES.join(', ')}.
@@ -218,10 +263,8 @@ export function MainContent() {
         - Otherwise, select "1:1" or another appropriate ratio.
 
         Return ONLY a JSON object with keys: style, lighting, angle, aspectRatio.`,
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
+        { mode: 'generate' }
+      );
       const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const params = JSON.parse(cleaned || '{}');
       setComparisonOptions(prev => ({
@@ -243,9 +286,8 @@ export function MainContent() {
     setIsPushing(true);
     setView('compare');
     try {
-      const text = await streamAIToString('/api/ai/generate', {
-        model: 'gemini-3.1-pro-preview',
-        contents: `Analyze and enhance this generation prompt: "${prompt}".
+      const text = await streamAIToString(
+        `Analyze and enhance this generation prompt: "${prompt}".
         Provide an improved, highly detailed cinematic prompt.
         Also provide a fitting negative prompt (e.g., ugly, blurry, poorly drawn).
         Smartly detect and provide the best fitting parameters for this specific scene:
@@ -268,22 +310,8 @@ export function MainContent() {
         - "angle": string
         - "aspectRatio": string
         - "imageSize": string`,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: 'OBJECT',
-            properties: {
-              enhancedPrompt: { type: 'STRING' },
-              negativePrompt: { type: 'STRING' },
-              style: { type: 'STRING' },
-              lighting: { type: 'STRING' },
-              angle: { type: 'STRING' },
-              aspectRatio: { type: 'STRING' },
-              imageSize: { type: 'STRING' }
-            }
-          }
-        },
-      });
+        { mode: 'enhance' }
+      );
       const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const data = JSON.parse(cleaned || '{}');
       
@@ -500,18 +528,15 @@ export function MainContent() {
 
       // Dynamically determine best duration and style
       try {
-        const dynamicText = await streamAIToString('/api/ai/generate', {
-          model: 'gemini-3.1-pro-preview',
-          contents: `Analyze this image prompt: "${img.prompt}".
+        const dynamicText = await streamAIToString(
+          `Analyze this image prompt: "${img.prompt}".
         Determine the best video animation duration (3, 5, or 10 seconds) and the best animation style (Standard, Cinematic, Dynamic, Slow Motion, Fast Motion).
         - Use 3 or 5 seconds for simple actions or portraits.
         - Use 10 seconds for complex scenes, epic landscapes, or slow-motion.
         - Choose a style that fits the mood (e.g., Cinematic for epic scenes, Dynamic for action, Slow Motion for dramatic moments).
         Return ONLY a JSON object with keys "duration" (number) and "style" (string).`,
-          config: {
-            responseMimeType: 'application/json',
-          },
-        });
+          { mode: 'generate' }
+        );
         const cleaned = dynamicText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const dynamicSettings = JSON.parse(cleaned || '{}');
         if (dynamicSettings.duration && [3, 5, 10].includes(dynamicSettings.duration)) {
@@ -532,10 +557,10 @@ export function MainContent() {
 
       let videoPrompt = style === 'Standard' ? img.prompt : `${img.prompt}. Motion style: ${style}`;
       try {
-        const enhanced = await streamAIToString('/api/ai/generate', {
-          model: 'gemini-3-flash-preview',
-          contents: `${settings.agentPrompt || 'You are a Master Content Creator.'} The user wants to animate an image based on this prompt: "${img.prompt}". Enhance this prompt for a video animation. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers for Star Wars, Marvel, DC, and Warhammer 40k. Motion style: ${style}. Return ONLY the enhanced animation prompt as a single string.`,
-        });
+        const enhanced = await streamAIToString(
+          `The user wants to animate an image based on this prompt: "${img.prompt}". Enhance this prompt for a video animation. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers for Star Wars, Marvel, DC, and Warhammer 40k. Motion style: ${style}. Return ONLY the enhanced animation prompt as a single string.`,
+          { mode: 'enhance' }
+        );
         if (enhanced.trim()) videoPrompt = enhanced.trim();
       } catch (e) {
         console.error('Failed to enhance video prompt, using fallback', e);
@@ -602,13 +627,13 @@ export function MainContent() {
           const ensureTags = async (prompt: string, existingTags?: string[]) => {
             if (existingTags && existingTags.length > 0) return existingTags;
             try {
-              const tagRes = await fetch('/api/ai/tag', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt })
-              });
-              const tagData = await tagRes.json();
-              return tagData.tags || ['Mashup'];
+              const text = await streamAIToString(
+                `Analyze this image prompt: "${prompt}". Generate 5-8 fitting tags (universe, character, style, theme). Return ONLY a JSON array of strings.`,
+                { mode: 'tag' }
+              );
+              const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+              const parsed = JSON.parse(cleaned);
+              return Array.isArray(parsed) ? parsed : (parsed?.tags || ['Mashup']);
             } catch (e) {
               console.error('Failed to auto-tag during generation', e);
               return ['Mashup'];
@@ -2010,56 +2035,113 @@ export function MainContent() {
                 </div>
               </div>
 
-              {/* AI Text Model (Hermes bridge → pi-ai) */}
+              {/* Pi.dev — the AI engine for chat, ideas, captions, tags */}
               <div className="space-y-4 pt-4 border-t border-zinc-800">
-                <h4 className="text-lg font-medium text-white mb-2">AI Text Model</h4>
+                <h4 className="text-lg font-medium text-white mb-2">Pi.dev AI Engine</h4>
                 <p className="text-[11px] text-zinc-500 -mt-2">
-                  Provider + model for chat, idea generation, and prompt enhancement.
-                  Leave blank to use the bridge defaults (zai/glm-4.5-flash for chat,
-                  zai/glm-5.1 for generate).
+                  All text AI runs through <code>pi</code> as a subprocess.
+                  Configure provider/model + API keys in your terminal:{' '}
+                  <code className="text-zinc-300">pi config</code>.
                 </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Provider</label>
-                    <select
-                      value={settings.aiProvider || ''}
-                      onChange={(e) => {
-                        const next = e.target.value || undefined;
-                        // Reset the model when switching provider since
-                        // model ids are provider-scoped.
-                        updateSettings({ aiProvider: next, aiModel: undefined });
-                      }}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                    >
-                      <option value="">(default)</option>
-                      {Object.keys(aiCatalog).sort().map((p) => (
-                        <option key={p} value={p}>{p}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Model</label>
-                    <select
-                      value={settings.aiModel || ''}
-                      onChange={(e) => updateSettings({ aiModel: e.target.value || undefined })}
-                      disabled={!settings.aiProvider}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:opacity-50"
-                    >
-                      <option value="">(default)</option>
-                      {settings.aiProvider && (aiCatalog[settings.aiProvider] || []).map((m) => (
-                        <option key={m.id} value={m.id}>{m.name || m.id}</option>
-                      ))}
-                    </select>
-                  </div>
+                {/* Status row */}
+                <div className="flex items-center gap-3">
+                  {(() => {
+                    const s = piStatus;
+                    let label = 'Checking…';
+                    let color = 'bg-zinc-700';
+                    if (s) {
+                      if (!s.installed) { label = 'Not Installed'; color = 'bg-red-600'; }
+                      else if (!s.authenticated) { label = 'Not Authenticated'; color = 'bg-amber-600'; }
+                      else if (s.running) { label = 'Running'; color = 'bg-emerald-600'; }
+                      else { label = 'Ready'; color = 'bg-indigo-600'; }
+                    }
+                    return (
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium text-white ${color}`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
+                        {label}
+                      </span>
+                    );
+                  })()}
+                  {piStatus?.provider && piStatus?.model && (
+                    <span className="text-[11px] text-zinc-400">
+                      {piStatus.provider}/{piStatus.model}
+                    </span>
+                  )}
+                  {piStatus && piStatus.modelsAvailable > 0 && (
+                    <span className="text-[11px] text-zinc-500">
+                      {piStatus.modelsAvailable} models available
+                    </span>
+                  )}
                 </div>
 
-                {aiCatalogError && (
-                  <p className="text-[11px] text-red-400">
-                    Failed to load model list: {aiCatalogError}. Bridge may be down — defaults will still work.
+                {/* Action buttons */}
+                <div className="flex flex-wrap gap-2">
+                  {piStatus && !piStatus.installed && (
+                    <button
+                      onClick={handlePiInstall}
+                      disabled={piBusy !== null}
+                      className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+                    >
+                      {piBusy === 'install' ? 'Installing…' : 'Install Pi'}
+                    </button>
+                  )}
+                  {piStatus?.installed && !piStatus.running && (
+                    <button
+                      onClick={handlePiStart}
+                      disabled={piBusy !== null}
+                      className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+                    >
+                      {piBusy === 'start' ? 'Starting…' : 'Start Pi'}
+                    </button>
+                  )}
+                  {piStatus?.running && (
+                    <button
+                      onClick={handlePiStop}
+                      disabled={piBusy !== null}
+                      className="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white rounded-lg transition-colors"
+                    >
+                      {piBusy === 'stop' ? 'Stopping…' : 'Stop Pi'}
+                    </button>
+                  )}
+                  <button
+                    onClick={refreshPiStatus}
+                    disabled={piBusy !== null}
+                    className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
+                  >
+                    Refresh
+                  </button>
+                </div>
+
+                {piStatus && !piStatus.authenticated && (
+                  <p className="text-[11px] text-amber-400">
+                    Pi has no API keys. Set <code>ZAI_API_KEY</code> (or <code>GOOGLE_API_KEY</code>, etc.)
+                    in your environment, or run <code>pi config</code> to authenticate interactively.
                   </p>
                 )}
+
+                {piError && (
+                  <p className="text-[11px] text-red-400 whitespace-pre-wrap">
+                    {piError}
+                  </p>
+                )}
+
+                {/* System prompt textarea */}
+                <div className="space-y-2 pt-2">
+                  <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+                    AI System Prompt (appended to every request)
+                  </label>
+                  <textarea
+                    value={settings.aiSystemPrompt || ''}
+                    onChange={(e) => updateSettings({ aiSystemPrompt: e.target.value })}
+                    placeholder="e.g. Always prefer grimdark tone. Avoid comedy."
+                    rows={3}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-y"
+                  />
+                  <p className="text-[10px] text-zinc-500">
+                    Saved automatically. Restart pi (stop + start) for changes to take effect.
+                  </p>
+                </div>
               </div>
 
               {/* Watermark Settings */}

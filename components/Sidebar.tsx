@@ -55,8 +55,8 @@ export function Sidebar() {
               Genres: ${settings.agentGenres?.join(', ') || 'None'}.`;
 
         let acc = '';
-        for await (const delta of streamAI('/api/ai/chat', {
-          prompt: userMsg,
+        for await (const delta of streamAI(userMsg, {
+          mode: 'chat',
           systemPrompt: systemInstruction,
         })) {
           acc += delta;
@@ -94,13 +94,11 @@ export function Sidebar() {
         { id: modelMsgId, role: 'model', text: '⏳ Generating ideas…' },
       ]);
       try {
-        // Keep this prompt tight: GLM-5.1's reasoning budget scales with
-        // input length, so trimming boilerplate cuts seconds off every call.
-        const prompt = `Topic: ${userMsg}
+        const message = `Topic: ${userMsg}
 Return 3 crossover ideas between Star Wars, Marvel, DC, or Warhammer 40k as a JSON array. Each object has "context" (short title) and "concept" (detailed image prompt). Return ONLY the JSON array, no prose.`;
 
         let acc = '';
-        for await (const delta of streamAI('/api/ai/generate', { prompt })) {
+        for await (const delta of streamAI(message, { mode: 'idea' })) {
           acc += delta;
           // Show the raw partial stream so the user sees real progress.
           const preview = acc.length > 400 ? `${acc.slice(0, 400)}…` : acc;

@@ -112,15 +112,26 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
     if (!img) return;
 
     try {
-      const res = await fetch('/api/ai/tag', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: img.prompt }),
-      });
-
-      if (!res.ok) throw new Error('Tag request failed');
-      const data = await res.json();
-      let tags = data.tags || [];
+      const text = await streamAIToString(
+        `Analyze this image prompt: "${img.prompt}".
+Generate a set of 5-8 fitting tags for a gallery. Include:
+- Universe/Franchise (e.g., "Warhammer 40k", "Star Wars", "Marvel")
+- Character names
+- Style (e.g., "Cinematic", "Cyberpunk", "Grimdark")
+- Themes (e.g., "Battle", "Portrait", "Landscape")
+Return ONLY a JSON array of strings, nothing else.`,
+        { mode: 'tag' }
+      );
+      const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      let tags: any = [];
+      try {
+        tags = JSON.parse(cleaned);
+        if (!Array.isArray(tags) && typeof tags === 'object') {
+          tags = tags.tags || Object.values(tags).flat();
+        }
+      } catch {
+        tags = ['Mashup'];
+      }
       if (Array.isArray(tags)) {
         tags = tags.map((t: string) => t === 'Warhammer 40,000' ? 'Warhammer 40k' : t);
         updateImageTags(id, tags);
@@ -136,14 +147,14 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
 
   const generateNegativePrompt = async (idea: string) => {
     try {
-      const res = await fetch('/api/ai/negative-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idea }),
-      });
-      if (!res.ok) return '';
-      const data = await res.json();
-      return data.negativePrompt || '';
+      const text = await streamAIToString(
+        `Given this image generation idea: "${idea}"
+Generate a concise negative prompt that would help avoid common issues in AI image generation.
+Focus on: blurry, low quality, deformed, extra limbs, bad anatomy, watermark, text overlay.
+Keep it under 100 words. Return ONLY the negative prompt text, nothing else.`,
+        { mode: 'negative-prompt' }
+      );
+      return text.trim();
     } catch (e) {
       console.error('Failed to generate negative prompt', e);
       return '';
@@ -180,14 +191,13 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
       const ensureTags = async (prompt: string, existingTags?: string[]) => {
         if (existingTags && existingTags.length > 0) return existingTags;
         try {
-          const tagRes = await fetch('/api/ai/tag', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt }),
-          });
-          if (!tagRes.ok) return ['Mashup'];
-          const tagData = await tagRes.json();
-          return tagData.tags || ['Mashup'];
+          const text = await streamAIToString(
+            `Analyze this image prompt: "${prompt}". Generate 5-8 fitting tags (universe, character, style, theme). Return ONLY a JSON array of strings.`,
+            { mode: 'tag' }
+          );
+          const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          const parsed = JSON.parse(cleaned);
+          return Array.isArray(parsed) ? parsed : (parsed?.tags || ['Mashup']);
         } catch (e) {
           console.error('Failed to auto-tag during generation', e);
           return ['Mashup'];
@@ -215,20 +225,22 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
       if (options?.skipEnhance && customPrompts) {
         itemsToGenerate = customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio }));
       } else if (!customPrompts || customPrompts.length === 0) {
-        const promptText = await streamAIToString('/api/ai/chat', {
-          systemPrompt: systemContext,
-          prompt: `Generate 4 completely distinct, highly detailed image generation prompts.
-          Ensure maximum variety in characters, franchises, and settings. Do NOT repeat characters.
-          Return ONLY a JSON array of 4 objects, each with:
-          - "prompt": string
-          - "aspectRatio": string
-          - "tags": array of strings
-          - "selectedNiches": array of strings
-          - "selectedGenres": array of strings
-          - "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)
+        const promptText = await streamAIToString(
+          `${systemContext}
 
-          Random Seed: ${Math.random()}`,
-        });
+Generate 4 completely distinct, highly detailed image generation prompts.
+Ensure maximum variety in characters, franchises, and settings. Do NOT repeat characters.
+Return ONLY a JSON array of 4 objects, each with:
+- "prompt": string
+- "aspectRatio": string
+- "tags": array of strings
+- "selectedNiches": array of strings
+- "selectedGenres": array of strings
+- "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)
+
+Random Seed: ${Math.random()}`,
+          { mode: 'idea' }
+        );
 
         try {
           const cleaned = promptText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -249,18 +261,20 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
 
         itemsToGenerate = itemsToGenerate.slice(0, 4);
       } else {
-        const promptText2 = await streamAIToString('/api/ai/chat', {
-          systemPrompt: systemContext,
-          prompt: `The user wants to generate images based on these ideas: ${JSON.stringify(customPrompts)}.
-          Enhance these ideas into highly detailed, cinematic image generation prompts.
-          Return ONLY a JSON array of objects, each with:
-          - "prompt": string
-          - "aspectRatio": string
-          - "tags": array of strings
-          - "selectedNiches": array of strings
-          - "selectedGenres": array of strings
-          - "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)`,
-        });
+        const promptText2 = await streamAIToString(
+          `${systemContext}
+
+The user wants to generate images based on these ideas: ${JSON.stringify(customPrompts)}.
+Enhance these ideas into highly detailed, cinematic image generation prompts.
+Return ONLY a JSON array of objects, each with:
+- "prompt": string
+- "aspectRatio": string
+- "tags": array of strings
+- "selectedNiches": array of strings
+- "selectedGenres": array of strings
+- "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)`,
+          { mode: 'idea' }
+        );
 
         try {
           const cleaned = promptText2.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -392,14 +406,13 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
       const ensureTags = async (prompt: string, existingTags?: string[]) => {
         if (existingTags && existingTags.length > 0) return existingTags;
         try {
-          const tagRes = await fetch('/api/ai/tag', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt }),
-          });
-          if (!tagRes.ok) return ['Mashup'];
-          const tagData = await tagRes.json();
-          return tagData.tags || ['Mashup'];
+          const text = await streamAIToString(
+            `Analyze this image prompt: "${prompt}". Generate 5-8 fitting tags (universe, character, style, theme). Return ONLY a JSON array of strings.`,
+            { mode: 'tag' }
+          );
+          const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          const parsed = JSON.parse(cleaned);
+          return Array.isArray(parsed) ? parsed : (parsed?.tags || ['Mashup']);
         } catch (e) {
           console.error('Failed to auto-tag during generation', e);
           return ['Mashup'];
@@ -408,12 +421,12 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
 
       let enhancedPrompt = prompt;
       try {
-        enhancedPrompt = await streamAIToString('/api/ai/chat', {
-          systemPrompt: settings.agentPrompt || 'You are a Master Content Creator.',
-          prompt: `Platform Niches: ${settings.agentNiches?.join(', ') || 'None'}.
-        Target Genres: ${settings.agentGenres?.join(', ') || 'None'}.
-        The user wants to re-roll an image based on this idea: "${prompt}". Enhance this idea into a highly detailed, cinematic image generation prompt. You MUST strictly limit the content to ONLY these franchises: Star Wars, Marvel, DC, and Warhammer 40k. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers. Return ONLY the enhanced prompt as a single string.`,
-        });
+        enhancedPrompt = await streamAIToString(
+          `Platform Niches: ${settings.agentNiches?.join(', ') || 'None'}.
+Target Genres: ${settings.agentGenres?.join(', ') || 'None'}.
+The user wants to re-roll an image based on this idea: "${prompt}". Enhance this idea into a highly detailed, cinematic image generation prompt. You MUST strictly limit the content to ONLY these franchises: Star Wars, Marvel, DC, and Warhammer 40k. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers. Return ONLY the enhanced prompt as a single string.`,
+          { mode: 'enhance' }
+        );
       } catch (e) {
         console.error('Reroll prompt enhancement failed, using original prompt', e);
       }

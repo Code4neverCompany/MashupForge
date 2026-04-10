@@ -1,6 +1,7 @@
 'use client';
 
 import { type GeneratedImage, type UserSettings } from '../types/mashup';
+import { streamAIToString } from '@/lib/aiClient';
 
 interface UseSocialDeps {
   settings: UserSettings;
@@ -12,28 +13,38 @@ export function useSocial({ settings, saveImage, setImages }: UseSocialDeps) {
   const generatePostContent = async (image: GeneratedImage): Promise<GeneratedImage | undefined> => {
     if (!image.prompt) return;
 
-    const res = await fetch('/api/ai/caption', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt: image.prompt,
-        channelName: settings.channelName || 'MultiverseMashupAI',
-      }),
-    });
-
+    const channel = settings.channelName || 'MultiverseMashupAI';
     try {
-      if (!res.ok) throw new Error('Failed to generate caption');
-      const data = await res.json();
+      const text = await streamAIToString(
+        `You are a Social Media Manager for the channel "${channel}".
+Generate a high-engagement Instagram caption for this image prompt: "${image.prompt}".
+The caption should be professional yet edgy, fitting a "Master Content Creator" persona.
+Include fitting emojis.
+Include a set of relevant hashtags, and MUST include #${channel}.
+Return ONLY a JSON object with exactly two keys: "caption" (string) and "hashtags" (array of strings).`,
+        { mode: 'caption' }
+      );
+
+      const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const data = JSON.parse(cleaned || '{}');
       if (data.caption) {
-        const updatedImg = { ...image, postCaption: data.caption, postHashtags: data.hashtags };
+        const updatedImg = {
+          ...image,
+          postCaption: data.caption,
+          postHashtags: data.hashtags || [],
+        };
         saveImage(updatedImg);
-        setImages(prev => prev.map(img =>
-          img.id === image.id ? { ...img, postCaption: data.caption, postHashtags: data.hashtags } : img
-        ));
+        setImages((prev) =>
+          prev.map((img) =>
+            img.id === image.id
+              ? { ...img, postCaption: data.caption, postHashtags: data.hashtags || [] }
+              : img
+          )
+        );
         return updatedImg;
       }
     } catch (e) {
-      console.error('Failed to parse post content:', e);
+      console.error('Failed to generate post content:', e);
     }
     return undefined;
   };
