@@ -1,4 +1,22 @@
 /**
+ * Module-level selected AI provider/model. Set by the Settings UI via
+ * setClientAIModel so every streamAI call automatically includes the
+ * user's preference in the request body. The server routes forward these
+ * to the Hermes bridge, which resolves them against pi-ai.
+ */
+let clientAIProvider: string | undefined;
+let clientAIModel: string | undefined;
+
+export function setClientAIModel(provider?: string, model?: string) {
+  clientAIProvider = provider || undefined;
+  clientAIModel = model || undefined;
+}
+
+export function getClientAIModel(): { provider?: string; model?: string } {
+  return { provider: clientAIProvider, model: clientAIModel };
+}
+
+/**
  * Client-side helper for consuming the SSE streams produced by
  * /api/ai/chat and /api/ai/generate. The server emits:
  *
@@ -15,10 +33,18 @@ export async function* streamAI(
   body: Record<string, any>,
   signal?: AbortSignal
 ): AsyncGenerator<string, void, void> {
+  // Layer in the user's selected provider/model (if any) without
+  // clobbering an explicit per-call override.
+  const mergedBody = {
+    provider: clientAIProvider,
+    model: clientAIModel,
+    ...body,
+  };
+
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(mergedBody),
     signal,
   });
 

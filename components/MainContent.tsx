@@ -145,6 +145,28 @@ export function MainContent() {
   // runs. Keyed by image id.
   const [preparingPostId, setPreparingPostId] = useState<string | null>(null);
 
+  // Hermes bridge model catalog, populated once on mount from GET /models.
+  // Shape: { [provider: string]: Array<{ id: string; name: string }> }
+  const [aiCatalog, setAiCatalog] = useState<Record<string, Array<{ id: string; name: string }>>>({});
+  const [aiCatalogError, setAiCatalogError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/ai/models');
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setAiCatalog(data.models || {});
+      } catch (err: any) {
+        if (!cancelled) setAiCatalogError(err?.message || 'Failed to load AI models');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const PREDEFINED_PROMPTS = [
     "Darth Vader as a Space Marine in the Warhammer 40k universe, grimdark style",
     "Iron Man's Hulkbuster armor redesigned by Mandalorian armorers, Beskar plating",
@@ -1986,6 +2008,58 @@ export function MainContent() {
                     </select>
                   </div>
                 </div>
+              </div>
+
+              {/* AI Text Model (Hermes bridge → pi-ai) */}
+              <div className="space-y-4 pt-4 border-t border-zinc-800">
+                <h4 className="text-lg font-medium text-white mb-2">AI Text Model</h4>
+                <p className="text-[11px] text-zinc-500 -mt-2">
+                  Provider + model for chat, idea generation, and prompt enhancement.
+                  Leave blank to use the bridge defaults (zai/glm-4.5-flash for chat,
+                  zai/glm-5.1 for generate).
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Provider</label>
+                    <select
+                      value={settings.aiProvider || ''}
+                      onChange={(e) => {
+                        const next = e.target.value || undefined;
+                        // Reset the model when switching provider since
+                        // model ids are provider-scoped.
+                        updateSettings({ aiProvider: next, aiModel: undefined });
+                      }}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    >
+                      <option value="">(default)</option>
+                      {Object.keys(aiCatalog).sort().map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Model</label>
+                    <select
+                      value={settings.aiModel || ''}
+                      onChange={(e) => updateSettings({ aiModel: e.target.value || undefined })}
+                      disabled={!settings.aiProvider}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:opacity-50"
+                    >
+                      <option value="">(default)</option>
+                      {settings.aiProvider && (aiCatalog[settings.aiProvider] || []).map((m) => (
+                        <option key={m.id} value={m.id}>{m.name || m.id}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {aiCatalogError && (
+                  <p className="text-[11px] text-red-400">
+                    Failed to load model list: {aiCatalogError}. Bridge may be down — defaults will still work.
+                  </p>
+                )}
               </div>
 
               {/* Watermark Settings */}

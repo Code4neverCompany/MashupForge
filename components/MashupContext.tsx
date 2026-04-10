@@ -38,6 +38,7 @@ import { useComparison } from '../hooks/useComparison';
 import { useIdeas } from '../hooks/useIdeas';
 import { useSocial } from '../hooks/useSocial';
 import { usePipeline } from '../hooks/usePipeline';
+import { setClientAIModel } from '../lib/aiClient';
 
 const MashupContext = createContext<MashupContextType | null>(null);
 
@@ -54,6 +55,13 @@ export function MashupProvider({ children }: { children: ReactNode }) {
 
   // Core hooks — order matters for dependencies
   const { settings, updateSettings, isSettingsLoaded } = useSettings();
+
+  // Mirror the user's selected AI provider/model into the streamAI client
+  // so every fetch to /api/ai/* automatically forwards the preference to
+  // the Hermes bridge.
+  useEffect(() => {
+    setClientAIModel(settings.aiProvider, settings.aiModel);
+  }, [settings.aiProvider, settings.aiModel]);
   const imagesHook = useImages();
   const {
     savedImages,
