@@ -134,6 +134,20 @@ Generate a single detailed image prompt for this idea.`,
   }, []);
 
   const processIdea = useCallback(async (idea: Idea, index: number, total: number) => {
+    // Respect the new pipeline stage toggles (defaults: tag/caption/schedule on, post off).
+    const autoCaption = settings.pipelineAutoCaption ?? true;
+    const autoSchedule = settings.pipelineAutoSchedule ?? true;
+    const autoPost = settings.pipelineAutoPost ?? false;
+    // Explicit platform list if set, otherwise infer from configured api keys
+    // (preserves historical behaviour).
+    const explicitPlatforms = settings.pipelinePlatforms && settings.pipelinePlatforms.length > 0
+      ? settings.pipelinePlatforms
+      : null;
+    const inferredPlatforms = Object.entries(settings.apiKeys)
+      .filter(([key, val]) => ['instagram', 'pinterest', 'twitter', 'discordWebhook'].includes(key) && val)
+      .map(([key]) => (key === 'discordWebhook' ? 'discord' : key));
+    const pipelinePlatforms = explicitPlatforms || inferredPlatforms;
+
     // Step a: Mark in-work
     setPipelineProgress({ current: index + 1, total, currentStep: 'Updating status', currentIdea: idea.concept });
     updateIdeaStatus(idea.id, 'in-work');
@@ -171,15 +185,31 @@ Generate a single detailed image prompt for this idea.`,
       if (latestImage && latestImage.status === 'ready' && (latestImage.base64 || latestImage.url)) {
         addLog('image-ready', idea.id, 'success', 'Image ready');
 
-        // Step e: Generate caption
-        setPipelineProgress({ current: index + 1, total, currentStep: 'Generating caption', currentIdea: idea.concept });
-        try {
-          const captionedImg = await generatePostContent(latestImage);
-          if (captionedImg) {
-            addLog('caption', idea.id, 'success', `Caption: "${captionedImg.postCaption?.slice(0, 60)}..."`);
+        // Step e: Generate caption (skipped when disabled)
+        let captionedImg = latestImage;
+        if (autoCaption) {
+          setPipelineProgress({ current: index + 1, total, currentStep: 'Generating caption', currentIdea: idea.concept });
+          try {
+            const withCaption = await generatePostContent(latestImage);
+            if (withCaption) {
+              captionedImg = withCaption;
+              addLog('caption', idea.id, 'success', `Caption: "${withCaption.postCaption?.slice(0, 60)}..."`);
+            } else {
+              addLog('caption', idea.id, 'error', 'Caption generation returned empty');
+            }
+          } catch (e: any) {
+            addLog('caption', idea.id, 'error', `Caption failed: ${e.message}`);
+          }
+        } else {
+          addLog('caption', idea.id, 'success', 'Auto-caption disabled — skipped');
+        }
 
-            // Step f: Create scheduled post
-            setPipelineProgress({ current: index + 1, total, currentStep: 'Scheduling post', currentIdea: idea.concept });
+        // Step f: Create scheduled post (skipped when disabled)
+        if (autoSchedule) {
+          setPipelineProgress({ current: index + 1, total, currentStep: 'Scheduling post', currentIdea: idea.concept });
+          if (pipelinePlatforms.length === 0) {
+            addLog('schedule', idea.id, 'error', 'No platforms configured — skipped');
+          } else {
             const existingPosts = settings.scheduledPosts || [];
             const slot = findNextAvailableSlot(existingPosts);
             const newPost: ScheduledPost = {
@@ -187,19 +217,43 @@ Generate a single detailed image prompt for this idea.`,
               imageId: latestImage.id,
               date: slot.date,
               time: slot.time,
-              platforms: Object.entries(settings.apiKeys)
-                .filter(([key, val]) => ['instagram', 'twitter', 'discordWebhook'].includes(key) && val)
-                .map(([key]) => key === 'discordWebhook' ? 'discord' : key),
+              platforms: pipelinePlatforms,
               caption: captionedImg.postCaption || '',
               status: 'scheduled',
             };
             updateSettings({ scheduledPosts: [...existingPosts, newPost] });
             addLog('schedule', idea.id, 'success', `Scheduled for ${slot.date} at ${slot.time}`);
-          } else {
-            addLog('caption', idea.id, 'error', 'Caption generation returned empty');
           }
-        } catch (e: any) {
-          addLog('caption', idea.id, 'error', `Caption failed: ${e.message}`);
+        } else {
+          addLog('schedule', idea.id, 'success', 'Auto-schedule disabled — skipped');
+        }
+
+        // Step g: Auto-post immediately (skipped unless explicitly enabled)
+        if (autoPost && pipelinePlatforms.length > 0) {
+          setPipelineProgress({ current: index + 1, total, currentStep: 'Posting', currentIdea: idea.concept });
+          try {
+            const res = await fetch('/api/social/post', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                caption: captionedImg.postCaption || expandedPrompt,
+                platforms: pipelinePlatforms,
+                mediaUrl: latestImage.url,
+                mediaBase64: latestImage.base64,
+                credentials: {
+                  instagram: settings.apiKeys.instagram,
+                  twitter: settings.apiKeys.twitter,
+                  pinterest: settings.apiKeys.pinterest,
+                  discord: { webhookUrl: settings.apiKeys.discordWebhook },
+                },
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'post failed');
+            addLog('post', idea.id, 'success', `Posted to ${pipelinePlatforms.join(', ')}`);
+          } catch (e: any) {
+            addLog('post', idea.id, 'error', `Auto-post failed: ${e.message}`);
+          }
         }
 
         break;
@@ -212,7 +266,7 @@ Generate a single detailed image prompt for this idea.`,
       addLog('image-ready', idea.id, 'error', 'Timed out waiting for image generation');
     }
 
-    // Step g: Mark done
+    // Step h: Mark done
     updateIdeaStatus(idea.id, 'done');
     addLog('complete', idea.id, 'success', `"${idea.concept}" pipeline complete`);
   }, [expandIdeaToPrompt, generateImages, generatePostContent, updateIdeaStatus, updateSettings, settings, addLog, findNextAvailableSlot]);

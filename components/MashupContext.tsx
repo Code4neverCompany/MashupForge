@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 
 // Re-export everything from types/mashup so existing imports keep working
 export {
@@ -11,6 +11,7 @@ export {
   type AgentPersonality,
   type Idea,
   type ScheduledPost,
+  type CarouselGroup,
   type UserSettings,
   type ViewType,
   type MashupContextType,
@@ -119,6 +120,28 @@ export function MashupProvider({ children }: { children: ReactNode }) {
 
   const socialHook = useSocial({ settings, saveImage, setImages });
   const { generatePostContent } = socialHook;
+
+  // Auto-tag any saved image that lacks tags. Tracks attempted ids in a
+  // ref so a failed attempt (e.g. pi is down) doesn't spam retries on
+  // every render. Runs a low-priority queue, one image at a time.
+  const autoTagAttemptedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const needsTagging = savedImages.find(
+      (img) =>
+        img.status === 'ready' &&
+        (!img.tags || img.tags.length === 0) &&
+        !autoTagAttemptedRef.current.has(img.id)
+    );
+    if (!needsTagging) return;
+    autoTagAttemptedRef.current.add(needsTagging.id);
+    // Fire and forget — autoTagImage updates the store on success.
+    // Pass the saved image directly so autoTagImage doesn't need to
+    // look it up in the ephemeral `images` array (which may have been
+    // cleared by now).
+    autoTagImage(needsTagging.id, needsTagging).catch((err) => {
+      console.warn('[gallery auto-tag] failed for', needsTagging.id, err);
+    });
+  }, [savedImages, autoTagImage]);
 
   const pipelineHook = usePipeline({
     ideas,

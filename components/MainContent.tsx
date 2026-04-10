@@ -68,6 +68,35 @@ import {
 } from './MashupContext';
 import { PipelinePanel } from './PipelinePanel';
 import { streamAIToString } from '@/lib/aiClient';
+import type { CarouselGroup } from './MashupContext';
+
+/**
+ * Auto-sizing textarea that grows with its content. Resets to
+ * scrollHeight on every render so deletions shrink it too. Shared by
+ * Captioning Studio and Post Ready tabs so long captions don't get
+ * clipped behind a fixed row count.
+ */
+interface AutoTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  minRows?: number;
+}
+function AutoTextarea({ minRows = 2, className, value, ...rest }: AutoTextareaProps) {
+  const ref = React.useRef<HTMLTextAreaElement>(null);
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      rows={minRows}
+      value={value}
+      className={`resize-none overflow-hidden ${className || ''}`}
+      {...rest}
+    />
+  );
+}
 
 import { useAuth } from '@/hooks/useAuth';
 
@@ -175,6 +204,11 @@ export function MainContent() {
   const [postBusy, setPostBusy] = useState<Record<string, 'posting' | 'scheduling' | null>>({});
   // Transient status line per card ('Posted!', 'Scheduled for ...', error msg).
   const [postStatus, setPostStatus] = useState<Record<string, string | null>>({});
+  // Post Ready view toggle + calendar navigation.
+  const [postReadyView, setPostReadyView] = useState<'grid' | 'calendar'>('grid');
+  const [calendarMode, setCalendarMode] = useState<'week' | 'month'>('week');
+  const [calendarDate, setCalendarDate] = useState<Date>(new Date());
+
   // Batch "Schedule All" mini-modal state.
   const [showScheduleAll, setShowScheduleAll] = useState(false);
   const [scheduleAllForm, setScheduleAllForm] = useState<{ date: string; time: string; platforms: PostPlatform[] }>({
@@ -295,6 +329,41 @@ export function MainContent() {
     }));
   };
 
+  // ── Calendar helpers ───────────────────────────────────────────────
+  /** Start-of-day for a Date (strips time). */
+  const startOfDay = (d: Date) => {
+    const n = new Date(d);
+    n.setHours(0, 0, 0, 0);
+    return n;
+  };
+  /** Monday-anchored start of the week containing d. */
+  const startOfWeek = (d: Date) => {
+    const n = startOfDay(d);
+    const day = n.getDay(); // 0=Sun
+    const mondayOffset = (day + 6) % 7; // days to subtract to reach Monday
+    n.setDate(n.getDate() - mondayOffset);
+    return n;
+  };
+  const addDays = (d: Date, n: number) => {
+    const out = new Date(d);
+    out.setDate(out.getDate() + n);
+    return out;
+  };
+  const toYMD = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  /** Colour class for a scheduled-post status badge on the calendar. */
+  const calendarColorFor = (status?: 'scheduled' | 'posted' | 'failed'): string => {
+    if (status === 'posted') return 'bg-emerald-500/80 border-emerald-400/60 text-emerald-50';
+    if (status === 'failed') return 'bg-red-500/80 border-red-400/60 text-red-50';
+    return 'bg-amber-500/80 border-amber-400/60 text-amber-50';
+  };
+  /** 24-hour labels 00..23 used by the week-view row header. */
+  const HOUR_LABELS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`);
+
   /** Look up the most recent scheduled post for an image id. */
   const latestScheduleFor = (imageId: string): ScheduledPost | undefined => {
     const all = settings.scheduledPosts || [];
@@ -302,6 +371,128 @@ export function MainContent() {
       if (all[i].imageId === imageId) return all[i];
     }
     return undefined;
+  };
+
+  // ── Carousel grouping (Post Ready tab) ─────────────────────────────
+  type PostItem =
+    | { kind: 'single'; img: GeneratedImage }
+    | { kind: 'carousel'; id: string; images: GeneratedImage[]; group?: CarouselGroup };
+
+  /** 5-minute window for auto-grouping same-prompt batches. */
+  const CAROUSEL_AUTO_WINDOW_MS = 5 * 60 * 1000;
+
+  /**
+   * Group post-ready images into singles + carousels. Explicit groups in
+   * settings.carouselGroups take precedence. Remaining images are
+   * auto-grouped when 2+ share the same prompt and were saved within
+   * CAROUSEL_AUTO_WINDOW_MS of each other.
+   */
+  const computeCarouselView = (ready: GeneratedImage[]): PostItem[] => {
+    const items: PostItem[] = [];
+    const handled = new Set<string>();
+
+    // Explicit groups first — respect the user's manual grouping decisions.
+    const explicitGroups = settings.carouselGroups || [];
+    for (const g of explicitGroups) {
+      const imgs = g.imageIds
+        .map((id) => ready.find((i) => i.id === id))
+        .filter((i): i is GeneratedImage => !!i);
+      if (imgs.length === 0) continue;
+      items.push({ kind: 'carousel', id: g.id, images: imgs, group: g });
+      for (const i of imgs) handled.add(i.id);
+    }
+
+    // Auto-group the remaining by prompt + savedAt proximity.
+    const remaining = ready.filter((i) => !handled.has(i.id));
+    // Stable sort by savedAt so proximity grouping is deterministic.
+    remaining.sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0));
+    for (let i = 0; i < remaining.length; i++) {
+      if (handled.has(remaining[i].id)) continue;
+      const anchor = remaining[i];
+      const siblings = [anchor];
+      for (let j = i + 1; j < remaining.length; j++) {
+        const cand = remaining[j];
+        if (handled.has(cand.id)) continue;
+        if (
+          cand.prompt === anchor.prompt &&
+          Math.abs((cand.savedAt || 0) - (anchor.savedAt || 0)) <= CAROUSEL_AUTO_WINDOW_MS
+        ) {
+          siblings.push(cand);
+        }
+      }
+      if (siblings.length > 1) {
+        items.push({
+          kind: 'carousel',
+          id: `auto-${anchor.id}`,
+          images: siblings,
+        });
+        for (const s of siblings) handled.add(s.id);
+      } else {
+        items.push({ kind: 'single', img: anchor });
+        handled.add(anchor.id);
+      }
+    }
+
+    // Preserve original order (newest-first for a better UX — savedAt desc).
+    items.sort((a, b) => {
+      const aT = a.kind === 'single' ? a.img.savedAt || 0 : Math.max(...a.images.map((i) => i.savedAt || 0));
+      const bT = b.kind === 'single' ? b.img.savedAt || 0 : Math.max(...b.images.map((i) => i.savedAt || 0));
+      return bT - aT;
+    });
+    return items;
+  };
+
+  /** Persist a manual carousel group (from an auto-detected one). */
+  const persistCarouselGroup = (id: string, imageIds: string[], patch?: Partial<CarouselGroup>) => {
+    const groups = settings.carouselGroups || [];
+    const existing = groups.find((g) => g.id === id);
+    if (existing) {
+      updateSettings({
+        carouselGroups: groups.map((g) => (g.id === id ? { ...g, ...patch, imageIds } : g)),
+      });
+    } else {
+      updateSettings({
+        carouselGroups: [...groups, { id, imageIds, status: 'draft', ...patch }],
+      });
+    }
+  };
+
+  /** Separate a carousel — drop the explicit group and its images revert to singles. */
+  const separateCarousel = (groupId: string) => {
+    const groups = settings.carouselGroups || [];
+    updateSettings({ carouselGroups: groups.filter((g) => g.id !== groupId) });
+  };
+
+  /** Post a whole carousel now — fans out to platforms with the full mediaUrls array. */
+  const postCarouselNow = async (
+    item: Extract<PostItem, { kind: 'carousel' }>,
+    platforms: PostPlatform[]
+  ) => {
+    if (platforms.length === 0 || item.images.length === 0) return;
+    const key = `carousel-${item.id}`;
+    setPostBusy((prev) => ({ ...prev, [key]: 'posting' }));
+    setPostStatus((prev) => ({ ...prev, [key]: null }));
+    try {
+      const caption = item.group?.caption || formatPost(item.images[0]);
+      const mediaUrls = item.images.map((i) => i.url).filter(Boolean) as string[];
+      const res = await fetch('/api/social/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caption,
+          platforms,
+          mediaUrls,
+          credentials: buildCredentialsPayload(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Carousel post failed');
+      setPostStatus((prev) => ({ ...prev, [key]: `Posted carousel to ${platforms.join(', ')} ✓` }));
+    } catch (err: any) {
+      setPostStatus((prev) => ({ ...prev, [key]: `Error: ${err?.message || 'failed'}` }));
+    } finally {
+      setPostBusy((prev) => ({ ...prev, [key]: null }));
+    }
   };
 
   /** Write text to clipboard and flash a "Copied" state on the given key. */
@@ -1593,11 +1784,12 @@ export function MainContent() {
                   <div className="space-y-6">
                     {/* Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div>
-                        <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center">
                           <Edit3 className="w-5 h-5 text-indigo-400" />
-                          Captioning Studio
-                        </h2>
+                        </div>
+                        <div>
+                        <h2 className="text-xl font-semibold text-white">Captioning Studio</h2>
                         <p className="text-xs text-zinc-500 mt-1">
                           {captioned.length} / {all.length} captioned
                           {batchProgress && (
@@ -1606,18 +1798,19 @@ export function MainContent() {
                             </span>
                           )}
                         </p>
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-2">
                         {/* Filter tabs */}
-                        <div className="flex bg-zinc-900 border border-zinc-800 rounded-lg p-0.5">
+                        <div className="flex bg-zinc-900 border border-zinc-800/60 rounded-full p-0.5">
                           {(['all', 'captioned', 'uncaptioned'] as const).map((f) => (
                             <button
                               key={f}
                               onClick={() => setCaptioningFilter(f)}
-                              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
                                 captioningFilter === f
-                                  ? 'bg-zinc-800 text-white'
+                                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
                                   : 'text-zinc-500 hover:text-zinc-300'
                               }`}
                             >
@@ -1700,12 +1893,12 @@ export function MainContent() {
                                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                                     Caption
                                   </label>
-                                  <textarea
+                                  <AutoTextarea
                                     value={img.postCaption || ''}
                                     onChange={(e) => patchImage(img, { postCaption: e.target.value })}
                                     placeholder="No caption yet…"
-                                    rows={3}
-                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50 resize-y"
+                                    minRows={2}
+                                    className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500/50 focus:outline-none transition-colors"
                                   />
                                 </div>
 
@@ -1756,10 +1949,21 @@ export function MainContent() {
                                 <button
                                   disabled={!img.postCaption}
                                   onClick={() => patchImage(img, { isPostReady: true })}
-                                  className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1.5 transition-colors"
+                                  className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
                                   title="Mark as ready to post"
                                 >
                                   <Check className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm('Delete this caption and remove the image from the gallery?')) {
+                                      deleteImage(img.id, true);
+                                    }
+                                  }}
+                                  className="px-3 py-1.5 text-xs bg-red-600/80 hover:bg-red-500 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                  title="Delete image"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             </div>
@@ -1803,17 +2007,42 @@ export function MainContent() {
                   <div className="space-y-6">
                     {/* Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div>
-                        <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center">
                           <Save className="w-5 h-5 text-emerald-400" />
-                          Post Ready
-                        </h2>
-                        <p className="text-xs text-zinc-500 mt-1">
-                          {ready.length} posts ready / {all.length} total saved images
-                        </p>
+                        </div>
+                        <div>
+                          <h2 className="text-xl font-semibold text-white">Post Ready</h2>
+                          <p className="text-xs text-zinc-500 mt-1">
+                            {ready.length} posts ready / {all.length} total saved images
+                          </p>
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
+                        {/* Grid / Calendar view toggle */}
+                        <div className="flex bg-zinc-900 border border-zinc-800/60 rounded-full p-0.5 mr-1">
+                          <button
+                            onClick={() => setPostReadyView('grid')}
+                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                              postReadyView === 'grid'
+                                ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                                : 'text-zinc-500 hover:text-zinc-300'
+                            }`}
+                          >
+                            Grid
+                          </button>
+                          <button
+                            onClick={() => setPostReadyView('calendar')}
+                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                              postReadyView === 'calendar'
+                                ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                                : 'text-zinc-500 hover:text-zinc-300'
+                            }`}
+                          >
+                            Calendar
+                          </button>
+                        </div>
                         <button
                           onClick={copyAllPosts}
                           disabled={ready.length === 0}
@@ -1871,8 +2100,240 @@ export function MainContent() {
                       </div>
                     )}
 
-                    {/* Empty state */}
-                    {ready.length === 0 ? (
+                    {/* Calendar view */}
+                    {postReadyView === 'calendar' && (() => {
+                      const scheduled = settings.scheduledPosts || [];
+                      const imgById = new Map(savedImages.map((i) => [i.id, i]));
+                      const today = startOfDay(new Date());
+
+                      if (calendarMode === 'week') {
+                        const weekStart = startOfWeek(calendarDate);
+                        const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+                        const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                        const rangeLabel = `${toYMD(weekStart)} → ${toYMD(addDays(weekStart, 6))}`;
+
+                        return (
+                          <div className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl overflow-hidden">
+                            {/* Calendar header */}
+                            <div className="flex items-center justify-between p-4 border-b border-zinc-800/60">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setCalendarDate(addDays(calendarDate, -7))}
+                                  className="px-2 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg"
+                                >
+                                  ‹
+                                </button>
+                                <button
+                                  onClick={() => setCalendarDate(new Date())}
+                                  className="px-3 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg"
+                                >
+                                  Today
+                                </button>
+                                <button
+                                  onClick={() => setCalendarDate(addDays(calendarDate, 7))}
+                                  className="px-2 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg"
+                                >
+                                  ›
+                                </button>
+                                <span className="ml-3 text-sm text-zinc-300">{rangeLabel}</span>
+                              </div>
+                              <div className="flex bg-zinc-900 border border-zinc-800/60 rounded-full p-0.5">
+                                {(['week', 'month'] as const).map((m) => (
+                                  <button
+                                    key={m}
+                                    onClick={() => setCalendarMode(m)}
+                                    className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                      calendarMode === m
+                                        ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                                        : 'text-zinc-500 hover:text-zinc-300'
+                                    }`}
+                                  >
+                                    {m === 'week' ? 'Week' : 'Month'}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Week grid: 1 hour label column + 7 day columns */}
+                            <div className="overflow-x-auto">
+                              <div className="grid grid-cols-[60px_repeat(7,minmax(120px,1fr))] border-b border-zinc-800/60 sticky top-0 bg-zinc-900/95 backdrop-blur">
+                                <div />
+                                {days.map((d, i) => {
+                                  const isToday = toYMD(d) === toYMD(today);
+                                  return (
+                                    <div
+                                      key={i}
+                                      className={`px-3 py-2 text-center border-l border-zinc-800/60 ${
+                                        isToday ? 'text-emerald-400' : 'text-zinc-400'
+                                      }`}
+                                    >
+                                      <div className="text-[10px] font-bold uppercase tracking-wider">{dayNames[i]}</div>
+                                      <div className="text-sm font-semibold">{d.getDate()}</div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {HOUR_LABELS.map((label, hour) => (
+                                <div
+                                  key={label}
+                                  className="grid grid-cols-[60px_repeat(7,minmax(120px,1fr))] border-b border-zinc-800/40"
+                                >
+                                  <div className="px-2 py-2 text-[10px] text-zinc-600 text-right font-mono">{label}</div>
+                                  {days.map((d, i) => {
+                                    const dateStr = toYMD(d);
+                                    const postsAtSlot = scheduled.filter((p) => {
+                                      if (p.date !== dateStr) return false;
+                                      const [hh] = p.time.split(':').map(Number);
+                                      return hh === hour;
+                                    });
+                                    return (
+                                      <div
+                                        key={i}
+                                        className="border-l border-zinc-800/60 min-h-[40px] p-1 space-y-1"
+                                      >
+                                        {postsAtSlot.map((p) => {
+                                          const img = imgById.get(p.imageId);
+                                          return (
+                                            <button
+                                              key={p.id}
+                                              onClick={() => img && setSelectedImage(img)}
+                                              className={`w-full text-left px-2 py-1 rounded-md border text-[10px] truncate ${calendarColorFor(p.status)}`}
+                                              title={`${p.time} · ${p.platforms.join(', ')}\n${p.caption}`}
+                                            >
+                                              {p.time} · {p.platforms.join(',')}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // ── Month view ────────────────────────────────────
+                      const firstOfMonth = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1);
+                      const firstOfNext = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1);
+                      const gridStart = startOfWeek(firstOfMonth);
+                      const totalCells = Math.ceil((firstOfNext.getTime() - gridStart.getTime()) / (24 * 3600 * 1000));
+                      const weeks = Math.ceil(totalCells / 7);
+                      const cells = Array.from({ length: weeks * 7 }, (_, i) => addDays(gridStart, i));
+                      const monthLabel = calendarDate.toLocaleDateString(undefined, {
+                        month: 'long',
+                        year: 'numeric',
+                      });
+                      const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+                      return (
+                        <div className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl overflow-hidden">
+                          <div className="flex items-center justify-between p-4 border-b border-zinc-800/60">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() =>
+                                  setCalendarDate(
+                                    new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1)
+                                  )
+                                }
+                                className="px-2 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg"
+                              >
+                                ‹
+                              </button>
+                              <button
+                                onClick={() => setCalendarDate(new Date())}
+                                className="px-3 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg"
+                              >
+                                Today
+                              </button>
+                              <button
+                                onClick={() =>
+                                  setCalendarDate(
+                                    new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1)
+                                  )
+                                }
+                                className="px-2 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg"
+                              >
+                                ›
+                              </button>
+                              <span className="ml-3 text-sm text-zinc-300">{monthLabel}</span>
+                            </div>
+                            <div className="flex bg-zinc-900 border border-zinc-800/60 rounded-full p-0.5">
+                              {(['week', 'month'] as const).map((m) => (
+                                <button
+                                  key={m}
+                                  onClick={() => setCalendarMode(m)}
+                                  className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                    calendarMode === m
+                                      ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                                      : 'text-zinc-500 hover:text-zinc-300'
+                                  }`}
+                                >
+                                  {m === 'week' ? 'Week' : 'Month'}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-7 border-b border-zinc-800/60">
+                            {dayNames.map((d) => (
+                              <div key={d} className="px-2 py-2 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                {d}
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="grid grid-cols-7">
+                            {cells.map((d, i) => {
+                              const dateStr = toYMD(d);
+                              const inMonth = d.getMonth() === calendarDate.getMonth();
+                              const postsForDay = scheduled.filter((p) => p.date === dateStr);
+                              const isToday = dateStr === toYMD(today);
+                              // Group by status to colour the dots.
+                              const hasPosted = postsForDay.some((p) => p.status === 'posted');
+                              const hasScheduled = postsForDay.some((p) => p.status === 'scheduled' || !p.status);
+                              const hasFailed = postsForDay.some((p) => p.status === 'failed');
+                              return (
+                                <button
+                                  key={i}
+                                  onClick={() => {
+                                    setCalendarMode('week');
+                                    setCalendarDate(d);
+                                  }}
+                                  className={`relative h-24 border-t border-l border-zinc-800/40 p-1.5 text-left transition-colors ${
+                                    inMonth ? 'bg-zinc-900/40 hover:bg-zinc-900' : 'bg-zinc-950 text-zinc-700'
+                                  } ${(i + 1) % 7 === 0 ? 'border-r' : ''}`}
+                                >
+                                  <div
+                                    className={`text-xs font-medium ${
+                                      isToday ? 'text-emerald-400' : inMonth ? 'text-zinc-300' : 'text-zinc-700'
+                                    }`}
+                                  >
+                                    {d.getDate()}
+                                  </div>
+                                  {postsForDay.length > 0 && (
+                                    <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between">
+                                      <div className="flex gap-0.5">
+                                        {hasPosted && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+                                        {hasScheduled && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                                        {hasFailed && <span className="w-1.5 h-1.5 rounded-full bg-red-400" />}
+                                      </div>
+                                      <span className="text-[10px] text-zinc-400">{postsForDay.length}</span>
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Grid view — empty state or card grid */}
+                    {postReadyView === 'grid' && (
+                    ready.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-16 space-y-3 text-center">
                         <Save className="w-10 h-10 text-zinc-700" />
                         <p className="text-sm text-zinc-500">
@@ -1897,7 +2358,156 @@ export function MainContent() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {ready.map((img) => {
+                        {computeCarouselView(ready).map((item) => {
+                          // ── Carousel card branch ───────────────────────
+                          if (item.kind === 'carousel') {
+                            const key = `carousel-${item.id}`;
+                            const busy = postBusy[key];
+                            const status = postStatus[key];
+                            const anchor = item.images[0];
+                            const isExplicit = !!item.group;
+                            const selPlatforms = getSelectedPlatforms(key);
+                            return (
+                              <div
+                                key={item.id}
+                                className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl overflow-hidden hover:border-zinc-700/50 transition-all duration-300 flex flex-col"
+                              >
+                                {/* Horizontal image strip */}
+                                <div className="relative bg-zinc-950 overflow-x-auto">
+                                  <div className="flex gap-1 p-2" style={{ minHeight: 160 }}>
+                                    {item.images.map((ci) => (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        key={ci.id}
+                                        src={ci.url}
+                                        alt={ci.prompt}
+                                        onClick={() => setSelectedImage(ci)}
+                                        className="h-36 w-36 object-cover rounded-lg cursor-zoom-in shrink-0"
+                                      />
+                                    ))}
+                                  </div>
+                                  <span className="absolute top-3 left-3 inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-600/90 text-[10px] font-medium text-white rounded-full">
+                                    <LayoutGrid className="w-3 h-3" /> Carousel · {item.images.length} images
+                                  </span>
+                                  {isExplicit && (
+                                    <span className="absolute top-3 right-3 inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-800/80 text-[10px] font-medium text-zinc-300 rounded-full border border-zinc-700">
+                                      manual
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Shared caption (anchor image's) */}
+                                <div className="p-4 space-y-3 border-b border-zinc-800/60">
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                      Shared caption
+                                    </label>
+                                    <AutoTextarea
+                                      value={anchor.postCaption || ''}
+                                      onChange={(e) => {
+                                        // Edit caption on every image in the carousel
+                                        // so the route sends a consistent copy.
+                                        for (const ci of item.images) {
+                                          patchImage(ci, { postCaption: e.target.value });
+                                        }
+                                      }}
+                                      placeholder="No caption yet…"
+                                      minRows={2}
+                                      className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500/50 focus:outline-none transition-colors"
+                                    />
+                                  </div>
+                                  {(anchor.postHashtags || []).length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                      {anchor.postHashtags!.map((tag, i) => (
+                                        <span
+                                          key={`${tag}-${i}`}
+                                          className="px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-[10px] text-zinc-300"
+                                        >
+                                          {tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <p className="text-[11px] text-zinc-500 line-clamp-2" title={anchor.prompt}>
+                                    {anchor.prompt}
+                                  </p>
+                                </div>
+
+                                {/* Platform picker + actions */}
+                                <div className="p-4 space-y-3">
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                      Platforms
+                                    </label>
+                                    {available.length === 0 ? (
+                                      <p className="text-[11px] text-amber-400">Configure a platform in Settings.</p>
+                                    ) : (
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {available.map((p) => {
+                                          const checked = selPlatforms.includes(p);
+                                          return (
+                                            <button
+                                              key={p}
+                                              type="button"
+                                              onClick={() => togglePlatformFor(key, p)}
+                                              className={`px-2.5 py-1 text-[10px] rounded-full border transition-colors ${
+                                                checked
+                                                  ? `${platformBadgeClass(p)} text-white border-transparent`
+                                                  : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
+                                              }`}
+                                            >
+                                              {checked && <Check className="w-3 h-3 inline mr-1" />}
+                                              {p}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                      disabled={busy !== null || selPlatforms.length === 0}
+                                      onClick={() => postCarouselNow(item, selPlatforms)}
+                                      className="px-2 py-1.5 text-[11px] bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                    >
+                                      {busy === 'posting' ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      ) : (
+                                        <Send className="w-3.5 h-3.5" />
+                                      )}
+                                      Post Carousel Now
+                                    </button>
+                                    {isExplicit ? (
+                                      <button
+                                        onClick={() => separateCarousel(item.id)}
+                                        className="px-2 py-1.5 text-[11px] bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                      >
+                                        <Columns className="w-3.5 h-3.5" /> Separate
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => persistCarouselGroup(`manual-${anchor.id}`, item.images.map((i) => i.id))}
+                                        className="px-2 py-1.5 text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                        title="Save this auto-detected grouping"
+                                      >
+                                        <LayoutGrid className="w-3.5 h-3.5" /> Lock Group
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {status && (
+                                    <p className={`text-[11px] ${status.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'}`}>
+                                      {status}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // ── Single-image card branch (original) ───────
+                          const img = item.img;
                           const isRegen = preparingPostId === img.id;
                           const selPlatforms = getSelectedPlatforms(img.id);
                           const schedule = getSchedule(img.id);
@@ -1947,12 +2557,12 @@ export function MainContent() {
                                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                                       Caption
                                     </label>
-                                    <textarea
+                                    <AutoTextarea
                                       value={img.postCaption || ''}
                                       onChange={(e) => patchImage(img, { postCaption: e.target.value })}
                                       placeholder="No caption yet…"
-                                      rows={3}
-                                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50 resize-y"
+                                      minRows={2}
+                                      className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500/50 focus:outline-none transition-colors"
                                     />
                                   </div>
                                   <div className="space-y-1">
@@ -2120,6 +2730,7 @@ export function MainContent() {
                           );
                         })}
                       </div>
+                    )
                     )}
 
                     {/* Schedule-All mini modal */}

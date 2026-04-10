@@ -12,6 +12,12 @@ export interface GeneratedImage {
   isVideo?: boolean;
   tags?: string[];
   collectionId?: string;
+  /**
+   * When set, this image belongs to a carousel post and shares its
+   * caption / schedule with the other images in the same group. The
+   * group itself is persisted in UserSettings.carouselGroups.
+   */
+  carouselGroupId?: string;
   postCaption?: string;
   postHashtags?: string[];
   approved?: boolean;
@@ -30,6 +36,23 @@ export interface GeneratedImage {
   negativePrompt?: string;
   aspectRatio?: string;
   imageSize?: string;
+}
+
+/**
+ * A grouped set of images published as a single carousel post. The user
+ * can edit a shared caption / schedule / platform list, and the auto-post
+ * worker fans each platform out with the full `imageIds` array as
+ * `mediaUrls`.
+ */
+export interface CarouselGroup {
+  id: string;
+  imageIds: string[];
+  caption?: string;
+  hashtags?: string[];
+  scheduledDate?: string;
+  scheduledTime?: string;
+  platforms?: string[];
+  status?: 'draft' | 'scheduled' | 'posted' | 'failed';
 }
 
 export interface Collection {
@@ -123,6 +146,16 @@ export interface UserSettings {
   channelName?: string;
   savedPersonalities?: AgentPersonality[];
   scheduledPosts?: ScheduledPost[];
+  /** Persistent carousel groups (multi-image posts). */
+  carouselGroups?: CarouselGroup[];
+  /** Pipeline stage toggles. Default (undefined) is treated as true for
+   *  auto-tag/caption/schedule and false for auto-post. */
+  pipelineAutoTag?: boolean;
+  pipelineAutoCaption?: boolean;
+  pipelineAutoSchedule?: boolean;
+  pipelineAutoPost?: boolean;
+  /** Platforms the pipeline should publish to when pipelineAutoPost is on. */
+  pipelinePlatforms?: string[];
 }
 
 export type ViewType = 'studio' | 'gallery' | 'compare' | 'captioning' | 'post-ready' | 'ideas' | 'pipeline';
@@ -391,7 +424,7 @@ export interface MashupContextType {
   removeImageFromCollection: (imageId: string) => void;
   toggleApproveImage: (id: string) => void;
   generateComparison: (prompt: string, modelIds: string[], options?: GenerateOptions) => Promise<void>;
-  autoTagImage: (id: string) => Promise<void>;
+  autoTagImage: (id: string, providedImg?: GeneratedImage) => Promise<void>;
   setImageStatus: (id: string, status: 'generating' | 'animating' | 'ready') => void;
   autoGenerateCollectionInfo: (sampleImages: GeneratedImage[] | string[]) => Promise<{ name: string; description: string } | undefined>;
   comparisonResults: GeneratedImage[];
