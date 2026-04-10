@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import Image from 'next/image';
 import ReactMarkdown from 'react-markdown';
 import { Send, Search, MessageSquare, Loader2, ExternalLink, Image as ImageIcon, Sparkles, Columns, RefreshCw, History } from 'lucide-react';
 import { useMashup, LEONARDO_MODELS } from './MashupContext';
@@ -221,7 +222,7 @@ Return 3 crossover ideas between Star Wars, Marvel, DC, or Warhammer 40k as a JS
                     }}
                   >
                     {img.url ? (
-                      <img src={img.url} alt="" className="w-full h-full object-cover" />
+                      <Image src={img.url} alt="" fill className="object-cover" unoptimized />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Loader2 className="w-4 h-4 animate-spin text-zinc-700" />

@@ -56,15 +56,14 @@ export function usePipeline(deps: UsePipelineDeps) {
     images,
   } = deps;
 
-  const persisted = useRef(loadPersistedState());
-  const [pipelineEnabled, setPipelineEnabled] = useState(persisted.current.enabled);
+  const [pipelineEnabled, setPipelineEnabled] = useState(() => loadPersistedState().enabled);
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineQueue, setPipelineQueue] = useState<Idea[]>([]);
   const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null);
-  const [pipelineLog, setPipelineLog] = useState<PipelineLogEntry[]>(
-    persisted.current.log.map(e => ({ ...e, timestamp: new Date(e.timestamp) }))
+  const [pipelineLog, setPipelineLog] = useState<PipelineLogEntry[]>(() =>
+    loadPersistedState().log.map(e => ({ ...e, timestamp: new Date(e.timestamp) }))
   );
-  const [pipelineDelay, setPipelineDelayState] = useState(persisted.current.delay);
+  const [pipelineDelay, setPipelineDelayState] = useState(() => loadPersistedState().delay);
 
   const stopRequestedRef = useRef(false);
   const imagesRef = useRef(images);

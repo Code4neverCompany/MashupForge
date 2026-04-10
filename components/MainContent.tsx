@@ -43,7 +43,8 @@ import {
   Calendar,
   CalendarDays,
   Grid,
-  Menu
+  Menu,
+  LogOut
 } from 'lucide-react';
 import {
   useMashup,
@@ -61,7 +62,10 @@ import {
 import { PipelinePanel } from './PipelinePanel';
 import { streamAIToString } from '@/lib/aiClient';
 
+import { useAuth } from '@/hooks/useAuth';
+
 export function MainContent() {
+  const { logout } = useAuth();
   const { 
     images, 
     savedImages, 
@@ -757,6 +761,14 @@ export function MainContent() {
             </button>
           </div>
 
+          <button
+            onClick={logout}
+            className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+            title="Log Out"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
+          
           <button
             onClick={() => setShowSettings(true)}
             className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors shrink-0"
@@ -2150,7 +2162,7 @@ export function MainContent() {
                       tmux attach -t pi-setup
                     </code>
                     <p className="text-[10px] text-zinc-500">
-      Pi führt dich durch Provider-Auswahl und Login. Danach "Start Pi" drücken.
+      Pi führt dich durch Provider-Auswahl und Login. Danach &quot;Start Pi&quot; drücken.
                     </p>
                   </div>
                 )}
