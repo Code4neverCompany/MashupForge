@@ -44,7 +44,11 @@ import {
   CalendarDays,
   Grid,
   Menu,
-  LogOut
+  LogOut,
+  Copy,
+  Check,
+  FileJson,
+  Wand2
 } from 'lucide-react';
 import {
   useMashup,
@@ -148,6 +152,93 @@ export function MainContent() {
   // show a per-card spinner while the pi caption request runs. Keyed by
   // image id.
   const [preparingPostId, setPreparingPostId] = useState<string | null>(null);
+
+  // Captioning Studio tab state
+  const [captioningFilter, setCaptioningFilter] = useState<'all' | 'captioned' | 'uncaptioned'>('all');
+  const [batchCaptioning, setBatchCaptioning] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
+  // Image id currently copied (for the brief "Copied" affordance on the
+  // Post Ready tab). Auto-clears after a short timeout.
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  /** Write text to clipboard and flash a "Copied" state on the given key. */
+  const copyWithFeedback = async (text: string, feedbackKey: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(feedbackKey);
+      setTimeout(() => {
+        setCopiedId((current) => (current === feedbackKey ? null : current));
+      }, 1500);
+    } catch (err) {
+      console.error('Clipboard write failed', err);
+    }
+  };
+
+  /** Format a single image's caption + hashtags as a ready-to-paste post. */
+  const formatPost = (img: GeneratedImage): string => {
+    const caption = img.postCaption || '';
+    const tags = (img.postHashtags || []).join(' ');
+    return tags ? `${caption}\n\n${tags}` : caption;
+  };
+
+  /** Merge partial updates into an image and persist. */
+  const patchImage = (img: GeneratedImage, patch: Partial<GeneratedImage>) => {
+    saveImage({ ...img, ...patch });
+  };
+
+  /** Remove one hashtag by index and persist. */
+  const removeHashtag = (img: GeneratedImage, index: number) => {
+    const next = (img.postHashtags || []).filter((_, i) => i !== index);
+    patchImage(img, { postHashtags: next });
+  };
+
+  /**
+   * Generate captions for every visible uncaptioned image. Sequential —
+   * pi serializes prompts anyway, and we get cleaner progress reporting.
+   */
+  const batchCaptionImages = async (candidates: GeneratedImage[]) => {
+    const targets = candidates.filter((img) => !img.postCaption);
+    if (targets.length === 0) return;
+    setBatchCaptioning(true);
+    setBatchProgress({ done: 0, total: targets.length });
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        setPreparingPostId(targets[i].id);
+        try {
+          await generatePostContent(targets[i]);
+        } catch (err) {
+          console.error('Batch caption failed for', targets[i].id, err);
+        }
+        setBatchProgress({ done: i + 1, total: targets.length });
+      }
+    } finally {
+      setPreparingPostId(null);
+      setBatchCaptioning(false);
+      // Leave the final progress on screen briefly so the user sees "N/N".
+      setTimeout(() => setBatchProgress(null), 2000);
+    }
+  };
+
+  /** Download a JSON file of all post-ready items. */
+  const exportPostsAsJson = (items: GeneratedImage[]) => {
+    const payload = items.map((img) => ({
+      id: img.id,
+      prompt: img.prompt,
+      url: img.url,
+      caption: img.postCaption || '',
+      hashtags: img.postHashtags || [],
+      tags: img.tags || [],
+    }));
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mashup-posts-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   // Pi.dev runtime status, polled when the Settings panel is open.
   interface PiStatus {
@@ -1340,22 +1431,441 @@ export function MainContent() {
                 </div>
               )}
 
-              {view === 'captioning' && (
-                <div className="flex flex-col items-center justify-center py-20 space-y-4">
-                  <div className="text-zinc-500 text-sm">Captioning Studio — coming soon</div>
-                  <button onClick={() => setView('gallery')} className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm transition-colors">
-                    Back to Gallery
-                  </button>
-                </div>
-              )}
-              {view === 'post-ready' && (
-                <div className="flex flex-col items-center justify-center py-20 space-y-4">
-                  <div className="text-zinc-500 text-sm">Post Ready — coming soon</div>
-                  <button onClick={() => setView('gallery')} className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm transition-colors">
-                    Back to Gallery
-                  </button>
-                </div>
-              )}
+              {view === 'captioning' && (() => {
+                // Source of truth: savedImages (persisted). Captioning is a
+                // curated workflow — ephemeral gallery images shouldn't
+                // pollute this tab.
+                const all = savedImages;
+                const captioned = all.filter((i) => !!i.postCaption);
+                const uncaptioned = all.filter((i) => !i.postCaption);
+                const visible =
+                  captioningFilter === 'captioned'
+                    ? captioned
+                    : captioningFilter === 'uncaptioned'
+                      ? uncaptioned
+                      : all;
+
+                return (
+                  <div className="space-y-6">
+                    {/* Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div>
+                        <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                          <Edit3 className="w-5 h-5 text-indigo-400" />
+                          Captioning Studio
+                        </h2>
+                        <p className="text-xs text-zinc-500 mt-1">
+                          {captioned.length} / {all.length} captioned
+                          {batchProgress && (
+                            <span className="ml-3 text-emerald-400">
+                              Batch: {batchProgress.done}/{batchProgress.total}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* Filter tabs */}
+                        <div className="flex bg-zinc-900 border border-zinc-800 rounded-lg p-0.5">
+                          {(['all', 'captioned', 'uncaptioned'] as const).map((f) => (
+                            <button
+                              key={f}
+                              onClick={() => setCaptioningFilter(f)}
+                              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                                captioningFilter === f
+                                  ? 'bg-zinc-800 text-white'
+                                  : 'text-zinc-500 hover:text-zinc-300'
+                              }`}
+                            >
+                              {f === 'all' ? 'All' : f === 'captioned' ? 'Captioned' : 'Uncaptioned'}
+                            </button>
+                          ))}
+                        </div>
+
+                        <button
+                          onClick={() => batchCaptionImages(visible)}
+                          disabled={batchCaptioning || uncaptioned.length === 0}
+                          className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                        >
+                          {batchCaptioning ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Wand2 className="w-3.5 h-3.5" />
+                          )}
+                          Batch Caption
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Empty state */}
+                    {all.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 space-y-3 text-center">
+                        <ImageIcon className="w-10 h-10 text-zinc-700" />
+                        <p className="text-sm text-zinc-500">
+                          No saved images yet. Save images from the gallery to start captioning.
+                        </p>
+                        <button
+                          onClick={() => setView('gallery')}
+                          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm"
+                        >
+                          Go to Gallery
+                        </button>
+                      </div>
+                    ) : visible.length === 0 ? (
+                      <div className="py-12 text-center text-sm text-zinc-500">
+                        No {captioningFilter} images in this view.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {visible.map((img) => {
+                          const isWorking = preparingPostId === img.id;
+                          return (
+                            <div
+                              key={img.id}
+                              className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col"
+                            >
+                              {/* Thumbnail */}
+                              <div className="relative aspect-square bg-zinc-950">
+                                {img.url ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={img.url}
+                                    alt={img.prompt}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <ImageIcon className="w-8 h-8 text-zinc-700" />
+                                  </div>
+                                )}
+                                {isWorking && (
+                                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2 text-xs text-white">
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Generating caption…
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Body */}
+                              <div className="flex-1 p-4 space-y-3">
+                                <p className="text-[11px] text-zinc-500 line-clamp-2" title={img.prompt}>
+                                  {img.prompt}
+                                </p>
+
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                    Caption
+                                  </label>
+                                  <textarea
+                                    value={img.postCaption || ''}
+                                    onChange={(e) => patchImage(img, { postCaption: e.target.value })}
+                                    placeholder="No caption yet…"
+                                    rows={3}
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50 resize-y"
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                    Hashtags
+                                  </label>
+                                  {(img.postHashtags || []).length > 0 ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {img.postHashtags!.map((tag, i) => (
+                                        <span
+                                          key={`${tag}-${i}`}
+                                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-[10px] text-zinc-300"
+                                        >
+                                          {tag}
+                                          <button
+                                            onClick={() => removeHashtag(img, i)}
+                                            className="text-zinc-500 hover:text-red-400"
+                                          >
+                                            <X className="w-2.5 h-2.5" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-[11px] text-zinc-600 italic">No hashtags.</p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Footer actions */}
+                              <div className="border-t border-zinc-800 p-3 flex items-center gap-2">
+                                <button
+                                  disabled={isWorking || batchCaptioning}
+                                  onClick={async () => {
+                                    setPreparingPostId(img.id);
+                                    try {
+                                      await generatePostContent(img);
+                                    } finally {
+                                      setPreparingPostId(null);
+                                    }
+                                  }}
+                                  className="flex-1 px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md flex items-center justify-center gap-1.5 transition-colors"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                  {img.postCaption ? 'Regenerate' : 'Generate'}
+                                </button>
+                                <button
+                                  disabled={!img.postCaption}
+                                  onClick={() => patchImage(img, { isPostReady: true })}
+                                  className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1.5 transition-colors"
+                                  title="Mark as ready to post"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              {view === 'post-ready' && (() => {
+                const all = savedImages;
+                const ready = all.filter((i) => i.isPostReady === true);
+                const captionedCount = all.filter((i) => !!i.postCaption).length;
+
+                const copyAllPosts = () => {
+                  const formatted = ready.map(formatPost).join('\n\n---\n\n');
+                  copyWithFeedback(formatted, '__all__');
+                };
+
+                const markAllCaptionedReady = () => {
+                  all
+                    .filter((i) => i.postCaption && !i.isPostReady)
+                    .forEach((img) => patchImage(img, { isPostReady: true }));
+                };
+
+                return (
+                  <div className="space-y-6">
+                    {/* Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div>
+                        <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                          <Save className="w-5 h-5 text-emerald-400" />
+                          Post Ready
+                        </h2>
+                        <p className="text-xs text-zinc-500 mt-1">
+                          {ready.length} posts ready / {all.length} total saved images
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={copyAllPosts}
+                          disabled={ready.length === 0}
+                          className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                        >
+                          {copiedId === '__all__' ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" /> Copy All
+                            </>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => exportPostsAsJson(ready)}
+                          disabled={ready.length === 0}
+                          className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                        >
+                          <FileJson className="w-3.5 h-3.5" /> Export JSON
+                        </button>
+                        <button
+                          onClick={markAllCaptionedReady}
+                          disabled={captionedCount === ready.length}
+                          className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                          title="Mark every captioned image as ready"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Mark All Ready
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Empty state */}
+                    {ready.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 space-y-3 text-center">
+                        <Save className="w-10 h-10 text-zinc-700" />
+                        <p className="text-sm text-zinc-500">
+                          No posts ready yet. Go to the Gallery and click{' '}
+                          <span className="text-emerald-400">&quot;Prepare for Post&quot;</span> on
+                          an image, or caption it in the Captioning Studio and mark it ready.
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setView('gallery')}
+                            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm"
+                          >
+                            Open Gallery
+                          </button>
+                          <button
+                            onClick={() => setView('captioning')}
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm"
+                          >
+                            Captioning Studio
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {ready.map((img) => {
+                          const isWorking = preparingPostId === img.id;
+                          return (
+                            <div
+                              key={img.id}
+                              className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col"
+                            >
+                              <div className="relative aspect-square bg-zinc-950">
+                                {img.url ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={img.url}
+                                    alt={img.prompt}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <ImageIcon className="w-8 h-8 text-zinc-700" />
+                                  </div>
+                                )}
+                                <span className="absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-600/90 text-[10px] font-medium text-white rounded-full">
+                                  <Check className="w-3 h-3" /> Ready
+                                </span>
+                              </div>
+
+                              <div className="flex-1 p-4 space-y-3">
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                    Caption
+                                  </label>
+                                  <textarea
+                                    value={img.postCaption || ''}
+                                    onChange={(e) => patchImage(img, { postCaption: e.target.value })}
+                                    placeholder="No caption yet…"
+                                    rows={3}
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50 resize-y"
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                    Hashtags
+                                  </label>
+                                  {(img.postHashtags || []).length > 0 ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {img.postHashtags!.map((tag, i) => (
+                                        <span
+                                          key={`${tag}-${i}`}
+                                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-[10px] text-zinc-300"
+                                        >
+                                          {tag}
+                                          <button
+                                            onClick={() => removeHashtag(img, i)}
+                                            className="text-zinc-500 hover:text-red-400"
+                                          >
+                                            <X className="w-2.5 h-2.5" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-[11px] text-zinc-600 italic">No hashtags.</p>
+                                  )}
+                                </div>
+
+                                {(img.tags || []).length > 0 && (
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                      Image Tags
+                                    </label>
+                                    <div className="flex flex-wrap gap-1">
+                                      {img.tags!.map((t, i) => (
+                                        <span
+                                          key={`${t}-${i}`}
+                                          className="px-2 py-0.5 bg-indigo-900/30 border border-indigo-800/50 rounded text-[10px] text-indigo-300"
+                                        >
+                                          {t}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="border-t border-zinc-800 p-3 grid grid-cols-4 gap-2">
+                                <button
+                                  onClick={() =>
+                                    copyWithFeedback(img.postCaption || '', `cap-${img.id}`)
+                                  }
+                                  disabled={!img.postCaption}
+                                  className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
+                                  title="Copy caption only"
+                                >
+                                  {copiedId === `cap-${img.id}` ? (
+                                    <Check className="w-3 h-3 text-emerald-400" />
+                                  ) : (
+                                    <Copy className="w-3 h-3" />
+                                  )}
+                                  Caption
+                                </button>
+                                <button
+                                  onClick={() => copyWithFeedback(formatPost(img), `all-${img.id}`)}
+                                  disabled={!img.postCaption}
+                                  className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
+                                  title="Copy caption + hashtags"
+                                >
+                                  {copiedId === `all-${img.id}` ? (
+                                    <Check className="w-3 h-3 text-emerald-400" />
+                                  ) : (
+                                    <Copy className="w-3 h-3" />
+                                  )}
+                                  All
+                                </button>
+                                <button
+                                  disabled={isWorking}
+                                  onClick={async () => {
+                                    setPreparingPostId(img.id);
+                                    try {
+                                      await generatePostContent(img);
+                                    } finally {
+                                      setPreparingPostId(null);
+                                    }
+                                  }}
+                                  className="px-2 py-1.5 text-[10px] bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
+                                  title="Regenerate caption"
+                                >
+                                  {isWorking ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <RefreshCw className="w-3 h-3" />
+                                  )}
+                                  Regen
+                                </button>
+                                <button
+                                  onClick={() => patchImage(img, { isPostReady: false })}
+                                  className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-red-500/80 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
+                                  title="Remove from Post Ready"
+                                >
+                                  <MinusCircle className="w-3 h-3" />
+                                  Unready
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               {view === 'pipeline' && <PipelinePanel />}
 
               {(view === 'studio' || view === 'gallery') && (
