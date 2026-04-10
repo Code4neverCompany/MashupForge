@@ -224,6 +224,15 @@ export function MainContent() {
   // Drag state for rescheduling scheduled posts via HTML5 DnD.
   const [dragPostId, setDragPostId] = useState<string | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
+  // Click-to-schedule: when the user clicks an empty calendar cell, open
+  // a modal with an image picker + platform toggles + time. null when
+  // closed.
+  const [calendarSlotClick, setCalendarSlotClick] = useState<{
+    date: string;
+    hour: number;
+    imageId?: string;
+    platforms?: PostPlatform[];
+  } | null>(null);
 
   // Batch "Schedule All" mini-modal state.
   const [showScheduleAll, setShowScheduleAll] = useState(false);
@@ -523,6 +532,39 @@ export function MainContent() {
     // After creating a fresh group, flip the tab into grouped view so
     // the user sees the result immediately.
     if (!pickerTargetGroupId) setCaptioningGrouped(true);
+  };
+
+  /**
+   * Schedule a whole carousel: creates one ScheduledPost per image in the
+   * group at the shared date/time/platforms. The auto-post worker picks
+   * these up when the time hits; Instagram carousel-mode is still handled
+   * by postCarouselNow when the user clicks Post Now.
+   */
+  const scheduleCarousel = (
+    item: Extract<PostItem, { kind: 'carousel' }>,
+    platforms: PostPlatform[],
+    date: string,
+    time: string
+  ) => {
+    if (platforms.length === 0 || !date || !time || item.images.length === 0) return;
+    const caption = item.group?.caption || formatPost(item.images[0]);
+    const nowStamp = Date.now();
+    const newPosts: ScheduledPost[] = item.images.map((img, idx) => ({
+      id: `post-${nowStamp}-${idx}-${Math.random().toString(36).slice(2, 8)}`,
+      imageId: img.id,
+      date,
+      time,
+      platforms,
+      caption,
+      status: 'scheduled' as const,
+    }));
+    updateSettings({
+      scheduledPosts: [...(settings.scheduledPosts || []), ...newPosts],
+    });
+    setPostStatus((prev) => ({
+      ...prev,
+      [`carousel-${item.id}`]: `Scheduled carousel for ${date} ${time}`,
+    }));
   };
 
   /** Post a whole carousel now — fans out to platforms with the full mediaUrls array. */
@@ -1470,76 +1512,130 @@ export function MainContent() {
 
               {view === 'ideas' && (
                 <div className="space-y-6 h-full flex flex-col">
+                  {/* Section header */}
                   <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-xl font-semibold text-white">Ideas Board</h2>
-                      <p className="text-zinc-400 text-sm">Review, approve, and push brainstormed ideas to the comparison studio.</p>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-600/20 border border-amber-500/30 flex items-center justify-center">
+                        <Lightbulb className="w-5 h-5 text-amber-400" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-semibold text-white">Ideas Board</h2>
+                        <p className="text-sm text-zinc-400">Review, approve, and push brainstormed ideas to the Studio</p>
+                      </div>
                     </div>
                     <button
                       onClick={clearIdeas}
-                      className="px-4 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                      className="px-3 py-1.5 text-xs bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-xl font-medium transition-colors flex items-center gap-1.5"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                       Clear All
                     </button>
                   </div>
+
+                  {/* Kanban columns */}
                   <div className="flex flex-col md:flex-row gap-6 flex-1 min-h-[500px]">
-                    {['idea', 'in-work', 'done'].map((status) => (
-                      <div 
-                        key={status}
-                        className="flex-1 bg-zinc-900/50 rounded-2xl border border-zinc-800 p-4 flex flex-col gap-4"
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          const ideaId = e.dataTransfer.getData('ideaId');
-                          if (ideaId) updateIdeaStatus(ideaId, status as 'idea' | 'in-work' | 'done');
-                        }}
-                      >
-                        <h3 className="font-bold text-white flex items-center justify-between capitalize">
-                          {status.replace('-', ' ')} 
-                          <span className="bg-zinc-800 text-zinc-400 text-xs px-2 py-1 rounded-full">
-                            {ideas.filter(i => i.status === status).length}
-                          </span>
-                        </h3>
-                        <div className="flex flex-col gap-3 overflow-y-auto hide-scrollbar flex-1">
-                          {ideas.filter(i => i.status === status).map(idea => (
-                            <div 
-                              key={idea.id} 
-                              draggable
-                              onDragStart={(e) => e.dataTransfer.setData('ideaId', idea.id)}
-                              className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3 cursor-grab active:cursor-grabbing hover:border-indigo-500/50 transition-colors"
-                            >
-                              {idea.context && <h4 className="text-sm font-bold text-indigo-400">{idea.context}</h4>}
-                              <p className="text-xs text-zinc-300 line-clamp-4">{idea.concept}</p>
-                              <div className="flex items-center justify-between mt-auto pt-3 border-t border-zinc-800">
-                                <span className="text-[10px] text-zinc-500">{new Date(idea.createdAt).toLocaleDateString()}</span>
-                                <div className="flex gap-1">
-                                  {status === 'idea' && (
-                                    <button onClick={() => updateIdeaStatus(idea.id, 'in-work')} className="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded-md">Approve</button>
-                                  )}
-                                  {status === 'in-work' && (
-                                    <>
-                                      <button 
-                                        onClick={() => handlePushIdeaToCompare(idea.concept)} 
-                                        disabled={isPushing}
-                                        className="text-[10px] bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-2 py-1 rounded-md flex items-center gap-1"
+                    {(['idea', 'in-work', 'done'] as const).map((status) => {
+                      const statusCfg = {
+                        'idea': {
+                          icon: Lightbulb,
+                          label: 'Idea',
+                          iconColor: 'text-amber-400',
+                          iconBg: 'bg-amber-600/20 border-amber-500/30',
+                          hoverBorder: 'hover:border-amber-500/30',
+                        },
+                        'in-work': {
+                          icon: Zap,
+                          label: 'In Work',
+                          iconColor: 'text-emerald-400',
+                          iconBg: 'bg-emerald-600/20 border-emerald-500/30',
+                          hoverBorder: 'hover:border-emerald-500/30',
+                        },
+                        'done': {
+                          icon: CheckCircle2,
+                          label: 'Done',
+                          iconColor: 'text-zinc-300',
+                          iconBg: 'bg-zinc-800/80 border-zinc-700/60',
+                          hoverBorder: 'hover:border-zinc-500/30',
+                        },
+                      }[status];
+                      const StatusIcon = statusCfg.icon;
+                      return (
+                        <div
+                          key={status}
+                          className="flex-1 bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl p-4 flex flex-col gap-4"
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const ideaId = e.dataTransfer.getData('ideaId');
+                            if (ideaId) updateIdeaStatus(ideaId, status);
+                          }}
+                        >
+                          <h3 className="flex items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <span className={`w-7 h-7 rounded-lg border flex items-center justify-center ${statusCfg.iconBg}`}>
+                                <StatusIcon className={`w-3.5 h-3.5 ${statusCfg.iconColor}`} />
+                              </span>
+                              <span className="text-sm font-semibold text-white">{statusCfg.label}</span>
+                            </span>
+                            <span className="bg-zinc-800/80 text-zinc-400 rounded-full px-2 py-0.5 text-[10px]">
+                              {ideas.filter((i) => i.status === status).length}
+                            </span>
+                          </h3>
+                          <div className="flex flex-col gap-3 overflow-y-auto hide-scrollbar flex-1">
+                            {ideas.filter((i) => i.status === status).map((idea) => (
+                              <div
+                                key={idea.id}
+                                draggable
+                                onDragStart={(e) => e.dataTransfer.setData('ideaId', idea.id)}
+                                className={`bg-zinc-950/80 border border-zinc-800/60 rounded-xl p-4 flex flex-col gap-3 cursor-grab active:cursor-grabbing transition-colors ${statusCfg.hoverBorder}`}
+                              >
+                                {idea.context && <h4 className="text-sm font-bold text-amber-400">{idea.context}</h4>}
+                                <p className="text-xs text-zinc-300 line-clamp-4">{idea.concept}</p>
+                                <div className="flex items-center justify-between mt-auto pt-3 border-t border-zinc-800/60">
+                                  <span className="text-[10px] text-zinc-500">
+                                    {new Date(idea.createdAt).toLocaleDateString()}
+                                  </span>
+                                  <div className="flex gap-1">
+                                    {status === 'idea' && (
+                                      <button
+                                        onClick={() => updateIdeaStatus(idea.id, 'in-work')}
+                                        className="text-[10px] bg-emerald-600/80 hover:bg-emerald-500 text-white px-2 py-1 rounded-lg"
                                       >
-                                        {isPushing ? <Loader2 className="w-2 h-2 animate-spin" /> : <Zap className="w-2 h-2" />}
-                                        To Studio
+                                        Approve
                                       </button>
-                                      <button onClick={() => updateIdeaStatus(idea.id, 'done')} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-1 rounded-md">Done</button>
-                                    </>
-                                  )}
-                                  <button onClick={() => deleteIdea(idea.id)} className="text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-2 py-1 rounded-md">
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
+                                    )}
+                                    {status === 'in-work' && (
+                                      <>
+                                        <button
+                                          onClick={() => handlePushIdeaToCompare(idea.concept)}
+                                          disabled={isPushing}
+                                          className="text-[10px] bg-emerald-600/80 hover:bg-emerald-500 disabled:opacity-50 text-white px-2 py-1 rounded-lg flex items-center gap-1"
+                                        >
+                                          {isPushing ? <Loader2 className="w-2 h-2 animate-spin" /> : <Zap className="w-2 h-2" />}
+                                          To Studio
+                                        </button>
+                                        <button
+                                          onClick={() => updateIdeaStatus(idea.id, 'done')}
+                                          className="text-[10px] bg-emerald-600/80 hover:bg-emerald-500 text-white px-2 py-1 rounded-lg"
+                                        >
+                                          Done
+                                        </button>
+                                      </>
+                                    )}
+                                    <button
+                                      onClick={() => deleteIdea(idea.id)}
+                                      className="text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-400 px-2 py-1 rounded-lg"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1553,7 +1649,7 @@ export function MainContent() {
                     </div>
                     <div>
                       <h2 className="text-xl font-semibold text-white">Mashup Studio</h2>
-                      <p className="text-sm text-zinc-400">Generate and compare crossover ideas across AI models</p>
+                      <p className="text-sm text-zinc-400">Generate images with different AI models and artistic styles</p>
                     </div>
                   </div>
 
@@ -1593,7 +1689,7 @@ export function MainContent() {
 
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-zinc-300">Select Models to Compare</label>
+                        <label className="text-sm font-medium text-zinc-300">Select Models</label>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                           {ALL_MODELS.map(model => (
                             <button
@@ -1621,7 +1717,7 @@ export function MainContent() {
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-emerald-400 flex items-center gap-2">
                           <Sparkles className="w-4 h-4" />
-                          Pushed Prompt
+                          Image Prompt
                         </label>
                         <textarea
                           value={comparisonPrompt}
@@ -1711,34 +1807,6 @@ export function MainContent() {
                           </select>
                         </div>
 
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                            Seed / Chaos
-                          </label>
-                          <input
-                            type="number"
-                            value={comparisonOptions.seed || ''}
-                            onChange={(e) => setComparisonOptions(prev => ({ ...prev, seed: e.target.value === '' ? undefined : parseInt(e.target.value) }))}
-                            placeholder="Random (Leave empty)"
-                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-                            <span>CFG Scale / Stylize</span>
-                            <span className="text-emerald-400">{comparisonOptions.cfgScale || 7}</span>
-                          </label>
-                          <input
-                            type="range"
-                            min="1"
-                            max="20"
-                            step="1"
-                            value={comparisonOptions.cfgScale || 7}
-                            onChange={(e) => setComparisonOptions(prev => ({ ...prev, cfgScale: parseInt(e.target.value) }))}
-                            className="w-full accent-emerald-500"
-                          />
-                        </div>
                       </div>
 
                       <button
@@ -1749,12 +1817,12 @@ export function MainContent() {
                         {isComparing ? (
                           <>
                             <Loader2 className="w-5 h-5 animate-spin" />
-                            Comparing Models...
+                            Generating...
                           </>
                         ) : (
                           <>
-                            <Columns className="w-5 h-5" />
-                            Compare {comparisonModels.length} Models
+                            <Sparkles className="w-5 h-5" />
+                            Generate {comparisonModels.length} Images
                           </>
                         )}
                       </button>
@@ -2772,9 +2840,15 @@ export function MainContent() {
                                     });
                                     const cellKey = `${dateStr}:${hour}`;
                                     const isDragOver = dragOverCell === cellKey;
+                                    const isEmpty = postsAtSlot.length === 0;
                                     return (
                                       <div
                                         key={i}
+                                        onClick={() => {
+                                          if (isEmpty) {
+                                            setCalendarSlotClick({ date: dateStr, hour });
+                                          }
+                                        }}
                                         onDragOver={(e) => {
                                           e.preventDefault();
                                           if (dragOverCell !== cellKey) setDragOverCell(cellKey);
@@ -2800,7 +2874,11 @@ export function MainContent() {
                                           });
                                         }}
                                         className={`border-l border-zinc-800/60 min-h-[40px] p-1 space-y-1 transition-colors ${
-                                          isDragOver ? 'ring-2 ring-emerald-500/50 bg-emerald-500/5' : ''
+                                          isDragOver
+                                            ? 'ring-2 ring-emerald-500/50 bg-emerald-500/5'
+                                            : isEmpty
+                                              ? 'cursor-pointer hover:bg-emerald-500/5'
+                                              : ''
                                         }`}
                                       >
                                         {postsAtSlot.map((p) => {
@@ -2918,22 +2996,36 @@ export function MainContent() {
                               const hasScheduled = postsForDay.some((p) => p.status === 'scheduled' || !p.status);
                               const hasFailed = postsForDay.some((p) => p.status === 'failed');
                               return (
-                                <button
+                                <div
                                   key={i}
                                   onClick={() => {
                                     setCalendarMode('week');
                                     setCalendarDate(d);
                                   }}
-                                  className={`relative h-24 border-t border-l border-zinc-800/40 p-1.5 text-left transition-colors ${
+                                  className={`group/mc relative h-24 border-t border-l border-zinc-800/40 p-1.5 text-left cursor-pointer transition-colors ${
                                     inMonth ? 'bg-zinc-900/40 hover:bg-zinc-900' : 'bg-zinc-950 text-zinc-700'
                                   } ${(i + 1) % 7 === 0 ? 'border-r' : ''}`}
                                 >
-                                  <div
-                                    className={`text-xs font-medium ${
-                                      isToday ? 'text-emerald-400' : inMonth ? 'text-zinc-300' : 'text-zinc-700'
-                                    }`}
-                                  >
-                                    {d.getDate()}
+                                  <div className="flex items-center justify-between">
+                                    <div
+                                      className={`text-xs font-medium ${
+                                        isToday ? 'text-emerald-400' : inMonth ? 'text-zinc-300' : 'text-zinc-700'
+                                      }`}
+                                    >
+                                      {d.getDate()}
+                                    </div>
+                                    {inMonth && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setCalendarSlotClick({ date: dateStr, hour: 12 });
+                                        }}
+                                        className="opacity-0 group-hover/mc:opacity-100 w-5 h-5 rounded-full bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center transition-opacity"
+                                        title="Schedule a post for this day"
+                                      >
+                                        <Plus className="w-3 h-3" />
+                                      </button>
+                                    )}
                                   </div>
                                   {postsForDay.length > 0 && (
                                     <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between">
@@ -2945,9 +3037,221 @@ export function MainContent() {
                                       <span className="text-[10px] text-zinc-400">{postsForDay.length}</span>
                                     </div>
                                   )}
-                                </button>
+                                </div>
                               );
                             })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Click-to-schedule modal */}
+                    {calendarSlotClick && (() => {
+                      const slot = calendarSlotClick;
+                      const postReady = savedImages.filter((i) => i.isPostReady === true);
+                      const selectedImageId =
+                        slot.imageId || (postReady.length === 1 ? postReady[0].id : undefined);
+                      const selectedImage = selectedImageId
+                        ? savedImages.find((i) => i.id === selectedImageId)
+                        : undefined;
+                      const selectedPlatforms = slot.platforms || available;
+                      const timeStr = `${String(slot.hour).padStart(2, '0')}:00`;
+                      const day = new Date(`${slot.date}T00:00:00`);
+                      const dayLabel = day.toLocaleDateString(undefined, {
+                        weekday: 'long',
+                        month: 'long',
+                        day: 'numeric',
+                      });
+
+                      const createScheduledPost = () => {
+                        if (!selectedImage || selectedPlatforms.length === 0) return;
+                        const newPost: ScheduledPost = {
+                          id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                          imageId: selectedImage.id,
+                          date: slot.date,
+                          time: timeStr,
+                          platforms: selectedPlatforms,
+                          caption: formatPost(selectedImage),
+                          status: 'scheduled',
+                        };
+                        updateSettings({
+                          scheduledPosts: [...(settings.scheduledPosts || []), newPost],
+                        });
+                        setCalendarSlotClick(null);
+                      };
+
+                      const postImmediately = async () => {
+                        if (!selectedImage || selectedPlatforms.length === 0) return;
+                        await postImageNow(selectedImage, selectedPlatforms);
+                        setCalendarSlotClick(null);
+                      };
+
+                      return (
+                        <div
+                          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                          onClick={() => setCalendarSlotClick(null)}
+                        >
+                          <div
+                            className="bg-zinc-900/95 backdrop-blur border border-zinc-800/60 rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-between p-5 border-b border-zinc-800/60">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center">
+                                  <Clock className="w-5 h-5 text-emerald-400" />
+                                </div>
+                                <div>
+                                  <h3 className="text-lg font-semibold text-white">Schedule Post</h3>
+                                  <p className="text-xs text-zinc-500">{dayLabel}</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => setCalendarSlotClick(null)}
+                                className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                              {/* Image picker */}
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                  Image
+                                </label>
+                                {postReady.length === 0 ? (
+                                  <p className="text-xs text-amber-400">
+                                    No post-ready images yet. Go to the Gallery and click
+                                    &quot;Prepare for Post&quot; on an image first.
+                                  </p>
+                                ) : (
+                                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto">
+                                    {postReady.map((img) => {
+                                      const isSel = img.id === selectedImageId;
+                                      return (
+                                        <button
+                                          key={img.id}
+                                          onClick={() =>
+                                            setCalendarSlotClick({ ...slot, imageId: img.id })
+                                          }
+                                          className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                                            isSel
+                                              ? 'border-emerald-500 ring-2 ring-emerald-500/30'
+                                              : 'border-zinc-800/60 hover:border-zinc-600'
+                                          }`}
+                                        >
+                                          {img.url ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img
+                                              src={img.url}
+                                              alt={img.prompt}
+                                              className="w-full h-full object-cover"
+                                            />
+                                          ) : (
+                                            <div className="w-full h-full flex items-center justify-center bg-zinc-950">
+                                              <ImageIcon className="w-5 h-5 text-zinc-700" />
+                                            </div>
+                                          )}
+                                          {isSel && (
+                                            <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center">
+                                              <Check className="w-2.5 h-2.5 text-white" />
+                                            </div>
+                                          )}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Platforms */}
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                  Platforms
+                                </label>
+                                {available.length === 0 ? (
+                                  <p className="text-[11px] text-amber-400">
+                                    Configure a platform in Settings first.
+                                  </p>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {available.map((p) => {
+                                      const checked = selectedPlatforms.includes(p);
+                                      return (
+                                        <button
+                                          key={p}
+                                          type="button"
+                                          onClick={() => {
+                                            const next = checked
+                                              ? selectedPlatforms.filter((x) => x !== p)
+                                              : [...selectedPlatforms, p];
+                                            setCalendarSlotClick({ ...slot, platforms: next });
+                                          }}
+                                          className={`px-2.5 py-1 text-[10px] rounded-full border transition-colors ${
+                                            checked
+                                              ? `${platformBadgeClass(p)} text-white border-transparent`
+                                              : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
+                                          }`}
+                                        >
+                                          {checked && <Check className="w-3 h-3 inline mr-1" />}
+                                          {p}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Time (editable) */}
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Date</label>
+                                  <input
+                                    type="date"
+                                    value={slot.date}
+                                    onChange={(e) => setCalendarSlotClick({ ...slot, date: e.target.value })}
+                                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Time</label>
+                                  <input
+                                    type="time"
+                                    value={timeStr}
+                                    onChange={(e) => {
+                                      const [h] = e.target.value.split(':').map(Number);
+                                      if (!Number.isNaN(h)) {
+                                        setCalendarSlotClick({ ...slot, hour: h });
+                                      }
+                                    }}
+                                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2 p-4 border-t border-zinc-800/60">
+                              <button
+                                onClick={() => setCalendarSlotClick(null)}
+                                className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={postImmediately}
+                                disabled={!selectedImage || selectedPlatforms.length === 0}
+                                className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center gap-1.5"
+                              >
+                                <Send className="w-3.5 h-3.5" /> Post Now
+                              </button>
+                              <button
+                                onClick={createScheduledPost}
+                                disabled={!selectedImage || selectedPlatforms.length === 0}
+                                className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-xl flex items-center gap-1.5"
+                              >
+                                <Clock className="w-3.5 h-3.5" /> Schedule
+                              </button>
+                            </div>
                           </div>
                         </div>
                       );
@@ -3087,7 +3391,44 @@ export function MainContent() {
                                     )}
                                   </div>
 
+                                  {/* Date + time (same key-namespace as cells) */}
+                                  {(() => {
+                                    const carouselSchedule = getSchedule(key);
+                                    return (
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div className="space-y-1">
+                                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Date</label>
+                                          <input
+                                            type="date"
+                                            value={carouselSchedule.date}
+                                            onChange={(e) => setScheduleFor(key, { date: e.target.value })}
+                                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                          />
+                                        </div>
+                                        <div className="space-y-1">
+                                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Time</label>
+                                          <input
+                                            type="time"
+                                            value={carouselSchedule.time}
+                                            onChange={(e) => setScheduleFor(key, { time: e.target.value })}
+                                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                          />
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+
                                   <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                      disabled={busy !== null || selPlatforms.length === 0}
+                                      onClick={() => {
+                                        const sch = getSchedule(key);
+                                        scheduleCarousel(item, selPlatforms, sch.date, sch.time);
+                                      }}
+                                      className="px-2 py-1.5 text-[11px] bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                    >
+                                      <Clock className="w-3.5 h-3.5" /> Schedule
+                                    </button>
                                     <button
                                       disabled={busy !== null || selPlatforms.length === 0}
                                       onClick={() => postCarouselNow(item, selPlatforms)}
@@ -3098,22 +3439,25 @@ export function MainContent() {
                                       ) : (
                                         <Send className="w-3.5 h-3.5" />
                                       )}
-                                      Post Carousel Now
+                                      Post Now
                                     </button>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
                                     {isExplicit ? (
                                       <button
                                         onClick={() => separateCarousel(item.id)}
-                                        className="px-2 py-1.5 text-[11px] bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                        className="flex-1 px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
                                       >
-                                        <Columns className="w-3.5 h-3.5" /> Separate
+                                        <Columns className="w-3 h-3" /> Separate
                                       </button>
                                     ) : (
                                       <button
                                         onClick={() => persistCarouselGroup(`manual-${anchor.id}`, item.images.map((i) => i.id))}
-                                        className="px-2 py-1.5 text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                        className="flex-1 px-2 py-1.5 text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
                                         title="Save this auto-detected grouping"
                                       >
-                                        <LayoutGrid className="w-3.5 h-3.5" /> Lock Group
+                                        <LayoutGrid className="w-3 h-3" /> Lock Group
                                       </button>
                                     )}
                                   </div>
@@ -3531,11 +3875,6 @@ export function MainContent() {
                           </div>
                         </div>
                       )}
-                      {img.approved && (
-                        <div className="absolute top-3 right-3 z-30 bg-emerald-500/90 backdrop-blur-sm text-white p-1.5 rounded-full shadow-lg">
-                          <BookmarkCheck className="w-4 h-4" />
-                        </div>
-                      )}
                       {view === 'gallery' && !img.isVideo && img.imageId && (
                         <div className="absolute top-4 left-4 z-30">
                           <input
@@ -3590,49 +3929,52 @@ export function MainContent() {
                         />
                       )}
                       
-                      {/* Top Actions Overlay */}
-                      <div className="absolute top-0 left-0 right-0 p-4 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+                      {/* Top Actions Overlay — compact icon row.
+                          Buttons shrunk from w-10→w-8 and icons w-5→w-4
+                          so all 7 fit comfortably on one line without
+                          colliding with the approved indicator. */}
+                      <div className="absolute top-0 left-0 right-0 p-2 flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
                         {img.imageId && !img.isVideo && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleAnimate(img); }}
                             disabled={img.status === 'animating'}
-                            className="w-10 h-10 flex items-center justify-center bg-black/50 hover:bg-indigo-500/80 text-white rounded-xl backdrop-blur-md transition-colors"
+                            className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-indigo-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
                             title="Animate Image"
                           >
-                            {img.status === 'animating' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Video className="w-5 h-5" />}
+                            {img.status === 'animating' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Video className="w-4 h-4" />}
                           </button>
                         )}
                         {view === 'studio' && !img.isVideo && (
                           <button
                             onClick={(e) => { e.stopPropagation(); rerollImage(img.id, img.prompt); }}
                             disabled={isGenerating}
-                            className="w-10 h-10 flex items-center justify-center bg-black/50 hover:bg-indigo-500/80 text-white rounded-xl backdrop-blur-md transition-colors"
+                            className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
                             title="Re-roll Image"
                           >
-                            <RefreshCw className={`w-5 h-5 ${isGenerating ? 'animate-spin' : ''}`} />
+                            <RefreshCw className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
                           </button>
                         )}
                         <button
                           onClick={(e) => { e.stopPropagation(); toggleApproveImage(img.id); }}
-                          className={`w-10 h-10 flex items-center justify-center rounded-xl backdrop-blur-md transition-colors ${
-                            img.approved 
-                              ? 'bg-indigo-500 text-white' 
-                              : 'bg-black/50 hover:bg-indigo-500/80 text-white'
+                          className={`w-8 h-8 flex items-center justify-center rounded-lg backdrop-blur-md transition-colors ${
+                            img.approved
+                              ? 'bg-emerald-500 text-white'
+                              : 'bg-black/50 hover:bg-emerald-500/80 text-white'
                           }`}
-                          title={img.approved ? "Unapprove Image" : "Approve Image"}
+                          title={img.approved ? 'Unapprove Image' : 'Approve Image'}
                         >
-                          <BookmarkCheck className="w-5 h-5" />
+                          <BookmarkCheck className="w-4 h-4" />
                         </button>
                         {view === 'gallery' && (
                           <div className="relative group/col">
                             <button
                               onClick={(e) => e.stopPropagation()}
-                              className="w-10 h-10 flex items-center justify-center bg-black/50 hover:bg-indigo-500/80 text-white rounded-xl backdrop-blur-md transition-colors"
+                              className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
                               title="Add to Collection"
                             >
-                              <FolderPlus className="w-5 h-5" />
+                              <FolderPlus className="w-4 h-4" />
                             </button>
-                            <div className="absolute right-0 top-full mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl opacity-0 invisible group-hover/col:opacity-100 group-hover/col:visible transition-all z-50 p-2">
+                            <div className="absolute right-0 top-full mt-2 w-48 bg-zinc-900 border border-zinc-800/60 rounded-xl shadow-2xl opacity-0 invisible group-hover/col:opacity-100 group-hover/col:visible transition-all z-50 p-2">
                               <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2 py-1 mb-1">Add to Collection</p>
                               {collections.map(col => (
                                 <button
@@ -3647,8 +3989,8 @@ export function MainContent() {
                                     setDragOverCollection(null);
                                   }}
                                   className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
-                                    dragOverCollection === col.id ? 'bg-indigo-500 text-white scale-105' :
-                                    img.collectionId === col.id ? 'bg-indigo-500/20 text-indigo-400' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                                    dragOverCollection === col.id ? 'bg-emerald-500 text-white scale-105' :
+                                    img.collectionId === col.id ? 'bg-emerald-500/20 text-emerald-400' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
                                   }`}
                                 >
                                   {col.name}
@@ -3664,7 +4006,7 @@ export function MainContent() {
                               )}
                               <button
                                 onClick={(e) => { e.stopPropagation(); setShowCollectionModal(true); }}
-                                className="w-full text-left px-3 py-2 rounded-lg text-xs text-indigo-400 hover:bg-indigo-500/10 transition-colors mt-1 border-t border-zinc-800 pt-2 flex items-center gap-2"
+                                className="w-full text-left px-3 py-2 rounded-lg text-xs text-emerald-400 hover:bg-emerald-500/10 transition-colors mt-1 border-t border-zinc-800 pt-2 flex items-center gap-2"
                               >
                                 <Plus className="w-3 h-3" />
                                 New Collection
@@ -3675,14 +4017,14 @@ export function MainContent() {
                         <button
                           onClick={(e) => { e.stopPropagation(); saveImage(img); }}
                           disabled={isSaved}
-                          className={`w-10 h-10 flex items-center justify-center rounded-xl backdrop-blur-md transition-colors ${
-                            isSaved 
-                              ? 'bg-indigo-500/80 text-white cursor-default' 
+                          className={`w-8 h-8 flex items-center justify-center rounded-lg backdrop-blur-md transition-colors ${
+                            isSaved
+                              ? 'bg-emerald-500/80 text-white cursor-default'
                               : 'bg-black/50 hover:bg-black/80 text-white'
                           }`}
-                          title={isSaved ? "Saved to Gallery" : "Save to Gallery"}
+                          title={isSaved ? 'Saved to Gallery' : 'Save to Gallery'}
                         >
-                          {isSaved ? <BookmarkCheck className="w-5 h-5" /> : <Bookmark className="w-5 h-5" />}
+                          {isSaved ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
                         </button>
                         <button
                           disabled={preparingPostId === img.id}
@@ -3699,47 +4041,43 @@ export function MainContent() {
                               setPreparingPostId(null);
                             }
                           }}
-                          className="w-10 h-10 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 disabled:opacity-60 disabled:hover:bg-black/50 text-white rounded-xl backdrop-blur-md transition-colors"
+                          className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 disabled:opacity-60 disabled:hover:bg-black/50 text-white rounded-lg backdrop-blur-md transition-colors"
                           title={preparingPostId === img.id ? 'Generating caption…' : 'Prepare for Post'}
                         >
                           {preparingPostId === img.id ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
+                            <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
-                            <Save className="w-5 h-5" />
+                            <Save className="w-4 h-4" />
                           )}
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); deleteImage(img.id, view === 'gallery'); }}
-                          className="w-10 h-10 flex items-center justify-center bg-black/50 hover:bg-red-500/80 text-white rounded-xl backdrop-blur-md transition-colors"
+                          className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-red-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
                           title="Delete Image"
                         >
-                          <Trash2 className="w-5 h-5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
 
-                      {/* Bottom Overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6 pointer-events-none">
-                        <p className="text-sm text-zinc-200 line-clamp-3 mb-4 font-medium leading-relaxed shadow-sm pointer-events-auto">
+                      {/* Bottom Overlay — prompt + download.
+                          The card itself is clickable to open the image,
+                          so no explicit "View Details" button. */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 pointer-events-none">
+                        <p className="text-xs text-zinc-200 line-clamp-2 mb-3 font-medium leading-relaxed shadow-sm pointer-events-auto">
                           {img.prompt}
                         </p>
-                        <div className="flex gap-3 pointer-events-auto">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setSelectedImage(img); }}
-                            className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
-                          >
-                            <Maximize2 className="w-4 h-4" />
-                            View Details
-                          </button>
+                        <div className="flex gap-2 pointer-events-auto">
                           <a
                             href={img.url || `data:image/jpeg;base64,${img.base64}`}
                             download={`mashup-${idx + 1}.jpg`}
                             onClick={(e) => e.stopPropagation()}
-                            className="w-10 h-10 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl transition-colors"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-medium transition-colors"
                             title="Download Image"
                             target={img.url ? "_blank" : undefined}
                             rel={img.url ? "noopener noreferrer" : undefined}
                           >
-                            <Download className="w-4 h-4" />
+                            <Download className="w-3.5 h-3.5" />
+                            Download
                           </a>
                         </div>
                       </div>
