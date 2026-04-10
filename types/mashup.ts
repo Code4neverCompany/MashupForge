@@ -310,6 +310,10 @@ export interface MashupContextType {
   setComparisonPrompt: React.Dispatch<React.SetStateAction<string>>;
   comparisonOptions: GenerateOptions;
   setComparisonOptions: React.Dispatch<React.SetStateAction<GenerateOptions>>;
+  generationError: string | null;
+  clearGenerationError: () => void;
+  comparisonError: string | null;
+  clearComparisonError: () => void;
   ideas: Idea[];
   addIdea: (concept: string, context?: string) => void;
   updateIdeaStatus: (id: string, status: 'idea' | 'in-work' | 'done') => void;

@@ -82,6 +82,8 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     setImages,
     isGenerating,
     progress,
+    generationError,
+    clearGenerationError,
     generateImages,
     rerollImage,
     generateNegativePrompt,
@@ -100,6 +102,8 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     pickComparisonWinner,
     clearComparison,
     deleteComparisonResult,
+    comparisonError,
+    clearComparisonError,
   } = comparisonHook;
 
   const ideasHook = useIdeas();
@@ -166,6 +170,10 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     pickComparisonWinner,
     clearComparison,
     deleteComparisonResult,
+    generationError,
+    clearGenerationError,
+    comparisonError,
+    clearComparisonError,
     generateNegativePrompt,
     comparisonPrompt,
     setComparisonPrompt,

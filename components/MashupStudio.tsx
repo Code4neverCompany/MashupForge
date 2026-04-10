@@ -3,6 +3,7 @@
 import { Sidebar } from './Sidebar';
 import { MainContent } from './MainContent';
 import { MashupProvider, useMashup } from './MashupContext';
+import { ErrorBoundary } from './ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 
 function MashupApp() {
@@ -18,16 +19,22 @@ function MashupApp() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-zinc-950">
-      <Sidebar />
-      <MainContent />
+      <ErrorBoundary section="Sidebar">
+        <Sidebar />
+      </ErrorBoundary>
+      <ErrorBoundary section="MainContent">
+        <MainContent />
+      </ErrorBoundary>
     </div>
   );
 }
 
 export function MashupStudio() {
   return (
-    <MashupProvider>
-      <MashupApp />
-    </MashupProvider>
+    <ErrorBoundary section="App">
+      <MashupProvider>
+        <MashupApp />
+      </MashupProvider>
+    </ErrorBoundary>
   );
 }

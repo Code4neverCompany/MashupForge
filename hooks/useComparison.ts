@@ -35,6 +35,9 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
   const [isComparisonLoaded, setIsComparisonLoaded] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState('');
+  const [comparisonError, setComparisonError] = useState<string | null>(null);
+
+  const clearComparisonError = () => setComparisonError(null);
 
   useEffect(() => {
     const load = async () => {
@@ -58,6 +61,7 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
 
   const generateComparison = async (prompt: string, modelIds: string[], options?: GenerateOptions) => {
     setIsGenerating(true);
+    setComparisonError(null);
     const comparisonId = `comp-group-${Date.now()}`;
 
     let finalPrompt = prompt;
@@ -196,9 +200,11 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
           setComparisonResults(prev => prev.filter(img => img.id !== placeholders[i].id));
         }
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Comparison failed', e);
-      setProgress('Comparison failed. Check your API keys.');
+      const message = e?.message || 'Comparison failed. Check your API keys.';
+      setComparisonError(message);
+      setProgress('');
     } finally {
       setIsGenerating(false);
     }
@@ -262,5 +268,7 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
     isComparisonLoaded,
     isComparisonGenerating: isGenerating,
     comparisonProgress: progress,
+    comparisonError,
+    clearComparisonError,
   };
 }

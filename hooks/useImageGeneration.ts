@@ -115,6 +115,9 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
   const [images, setImages] = useState<GeneratedImage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState('');
+  const [generationError, setGenerationError] = useState<string | null>(null);
+
+  const clearGenerationError = () => setGenerationError(null);
 
   const autoTagImage = async (id: string, providedImg?: GeneratedImage) => {
     const img = providedImg || [...images].find(i => i.id === id);
@@ -161,6 +164,7 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
 
   const generateImages = async (customPrompts?: string[], append: boolean = false, options?: GenerateOptions) => {
     setIsGenerating(true);
+    setGenerationError(null);
     const placeholders: GeneratedImage[] = (customPrompts || [1, 2, 3, 4]).map((_, idx) => ({
       id: `placeholder-${Date.now()}-${idx}`,
       prompt: typeof _ === 'string' ? _ : 'Generating...',
@@ -564,9 +568,11 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
           }
         }
         setProgress('');
-      } catch (error) {
+      } catch (error: any) {
       console.error('Generation error:', error);
-      setProgress('An error occurred during generation.');
+      const message = error?.message || 'An error occurred during generation.';
+      setGenerationError(message);
+      setProgress('');
     } finally {
       setIsGenerating(false);
     }
@@ -574,6 +580,7 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
 
   const rerollImage = async (id: string, prompt: string, options?: GenerateOptions) => {
     setIsGenerating(true);
+    setGenerationError(null);
     setProgress('Rerolling image...');
 
     setImages(prev => prev.map(img => img.id === id ? { ...img, status: 'generating' } : img));
@@ -815,9 +822,11 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
       }
 
       setProgress('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Reroll error:', error);
-      setProgress('An error occurred during reroll.');
+      const message = error?.message || 'An error occurred during reroll.';
+      setGenerationError(message);
+      setProgress('');
     } finally {
       setIsGenerating(false);
     }
@@ -828,6 +837,8 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
     setImages,
     isGenerating,
     progress,
+    generationError,
+    clearGenerationError,
     generateImages,
     rerollImage,
     generateNegativePrompt,
