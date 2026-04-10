@@ -187,6 +187,12 @@ export function MainContent() {
 
   // Captioning Studio tab state
   const [captioningFilter, setCaptioningFilter] = useState<'all' | 'captioned' | 'uncaptioned'>('all');
+  // Whether the tab auto-groups similar images into carousel cards
+  // (reuses the Post Ready computeCarouselView logic). Default ON.
+  const [captioningGrouped, setCaptioningGrouped] = useState(true);
+  // When grouping is OFF, users can check individual cards and manually
+  // promote a selection to a carousel group.
+  const [captioningSelected, setCaptioningSelected] = useState<Set<string>>(new Set());
   const [batchCaptioning, setBatchCaptioning] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   // Image id currently copied (for the brief "Copied" affordance on the
@@ -1247,115 +1253,160 @@ export function MainContent() {
               transition={{ duration: 0.3 }}
             >
               {view === 'gallery' && (
-                <div className="mb-8 flex flex-col gap-4 bg-zinc-900/50 p-4 md:p-6 rounded-2xl border border-zinc-800">
-                  <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-                    <div className="relative w-full sm:w-96">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                      <input 
-                        type="text" 
-                        placeholder="Search by prompt or tags..." 
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                      />
-                    </div>
-                    <div className="flex items-center gap-4 w-full sm:w-auto">
-                      {selectedForBatch.size > 0 && (
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={handleBatchAnimate}
-                            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-colors flex items-center gap-2 text-sm"
-                          >
-                            <Video className="w-4 h-4" />
-                            Batch Animate ({selectedForBatch.size})
-                          </button>
-                          <button
-                            onClick={() => setShowBulkTagModal(true)}
-                            className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-medium transition-colors flex items-center gap-2 text-sm"
-                          >
-                            <Tag className="w-4 h-4" />
-                            Bulk Tag
-                          </button>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <Filter className="w-4 h-4 text-zinc-500" />
-                        <select 
-                          value={sortBy}
-                          onChange={(e) => setSortBy(e.target.value as 'newest' | 'oldest')}
-                          className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
-                        >
-                          <option value="newest">Newest First</option>
-                          <option value="oldest">Oldest First</option>
-                        </select>
+                <div className="mb-6 space-y-4">
+                  {/* Section header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center">
+                        <Bookmark className="w-5 h-5 text-emerald-400" />
                       </div>
+                      <div>
+                        <h2 className="text-xl font-semibold text-white">Gallery</h2>
+                        <p className="text-sm text-zinc-400">{savedImages.length} saved images</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-zinc-500">
+                      <span>{savedImages.length} images</span>
+                      <span className="text-zinc-700">·</span>
+                      <span>{savedImages.filter((i) => i.tags && i.tags.length > 0).length} tagged</span>
+                      <span className="text-zinc-700">·</span>
+                      <span>{savedImages.filter((i) => i.postCaption).length} captioned</span>
+                      <span className="text-zinc-700">·</span>
+                      <span>{savedImages.filter((i) => i.isPostReady).length} post-ready</span>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-3 pt-4 border-t border-zinc-800">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Model:</span>
-                      <select 
-                        value={filterModel}
-                        onChange={(e) => setFilterModel(e.target.value)}
-                        className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 cursor-pointer"
-                      >
-                        <option value="all">All Models</option>
-                        {ALL_MODELS.map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Universe:</span>
-                      <select 
-                        value={filterUniverse}
-                        onChange={(e) => setFilterUniverse(e.target.value)}
-                        className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 cursor-pointer"
-                      >
-                        <option value="all">All Universes</option>
-                        <option value="Marvel">Marvel</option>
-                        <option value="DC">DC</option>
-                        <option value="Star Wars">Star Wars</option>
-                        <option value="Warhammer 40k">Warhammer 40k</option>
-                      </select>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-                      <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider whitespace-nowrap">Tag Query:</span>
-                      <div className="relative flex-1">
-                        <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-500" />
-                        <input 
+                  {/* Filter card */}
+                  <div className="flex flex-col gap-4 bg-zinc-900/80 backdrop-blur-sm p-4 md:p-5 rounded-2xl border border-zinc-800/60">
+                    <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                      <div className="relative w-full sm:w-96">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                        <input
                           type="text"
-                          placeholder="e.g. Marvel OR DC; NOT Grimdark"
-                          value={tagQuery}
-                          onChange={(e) => setTagQuery(e.target.value)}
-                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                          placeholder="Search by prompt or tags..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/40 transition-colors"
                         />
                       </div>
-                      {tagQuery && (
-                        <button 
-                          onClick={() => setTagQuery('')}
-                          className="p-1 text-zinc-500 hover:text-white"
-                        >
-                          <XCircle className="w-3 h-3" />
-                        </button>
-                      )}
+                      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        {selectedForBatch.size > 0 && (
+                          <>
+                            <span className="px-2 py-1 text-[11px] font-medium bg-emerald-500/20 text-emerald-400 rounded-full border border-emerald-500/30">
+                              {selectedForBatch.size} selected
+                            </span>
+                            <button
+                              onClick={handleBatchAnimate}
+                              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-medium transition-colors flex items-center gap-2"
+                            >
+                              <Video className="w-3.5 h-3.5" />
+                              Batch Animate
+                            </button>
+                            <button
+                              onClick={() => setShowBulkTagModal(true)}
+                              className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-medium transition-colors flex items-center gap-2"
+                            >
+                              <Tag className="w-3.5 h-3.5" />
+                              Bulk Tag
+                            </button>
+                          </>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <Filter className="w-4 h-4 text-zinc-500" />
+                          <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value as 'newest' | 'oldest')}
+                            className="bg-zinc-950 border border-zinc-800/60 rounded-xl px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                          >
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                          </select>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Collection:</span>
-                      <select 
-                        value={selectedCollectionId}
-                        onChange={(e) => setSelectedCollectionId(e.target.value)}
-                        className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 cursor-pointer"
+                    {/* Model pills */}
+                    <div className="flex flex-wrap gap-1.5 pt-3 border-t border-zinc-800/60">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider self-center mr-1">
+                        Model
+                      </span>
+                      <button
+                        onClick={() => setFilterModel('all')}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                          filterModel === 'all'
+                            ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                            : 'text-zinc-500 hover:text-zinc-300 border border-zinc-800/60'
+                        }`}
                       >
-                        <option value="all">All Collections</option>
-                        {collections.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
+                        All
+                      </button>
+                      {ALL_MODELS.map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => setFilterModel(m.id)}
+                          className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                            filterModel === m.id
+                              ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                              : 'text-zinc-500 hover:text-zinc-300 border border-zinc-800/60'
+                          }`}
+                        >
+                          {m.name}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Universe + Collection + Tag query */}
+                    <div className="flex flex-wrap gap-3 pt-3 border-t border-zinc-800/60">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Universe</span>
+                        <select
+                          value={filterUniverse}
+                          onChange={(e) => setFilterUniverse(e.target.value)}
+                          className="bg-zinc-950 border border-zinc-800/60 rounded-xl px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                        >
+                          <option value="all">All Universes</option>
+                          <option value="Marvel">Marvel</option>
+                          <option value="DC">DC</option>
+                          <option value="Star Wars">Star Wars</option>
+                          <option value="Warhammer 40k">Warhammer 40k</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Collection</span>
+                        <select
+                          value={selectedCollectionId}
+                          onChange={(e) => setSelectedCollectionId(e.target.value)}
+                          className="bg-zinc-950 border border-zinc-800/60 rounded-xl px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                        >
+                          <option value="all">All Collections</option>
+                          {collections.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-1 min-w-[220px]">
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider whitespace-nowrap">Tags</span>
+                        <div className="relative flex-1">
+                          <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-500" />
+                          <input
+                            type="text"
+                            placeholder="e.g. Marvel OR DC; NOT Grimdark"
+                            value={tagQuery}
+                            onChange={(e) => setTagQuery(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-colors"
+                          />
+                        </div>
+                        {tagQuery && (
+                          <button
+                            onClick={() => setTagQuery('')}
+                            className="p-1 text-zinc-500 hover:text-white"
+                          >
+                            <XCircle className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1819,10 +1870,44 @@ export function MainContent() {
                           ))}
                         </div>
 
+                        {/* Group Similar toggle */}
+                        <button
+                          onClick={() => {
+                            setCaptioningGrouped(!captioningGrouped);
+                            // Leaving grouped mode clears any stale selection.
+                            if (captioningGrouped) setCaptioningSelected(new Set());
+                          }}
+                          className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 border ${
+                            captioningGrouped
+                              ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30'
+                              : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
+                          }`}
+                        >
+                          <LayoutGrid className="w-3.5 h-3.5" />
+                          {captioningGrouped ? 'Grouped' : 'Group Similar'}
+                        </button>
+
+                        {/* Manual "Group Selected" — only when grouping toggle is off
+                            and the user has picked 2+ images with checkboxes. */}
+                        {!captioningGrouped && captioningSelected.size >= 2 && (
+                          <button
+                            onClick={() => {
+                              const ids = Array.from(captioningSelected);
+                              persistCarouselGroup(`manual-${ids[0]}`, ids);
+                              setCaptioningSelected(new Set());
+                              setCaptioningGrouped(true);
+                            }}
+                            className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-full flex items-center gap-1.5 transition-colors"
+                          >
+                            <LayoutGrid className="w-3.5 h-3.5" />
+                            Group Selected ({captioningSelected.size})
+                          </button>
+                        )}
+
                         <button
                           onClick={() => batchCaptionImages(visible)}
                           disabled={batchCaptioning || uncaptioned.length === 0}
-                          className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                          className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-full flex items-center gap-1.5 transition-colors"
                         >
                           {batchCaptioning ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1854,12 +1939,151 @@ export function MainContent() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                        {visible.map((img) => {
+                        {(captioningGrouped ? computeCarouselView(visible) : visible.map((img) => ({ kind: 'single' as const, img }))).map((entry) => {
+                          // ── Carousel card (captioning) ────────────────
+                          if (entry.kind === 'carousel') {
+                            const anchor = entry.images[0];
+                            const isWorking = preparingPostId === anchor.id;
+                            const isExplicit = !!entry.group;
+                            return (
+                              <div
+                                key={`c-${entry.id}`}
+                                className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl overflow-hidden flex flex-col"
+                              >
+                                {/* Image strip */}
+                                <div className="relative bg-zinc-950 overflow-x-auto">
+                                  <div className="flex gap-1 p-2" style={{ minHeight: 140 }}>
+                                    {entry.images.map((ci) => (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        key={ci.id}
+                                        src={ci.url}
+                                        alt={ci.prompt}
+                                        onClick={() => setSelectedImage(ci)}
+                                        className="h-32 w-32 object-cover rounded-lg cursor-zoom-in shrink-0"
+                                      />
+                                    ))}
+                                  </div>
+                                  <span className="absolute top-3 left-3 inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-600/90 text-[10px] font-medium text-white rounded-full">
+                                    <LayoutGrid className="w-3 h-3" /> Carousel · {entry.images.length} images
+                                  </span>
+                                  {isWorking && (
+                                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2 text-xs text-white">
+                                      <Loader2 className="w-4 h-4 animate-spin" /> Generating caption…
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Shared caption body */}
+                                <div className="flex-1 p-4 space-y-3">
+                                  <p className="text-[11px] text-zinc-500 line-clamp-2" title={anchor.prompt}>
+                                    {anchor.prompt}
+                                  </p>
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                      Shared caption
+                                    </label>
+                                    <AutoTextarea
+                                      value={anchor.postCaption || ''}
+                                      onChange={(e) => {
+                                        // Fan edits to every image so Post Now
+                                        // and Copy All pick up the same text.
+                                        for (const ci of entry.images) {
+                                          patchImage(ci, { postCaption: e.target.value });
+                                        }
+                                      }}
+                                      placeholder="No caption yet…"
+                                      minRows={2}
+                                      className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500/50 focus:outline-none transition-colors"
+                                    />
+                                  </div>
+                                  {(anchor.postHashtags || []).length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                      {anchor.postHashtags!.map((tag, i) => (
+                                        <span
+                                          key={`${tag}-${i}`}
+                                          className="px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-[10px] text-zinc-300"
+                                        >
+                                          {tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Footer actions */}
+                                <div className="border-t border-zinc-800/60 p-3 flex items-center gap-2">
+                                  <button
+                                    disabled={isWorking || batchCaptioning}
+                                    onClick={async () => {
+                                      // Generate ONE caption using the anchor's
+                                      // prompt, then fan it out to every image.
+                                      setPreparingPostId(anchor.id);
+                                      try {
+                                        const withCaption = await generatePostContent(anchor);
+                                        if (withCaption?.postCaption) {
+                                          for (const ci of entry.images) {
+                                            if (ci.id === anchor.id) continue;
+                                            patchImage(ci, {
+                                              postCaption: withCaption.postCaption,
+                                              postHashtags: withCaption.postHashtags,
+                                            });
+                                          }
+                                        }
+                                      } finally {
+                                        setPreparingPostId(null);
+                                      }
+                                    }}
+                                    className="flex-1 px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    {anchor.postCaption ? 'Regenerate' : 'Generate'}
+                                  </button>
+                                  <button
+                                    disabled={!anchor.postCaption}
+                                    onClick={() => {
+                                      // Mark every image in the group as ready.
+                                      for (const ci of entry.images) {
+                                        patchImage(ci, { isPostReady: true });
+                                      }
+                                    }}
+                                    className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                    title="Mark all as ready to post"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                  {isExplicit ? (
+                                    <button
+                                      onClick={() => separateCarousel(entry.id)}
+                                      className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                      title="Ungroup"
+                                    >
+                                      <Columns className="w-3.5 h-3.5" />
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => persistCarouselGroup(`manual-${anchor.id}`, entry.images.map((i) => i.id))}
+                                      className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                      title="Lock this auto-detected grouping"
+                                    >
+                                      <LayoutGrid className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // ── Single-image card (original) ─────────────
+                          const img = entry.img;
                           const isWorking = preparingPostId === img.id;
+                          const isSelected = captioningSelected.has(img.id);
                           return (
                             <div
                               key={img.id}
-                              className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col"
+                              className={`bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden flex flex-col transition-colors ${
+                                isSelected ? 'border-emerald-500/60' : 'border-zinc-800/60 hover:border-zinc-700/50'
+                              }`}
                             >
                               {/* Thumbnail */}
                               <div className="relative aspect-square bg-zinc-950">
@@ -1879,6 +2103,23 @@ export function MainContent() {
                                   <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2 text-xs text-white">
                                     <Loader2 className="w-4 h-4 animate-spin" />
                                     Generating caption…
+                                  </div>
+                                )}
+                                {/* Selection checkbox (manual grouping) —
+                                    only shown when grouping toggle is OFF. */}
+                                {!captioningGrouped && (
+                                  <div className="absolute top-3 left-3 z-20">
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        const next = new Set(captioningSelected);
+                                        if (e.target.checked) next.add(img.id);
+                                        else next.delete(img.id);
+                                        setCaptioningSelected(next);
+                                      }}
+                                      className="w-5 h-5 rounded border-zinc-600 bg-zinc-900/80 backdrop-blur-sm text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-500"
+                                    />
                                   </div>
                                 )}
                               </div>
@@ -2857,15 +3098,15 @@ export function MainContent() {
               transition={{ duration: 0.4 }}
               className="h-full flex flex-col items-center justify-center text-zinc-500 py-20"
             >
-              <div className="w-24 h-24 mb-6 rounded-full bg-zinc-900 flex items-center justify-center border border-zinc-800">
+              <div className="w-24 h-24 mb-6 rounded-full bg-zinc-900/50 border border-zinc-800/60 flex items-center justify-center">
                 {view === 'gallery' ? <Bookmark className="w-10 h-10 text-zinc-700" /> : <ImageIcon className="w-10 h-10 text-zinc-700" />}
               </div>
               <h2 className="text-xl font-medium text-zinc-300 mb-2">
                 {view === 'gallery' ? 'Your Gallery is Empty' : 'No Images Generated Yet'}
               </h2>
               <p className="text-sm max-w-md text-center text-zinc-500">
-                {view === 'gallery' 
-                  ? 'Save your favorite mashups from the Studio to build your personal collection.' 
+                {view === 'gallery'
+                  ? 'Save your favorite mashups from the Studio to build your collection.'
                   : 'Click "Generate Mashup" to create 4 unique crossover images from famous fantasy universes using Leonardo.AI.'}
               </p>
             </motion.div>
@@ -2874,12 +3115,14 @@ export function MainContent() {
               {displayedImages.map((img, idx) => {
                 const isSaved = savedImages.some(s => s.id === img.id);
                 return (
-                  <motion.div 
-                    key={img.id} 
+                  <motion.div
+                    key={img.id}
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: idx * 0.1, ease: "easeOut" }}
-                    className={`group relative bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800 shadow-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-indigo-500/20 hover:border-zinc-700 ${dragOverCollection ? 'ring-2 ring-indigo-500' : ''}`}
+                    className={`group relative bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-500/30 ${
+                      dragOverCollection ? 'ring-2 ring-emerald-500 border-emerald-500/60' : 'border-zinc-800/60 hover:border-zinc-700/50'
+                    }`}
                     draggable={view === 'gallery'}
                     onDragStart={(e) => {
                       const native = e as unknown as React.DragEvent;
@@ -2887,8 +3130,8 @@ export function MainContent() {
                       native.dataTransfer.effectAllowed = 'move';
                     }}
                   >
-                    <div 
-                      className={`aspect-square relative overflow-hidden bg-zinc-950 cursor-pointer ${img.approved ? 'ring-4 ring-indigo-500 ring-inset' : ''}`}
+                    <div
+                      className={`aspect-square relative overflow-hidden bg-zinc-950 cursor-pointer ${img.approved ? 'ring-2 ring-emerald-500/60 ring-inset' : ''}`}
                       onClick={() => setSelectedImage(img)}
                     >
                       {(img.status === 'generating' || img.status === 'animating') && (
@@ -2908,7 +3151,7 @@ export function MainContent() {
                         </div>
                       )}
                       {img.approved && (
-                        <div className="absolute top-4 right-4 z-30 bg-indigo-500 text-white p-1 rounded-full shadow-lg">
+                        <div className="absolute top-3 right-3 z-30 bg-emerald-500/90 backdrop-blur-sm text-white p-1.5 rounded-full shadow-lg">
                           <BookmarkCheck className="w-4 h-4" />
                         </div>
                       )}
@@ -2925,7 +3168,7 @@ export function MainContent() {
                               setSelectedForBatch(newSet);
                             }}
                             onClick={(e) => e.stopPropagation()}
-                            className="w-5 h-5 rounded border-zinc-600 bg-zinc-900/80 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            className="w-5 h-5 rounded border-zinc-600 bg-zinc-900/80 backdrop-blur-sm text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-500"
                           />
                         </div>
                       )}
@@ -3128,6 +3371,24 @@ export function MainContent() {
                         </div>
                       )}
                     </div>
+                    {/* Tag pills row (Gallery view only) */}
+                    {view === 'gallery' && img.tags && img.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 px-3 py-2 border-t border-zinc-800/60">
+                        {img.tags.slice(0, 5).map((tag) => (
+                          <span
+                            key={tag}
+                            className="px-1.5 py-0.5 text-[9px] bg-zinc-800/80 text-zinc-400 rounded-full"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                        {img.tags.length > 5 && (
+                          <span className="px-1.5 py-0.5 text-[9px] text-zinc-600">
+                            +{img.tags.length - 5}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </motion.div>
                 );
               })}
