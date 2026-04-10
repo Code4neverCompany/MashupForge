@@ -59,6 +59,7 @@ import {
   IMAGE_SIZES
 } from './MashupContext';
 import { PipelinePanel } from './PipelinePanel';
+import { streamAIToString } from '@/lib/aiClient';
 
 export function MainContent() {
   const { 
@@ -139,6 +140,10 @@ export function MainContent() {
   const [isGeneratingIdea, setIsGeneratingIdea] = useState(false);
   const [isAutoSelecting, setIsAutoSelecting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
+  // Track which image is currently having its caption generated so we can
+  // show a per-card spinner while the non-streaming /api/ai/caption call
+  // runs. Keyed by image id.
+  const [preparingPostId, setPreparingPostId] = useState<string | null>(null);
 
   const PREDEFINED_PROMPTS = [
     "Darth Vader as a Space Marine in the Warhammer 40k universe, grimdark style",
@@ -151,22 +156,16 @@ export function MainContent() {
   const handleGenerateIdea = async () => {
     setIsGeneratingIdea(true);
     try {
-      const res = await fetch('/api/ai/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gemini-3-flash-preview',
-          contents: `You are a Master Content Creator. Generate a highly creative, peak, and up-to-date crossover mashup idea. You MUST strictly limit the content to ONLY these franchises: Star Wars, Marvel, DC, and Warhammer 40k. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers between these specific franchises. Incorporate trending concepts or recent news from these franchises by searching the web for the latest trends, movies, or rumors. Make it highly detailed, cinematic, and unique. CRITICAL DIVERSITY MANDATE: You must generate a completely random and diverse idea. Do NOT use common or overused characters like Dr. Doom, Darth Vader, or Batman. Dig deep into the lore of these franchises to find unique character combinations and unexpected scenarios. Return ONLY the idea as a single string. Random Seed: ${Math.random()}`,
-          config: {
-            tools: [{ googleSearch: {} }],
-            toolConfig: { includeServerSideToolInvocations: true },
-            temperature: 1.2,
-          },
-        }),
+      const text = await streamAIToString('/api/ai/generate', {
+        model: 'gemini-3-flash-preview',
+        contents: `You are a Master Content Creator. Generate a highly creative, peak, and up-to-date crossover mashup idea. You MUST strictly limit the content to ONLY these franchises: Star Wars, Marvel, DC, and Warhammer 40k. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers between these specific franchises. Incorporate trending concepts or recent news from these franchises by searching the web for the latest trends, movies, or rumors. Make it highly detailed, cinematic, and unique. CRITICAL DIVERSITY MANDATE: You must generate a completely random and diverse idea. Do NOT use common or overused characters like Dr. Doom, Darth Vader, or Batman. Dig deep into the lore of these franchises to find unique character combinations and unexpected scenarios. Return ONLY the idea as a single string. Random Seed: ${Math.random()}`,
+        config: {
+          tools: [{ googleSearch: {} }],
+          toolConfig: { includeServerSideToolInvocations: true },
+          temperature: 1.2,
+        },
       });
-      if (!res.ok) throw new Error('Failed to generate idea');
-      const response = await res.json();
-      const newIdea = response.text?.trim() || '';
+      const newIdea = text.trim();
       setComparisonPrompt(newIdea);
       if (newIdea) {
         await autoSelectParameters(newIdea);
@@ -181,12 +180,9 @@ export function MainContent() {
   const autoSelectParameters = async (mashupIdea: string) => {
     setIsAutoSelecting(true);
     try {
-      const res = await fetch('/api/ai/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gemini-3-flash-preview',
-          contents: `Analyze this mashup idea: "${mashupIdea}".
+      const text = await streamAIToString('/api/ai/generate', {
+        model: 'gemini-3-flash-preview',
+        contents: `Analyze this mashup idea: "${mashupIdea}".
         First, identify the core mood (e.g., dark, whimsical, tense, romantic) and genre (e.g., cyberpunk, high fantasy, noir) implied by the idea.
         Then, SMARTLY select the most appropriate parameters that specifically enhance this mood and genre, rather than just defaulting to generic cinematic qualities.
         Select the best Art Style from: ${ART_STYLES.join(', ')}.
@@ -200,14 +196,12 @@ export function MainContent() {
         - Otherwise, select "1:1" or another appropriate ratio.
 
         Return ONLY a JSON object with keys: style, lighting, angle, aspectRatio.`,
-          config: {
-            responseMimeType: 'application/json',
-          },
-        }),
+        config: {
+          responseMimeType: 'application/json',
+        },
       });
-      if (!res.ok) throw new Error('Failed to auto-select parameters');
-      const response = await res.json();
-      const params = JSON.parse(response.text || '{}');
+      const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const params = JSON.parse(cleaned || '{}');
       setComparisonOptions(prev => ({
         ...prev,
         style: params.style || prev.style,
@@ -1510,17 +1504,28 @@ export function MainContent() {
                           {isSaved ? <BookmarkCheck className="w-5 h-5" /> : <Bookmark className="w-5 h-5" />}
                         </button>
                         <button
+                          disabled={preparingPostId === img.id}
                           onClick={async (e) => {
                             e.stopPropagation();
-                            if (!img.approved) toggleApproveImage(img.id);
-                            if (!img.postCaption) await generatePostContent(img);
-                            await saveImage({ ...img, isPostReady: true });
-                            setView('post-ready');
+                            if (preparingPostId) return;
+                            setPreparingPostId(img.id);
+                            try {
+                              if (!img.approved) toggleApproveImage(img.id);
+                              if (!img.postCaption) await generatePostContent(img);
+                              await saveImage({ ...img, isPostReady: true });
+                              setView('post-ready');
+                            } finally {
+                              setPreparingPostId(null);
+                            }
                           }}
-                          className="w-10 h-10 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 text-white rounded-xl backdrop-blur-md transition-colors"
-                          title="Prepare for Post"
+                          className="w-10 h-10 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 disabled:opacity-60 disabled:hover:bg-black/50 text-white rounded-xl backdrop-blur-md transition-colors"
+                          title={preparingPostId === img.id ? 'Generating caption…' : 'Prepare for Post'}
                         >
-                          <Save className="w-5 h-5" />
+                          {preparingPostId === img.id ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <Save className="w-5 h-5" />
+                          )}
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); deleteImage(img.id, view === 'gallery'); }}

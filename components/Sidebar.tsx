@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Send, Search, MessageSquare, Loader2, ExternalLink, Image as ImageIcon, Sparkles, Columns, RefreshCw, History } from 'lucide-react';
 import { useMashup, LEONARDO_MODELS } from './MashupContext';
+import { streamAI } from '@/lib/aiClient';
 
 type Tab = 'chat' | 'content' | 'history';
 
@@ -42,63 +43,80 @@ export function Sidebar() {
 
     if (activeTab === 'chat') {
       const userMsgObj = { id: Date.now().toString(), role: 'user' as const, text: userMsg };
-      setChatMessages((prev) => [...prev, userMsgObj]);
+      const modelMsgId = (Date.now() + 1).toString();
+      setChatMessages((prev) => [
+        ...prev,
+        userMsgObj,
+        { id: modelMsgId, role: 'model', text: '' },
+      ]);
       try {
         const systemInstruction = `${settings.agentPrompt || 'You are an expert on all fantasy and sci-fi universes (Marvel, DC, Star Wars, Warhammer 40k, etc.). Help the user brainstorm crossover ideas and answer questions.'}
               Niches: ${settings.agentNiches?.join(', ') || 'None'}.
               Genres: ${settings.agentGenres?.join(', ') || 'None'}.`;
 
-        const response = await fetch('/api/ai/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: userMsg,
-            systemPrompt: systemInstruction,
-          }),
-        });
-
-        if (!response.ok) {
-          const err = await response.json();
-          throw new Error(err.error || 'Chat request failed');
+        let acc = '';
+        for await (const delta of streamAI('/api/ai/chat', {
+          prompt: userMsg,
+          systemPrompt: systemInstruction,
+        })) {
+          acc += delta;
+          setChatMessages((prev) =>
+            prev.map((m) => (m.id === modelMsgId ? { ...m, text: acc } : m))
+          );
         }
-
-        const data = await response.json();
-        const modelMsgId = (Date.now() + 1).toString();
-        setChatMessages((prev) => [...prev, { id: modelMsgId, role: 'model', text: data.text || '' }]);
+        if (!acc) {
+          setChatMessages((prev) =>
+            prev.map((m) =>
+              m.id === modelMsgId ? { ...m, text: '(no response)' } : m
+            )
+          );
+        }
       } catch (error) {
         console.error('Chat error:', error);
-        setChatMessages((prev) => [...prev, { id: Date.now().toString(), role: 'model', text: 'Error: Could not get response.' }]);
+        setChatMessages((prev) =>
+          prev.map((m) =>
+            m.id === modelMsgId
+              ? { ...m, text: 'Error: Could not get response.' }
+              : m
+          )
+        );
       } finally {
         setIsLoading(false);
       }
     } else {
-      // Content Generator
-      setContentMessages((prev) => [...prev, { id: Date.now().toString(), role: 'user', text: userMsg }]);
+      // Content Generator — stream tokens so the user sees "thinking" in
+      // real time, then parse the JSON once the stream ends.
+      const userMsgObj = { id: Date.now().toString(), role: 'user' as const, text: userMsg };
+      const modelMsgId = (Date.now() + 1).toString();
+      setContentMessages((prev) => [
+        ...prev,
+        userMsgObj,
+        { id: modelMsgId, role: 'model', text: '⏳ Generating ideas…' },
+      ]);
       try {
         // Keep this prompt tight: GLM-5.1's reasoning budget scales with
         // input length, so trimming boilerplate cuts seconds off every call.
         const prompt = `Topic: ${userMsg}
 Return 3 crossover ideas between Star Wars, Marvel, DC, or Warhammer 40k as a JSON array. Each object has "context" (short title) and "concept" (detailed image prompt). Return ONLY the JSON array, no prose.`;
 
-        const res = await fetch('/api/ai/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt,
-          }),
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || 'Content generation failed');
+        let acc = '';
+        for await (const delta of streamAI('/api/ai/generate', { prompt })) {
+          acc += delta;
+          // Show the raw partial stream so the user sees real progress.
+          const preview = acc.length > 400 ? `${acc.slice(0, 400)}…` : acc;
+          setContentMessages((prev) =>
+            prev.map((m) =>
+              m.id === modelMsgId
+                ? { ...m, text: `⏳ Generating ideas…\n\n\`\`\`\n${preview}\n\`\`\`` }
+                : m
+            )
+          );
         }
-
-        const response = await res.json();
-        const text = response.text || '[]';
 
         let ideaCount = 0;
         try {
-          const ideasArray = JSON.parse(text);
+          const cleaned = acc.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          const ideasArray = JSON.parse(cleaned);
           for (const item of ideasArray) {
             if (item.concept) {
               addIdea(item.concept, item.context);
@@ -106,19 +124,25 @@ Return 3 crossover ideas between Star Wars, Marvel, DC, or Warhammer 40k as a JS
             }
           }
         } catch (e) {
-          console.error("Failed to parse ideas JSON", e);
+          console.error('Failed to parse ideas JSON', e);
         }
 
-        const cleanTextLines = [`✨ Generated ${ideaCount} ideas and saved them to your Ideas Board!`];
-
-        setContentMessages((prev) => [...prev, { 
-          id: Date.now().toString(),
-          role: 'model', 
-          text: cleanTextLines.join('\n').trim(), 
-        }]);
+        setContentMessages((prev) =>
+          prev.map((m) =>
+            m.id === modelMsgId
+              ? { ...m, text: `✨ Generated ${ideaCount} ideas and saved them to your Ideas Board!` }
+              : m
+          )
+        );
       } catch (error) {
         console.error('Content Generator error:', error);
-        setContentMessages((prev) => [...prev, { id: Date.now().toString(), role: 'model', text: 'Error: Could not perform search.' }]);
+        setContentMessages((prev) =>
+          prev.map((m) =>
+            m.id === modelMsgId
+              ? { ...m, text: 'Error: Could not perform search.' }
+              : m
+          )
+        );
       } finally {
         setIsLoading(false);
       }
@@ -278,8 +302,21 @@ Return 3 crossover ideas between Star Wars, Marvel, DC, or Warhammer 40k as a JS
         ))}
         {isLoading && (
           <div className="flex items-start">
-            <div className="bg-zinc-800 text-zinc-200 rounded-2xl rounded-bl-sm px-4 py-3">
-              <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
+            <div className="bg-zinc-800 text-zinc-300 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2 text-xs">
+              {activeTab === 'chat' ? (
+                <>
+                  <span className="inline-flex gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse [animation-delay:0ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse [animation-delay:200ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse [animation-delay:400ms]" />
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                  <span>Generating…</span>
+                </>
+              )}
             </div>
           </div>
         )}

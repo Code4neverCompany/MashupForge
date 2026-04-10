@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { streamAIToString } from '@/lib/aiClient';
 import {
   type GeneratedImage,
   type GenerateOptions,
@@ -214,12 +215,9 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
       if (options?.skipEnhance && customPrompts) {
         itemsToGenerate = customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio }));
       } else if (!customPrompts || customPrompts.length === 0) {
-        const promptFetch = await fetch('/api/ai/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemPrompt: systemContext,
-            prompt: `Generate 4 completely distinct, highly detailed image generation prompts.
+        const promptText = await streamAIToString('/api/ai/chat', {
+          systemPrompt: systemContext,
+          prompt: `Generate 4 completely distinct, highly detailed image generation prompts.
           Ensure maximum variety in characters, franchises, and settings. Do NOT repeat characters.
           Return ONLY a JSON array of 4 objects, each with:
           - "prompt": string
@@ -230,13 +228,11 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
           - "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)
 
           Random Seed: ${Math.random()}`,
-          }),
         });
-        if (!promptFetch.ok) throw new Error('Failed to generate prompts');
-        const promptRes = await promptFetch.json();
 
         try {
-          itemsToGenerate = JSON.parse(promptRes.text || '[]');
+          const cleaned = promptText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          itemsToGenerate = JSON.parse(cleaned || '[]');
         } catch (e) {
           console.error('Failed to parse prompts:', e);
           itemsToGenerate = [
@@ -253,12 +249,9 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
 
         itemsToGenerate = itemsToGenerate.slice(0, 4);
       } else {
-        const promptFetch2 = await fetch('/api/ai/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemPrompt: systemContext,
-            prompt: `The user wants to generate images based on these ideas: ${JSON.stringify(customPrompts)}.
+        const promptText2 = await streamAIToString('/api/ai/chat', {
+          systemPrompt: systemContext,
+          prompt: `The user wants to generate images based on these ideas: ${JSON.stringify(customPrompts)}.
           Enhance these ideas into highly detailed, cinematic image generation prompts.
           Return ONLY a JSON array of objects, each with:
           - "prompt": string
@@ -267,13 +260,11 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
           - "selectedNiches": array of strings
           - "selectedGenres": array of strings
           - "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)`,
-          }),
         });
-        if (!promptFetch2.ok) throw new Error('Failed to enhance prompts');
-        const promptRes = await promptFetch2.json();
 
         try {
-          itemsToGenerate = JSON.parse(promptRes.text || '[]');
+          const cleaned = promptText2.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          itemsToGenerate = JSON.parse(cleaned || '[]');
         } catch (e) {
           console.error('Failed to parse enhanced prompts:', e);
           itemsToGenerate = customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio }));
@@ -415,18 +406,17 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
         }
       };
 
-      const promptFetch = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let enhancedPrompt = prompt;
+      try {
+        enhancedPrompt = await streamAIToString('/api/ai/chat', {
           systemPrompt: settings.agentPrompt || 'You are a Master Content Creator.',
           prompt: `Platform Niches: ${settings.agentNiches?.join(', ') || 'None'}.
         Target Genres: ${settings.agentGenres?.join(', ') || 'None'}.
         The user wants to re-roll an image based on this idea: "${prompt}". Enhance this idea into a highly detailed, cinematic image generation prompt. You MUST strictly limit the content to ONLY these franchises: Star Wars, Marvel, DC, and Warhammer 40k. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers. Return ONLY the enhanced prompt as a single string.`,
-        }),
-      });
-      const promptRes = promptFetch.ok ? await promptFetch.json() : {};
-      const enhancedPrompt = promptRes.text || prompt;
+        });
+      } catch (e) {
+        console.error('Reroll prompt enhancement failed, using original prompt', e);
+      }
 
       const finalPrompt = options?.negativePrompt
         ? `${enhancedPrompt}\nDo not include: ${options.negativePrompt}`

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { streamAIToString } from '@/lib/aiClient';
 import type {
   Idea,
   UserSettings,
@@ -99,27 +100,20 @@ You are given a content idea concept. Expand it into a single, highly detailed i
 The prompt should be vivid, specific, and optimized for AI image generation.
 Return ONLY the prompt text, nothing else.`;
 
-    const res = await fetch('/api/ai/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gemini-3-flash-preview',
-        contents: `${systemContext}
+    const text = await streamAIToString('/api/ai/generate', {
+      model: 'gemini-3-flash-preview',
+      contents: `${systemContext}
 
 Idea concept: ${idea.concept}
 ${idea.context ? `Additional context: ${idea.context}` : ''}
 
 Generate a single detailed image prompt for this idea.`,
-        config: {
-          temperature: 1.0,
-        },
-      }),
+      config: {
+        temperature: 1.0,
+      },
     });
 
-    if (!res.ok) throw new Error(`Prompt expansion failed: ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data.text?.trim() || idea.concept;
+    return text.trim() || idea.concept;
   }, [settings]);
 
   const findNextAvailableSlot = useCallback((existingPosts: ScheduledPost[]): { date: string; time: string } => {
