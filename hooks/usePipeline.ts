@@ -93,22 +93,18 @@ export function usePipeline(deps: UsePipelineDeps) {
 
   const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
-  const expandIdeaToPrompt = useCallback(async (idea: Idea): Promise<string> => {
-    const systemContext = `${settings.agentPrompt || 'You are a Master Content Creator.'}
+  const expandIdeaToPrompt = useCallback(async (idea: Idea, trendingContext?: string): Promise<string> => {
+    const systemContext = `${settings.agentPrompt || 'You are an elite AI art director.'}
 Active Niches: ${settings.agentNiches?.join(', ') || 'None'}.
 Active Genres: ${settings.agentGenres?.join(', ') || 'None'}.
 
 You are given a content idea concept. Expand it into a single, highly detailed image generation prompt.
 The prompt should be vivid, specific, and optimized for AI image generation.
+${trendingContext ? `\nCURRENT TRENDING CONTEXT — weave relevant trends into the prompt to make it timely and shareable:\n${trendingContext}\n` : ''}
 Return ONLY the prompt text, nothing else.`;
 
     const text = await streamAIToString(
-      `${systemContext}
-
-Idea concept: ${idea.concept}
-${idea.context ? `Additional context: ${idea.context}` : ''}
-
-Generate a single detailed image prompt for this idea.`,
+      `${systemContext}\n\nIdea concept: ${idea.concept}\n${idea.context ? `Additional context: ${idea.context}` : ''}\n\nGenerate a single detailed image prompt for this idea.`,
       { mode: 'enhance' }
     );
 
@@ -156,18 +152,43 @@ Generate a single detailed image prompt for this idea.`,
     updateIdeaStatus(idea.id, 'in-work');
     addLog('status-update', idea.id, 'success', `Marked "${idea.concept}" as in-work`);
 
-    // Step b: Expand idea to prompt
+    // Step b: Research trending topics for tags/niches
+    let trendingContext = '';
+    setPipelineProgress({ current: index + 1, total, currentStep: 'Researching trending topics', currentIdea: idea.concept });
+    try {
+      const res = await fetch('/api/trending', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tags: [],
+          niches: settings.agentNiches,
+          genres: settings.agentGenres,
+          ideaConcept: idea.concept,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.summary) {
+        trendingContext = data.summary;
+        addLog('trending', idea.id, 'success', `Found ${data.results?.length || 0} trending items for: ${(data.queriesUsed || []).join(', ')}`);
+      } else {
+        addLog('trending', idea.id, 'success', 'No trending data found — proceeding without');
+      }
+    } catch (e: any) {
+      addLog('trending', idea.id, 'success', `Trending research skipped: ${e.message}`);
+    }
+
+    // Step c: Expand idea to prompt (with trending context)
     setPipelineProgress({ current: index + 1, total, currentStep: 'Expanding idea to prompt', currentIdea: idea.concept });
     let expandedPrompt: string;
     try {
-      expandedPrompt = await expandIdeaToPrompt(idea);
+      expandedPrompt = await expandIdeaToPrompt(idea, trendingContext);
       addLog('prompt-expand', idea.id, 'success', `Expanded prompt: "${expandedPrompt.slice(0, 80)}..."`);
     } catch (e: any) {
       addLog('prompt-expand', idea.id, 'error', `Failed to expand: ${e.message}`);
       throw e;
     }
 
-    // Step c: Generate with ALL models (same as Studio compare).
+    // Step d: Generate with ALL models (same as Studio compare).
     // Each model gets its own pi-optimized prompt via modelOptimizer.
     const allModelIds = LEONARDO_MODELS.map(m => m.id);
     setPipelineProgress({ current: index + 1, total, currentStep: `Generating with ${allModelIds.length} models`, currentIdea: idea.concept });
