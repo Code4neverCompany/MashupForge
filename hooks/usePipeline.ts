@@ -2,13 +2,14 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { streamAIToString } from '@/lib/aiClient';
-import type {
-  Idea,
-  UserSettings,
-  GeneratedImage,
-  PipelineLogEntry,
-  PipelineProgress,
-  ScheduledPost,
+import {
+  LEONARDO_MODELS,
+  type Idea,
+  type UserSettings,
+  type GeneratedImage,
+  type PipelineLogEntry,
+  type PipelineProgress,
+  type ScheduledPost,
 } from '../types/mashup';
 
 interface UsePipelineDeps {
@@ -17,6 +18,7 @@ interface UsePipelineDeps {
   updateSettings: (newSettings: Partial<UserSettings>) => void;
   updateIdeaStatus: (id: string, status: 'idea' | 'in-work' | 'done') => void;
   generateImages: (customPrompts?: string[], append?: boolean) => Promise<void>;
+  generateComparison: (prompt: string, modelIds: string[], options?: import('../types/mashup').GenerateOptions) => Promise<void>;
   generatePostContent: (image: GeneratedImage) => Promise<GeneratedImage | undefined>;
   savedImages: GeneratedImage[];
   images: GeneratedImage[];
@@ -51,6 +53,7 @@ export function usePipeline(deps: UsePipelineDeps) {
     updateSettings,
     updateIdeaStatus,
     generateImages,
+    generateComparison,
     generatePostContent,
     savedImages,
     images,
@@ -164,49 +167,70 @@ Generate a single detailed image prompt for this idea.`,
       throw e;
     }
 
-    // Step c & d: Generate image
-    setPipelineProgress({ current: index + 1, total, currentStep: 'Generating image', currentIdea: idea.concept });
+    // Step c: Generate with ALL models (same as Studio compare).
+    // Each model gets its own pi-optimized prompt via modelOptimizer.
+    const allModelIds = LEONARDO_MODELS.map(m => m.id);
+    setPipelineProgress({ current: index + 1, total, currentStep: `Generating with ${allModelIds.length} models`, currentIdea: idea.concept });
     try {
-      await generateImages([expandedPrompt], true);
-      addLog('image-gen', idea.id, 'success', 'Image generation started');
+      await generateComparison(expandedPrompt, allModelIds, { skipEnhance: false });
+      addLog('image-gen', idea.id, 'success', `Image generation started with ${allModelIds.length} models`);
     } catch (e: any) {
       addLog('image-gen', idea.id, 'error', `Image generation failed: ${e.message}`);
       throw e;
     }
 
-    // Wait for the image to finish generating — poll images state
+    // Wait for ALL model images to finish — poll images state.
+    // generateComparison creates one placeholder per model, each with a
+    // pi-optimized prompt that differs from the original expandedPrompt,
+    // so we track images by counting new ready entries added since gen start.
     await delay(3000);
+    const beforeIds = new Set(imagesRef.current.map(i => i.id));
     let attempts = 0;
-    while (attempts < 60) {
+    let readyImages: GeneratedImage[] = [];
+    while (attempts < 90) {
       const currentImages = imagesRef.current;
-      const latestImage = currentImages.find(img =>
-        img.prompt === expandedPrompt || img.prompt.includes(expandedPrompt.slice(0, 40))
+      // Find images that were created by this generation pass.
+      readyImages = currentImages.filter(img =>
+        !beforeIds.has(img.id) &&
+        img.status === 'ready' &&
+        (img.base64 || img.url)
       );
-      if (latestImage && latestImage.status === 'ready' && (latestImage.base64 || latestImage.url)) {
-        addLog('image-ready', idea.id, 'success', 'Image ready');
+      if (readyImages.length >= allModelIds.length) break;
+      attempts++;
+      await delay(3000);
+    }
 
-        // Step e: Generate caption (skipped when disabled)
+    if (readyImages.length === 0) {
+      addLog('image-ready', idea.id, 'error', 'Timed out waiting for any image');
+    } else {
+      addLog('image-ready', idea.id, 'success', `${readyImages.length} image(s) ready from ${allModelIds.length} models`);
+
+      // Process ALL generated images through caption + schedule.
+      // Each model's output gets its own caption and scheduled post.
+      for (let imgIdx = 0; imgIdx < readyImages.length; imgIdx++) {
+        const latestImage = readyImages[imgIdx];
+        const modelLabel = latestImage.modelInfo?.modelName || `model-${imgIdx + 1}`;
+
+        // Step e: Generate caption
         let captionedImg = latestImage;
         if (autoCaption) {
-          setPipelineProgress({ current: index + 1, total, currentStep: 'Generating caption', currentIdea: idea.concept });
+          setPipelineProgress({ current: index + 1, total, currentStep: `Captioning ${modelLabel}`, currentIdea: idea.concept });
           try {
             const withCaption = await generatePostContent(latestImage);
             if (withCaption) {
               captionedImg = withCaption;
-              addLog('caption', idea.id, 'success', `Caption: "${withCaption.postCaption?.slice(0, 60)}..."`);
+              addLog('caption', idea.id, 'success', `[${modelLabel}] Caption: "${withCaption.postCaption?.slice(0, 60)}..."`);
             } else {
-              addLog('caption', idea.id, 'error', 'Caption generation returned empty');
+              addLog('caption', idea.id, 'error', `[${modelLabel}] Caption returned empty`);
             }
           } catch (e: any) {
-            addLog('caption', idea.id, 'error', `Caption failed: ${e.message}`);
+            addLog('caption', idea.id, 'error', `[${modelLabel}] Caption failed: ${e.message}`);
           }
-        } else {
-          addLog('caption', idea.id, 'success', 'Auto-caption disabled — skipped');
         }
 
-        // Step f: Create scheduled post (skipped when disabled)
+        // Step f: Schedule post
         if (autoSchedule) {
-          setPipelineProgress({ current: index + 1, total, currentStep: 'Scheduling post', currentIdea: idea.concept });
+          setPipelineProgress({ current: index + 1, total, currentStep: `Scheduling ${modelLabel}`, currentIdea: idea.concept });
           if (pipelinePlatforms.length === 0) {
             addLog('schedule', idea.id, 'error', 'No platforms configured — skipped');
           } else {
@@ -222,15 +246,13 @@ Generate a single detailed image prompt for this idea.`,
               status: 'scheduled',
             };
             updateSettings({ scheduledPosts: [...existingPosts, newPost] });
-            addLog('schedule', idea.id, 'success', `Scheduled for ${slot.date} at ${slot.time}`);
+            addLog('schedule', idea.id, 'success', `[${modelLabel}] Scheduled for ${slot.date} at ${slot.time}`);
           }
-        } else {
-          addLog('schedule', idea.id, 'success', 'Auto-schedule disabled — skipped');
         }
 
-        // Step g: Auto-post immediately (skipped unless explicitly enabled)
+        // Step g: Auto-post immediately
         if (autoPost && pipelinePlatforms.length > 0) {
-          setPipelineProgress({ current: index + 1, total, currentStep: 'Posting', currentIdea: idea.concept });
+          setPipelineProgress({ current: index + 1, total, currentStep: `Posting ${modelLabel}`, currentIdea: idea.concept });
           try {
             const res = await fetch('/api/social/post', {
               method: 'POST',
@@ -250,16 +272,12 @@ Generate a single detailed image prompt for this idea.`,
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'post failed');
-            addLog('post', idea.id, 'success', `Posted to ${pipelinePlatforms.join(', ')}`);
+            addLog('post', idea.id, 'success', `[${modelLabel}] Posted to ${pipelinePlatforms.join(', ')}`);
           } catch (e: any) {
-            addLog('post', idea.id, 'error', `Auto-post failed: ${e.message}`);
+            addLog('post', idea.id, 'error', `[${modelLabel}] Auto-post failed: ${e.message}`);
           }
         }
-
-        break;
       }
-      attempts++;
-      await delay(2000);
     }
 
     if (attempts >= 60) {
