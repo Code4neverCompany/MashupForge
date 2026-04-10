@@ -2443,8 +2443,8 @@ export function MainContent() {
                                 </button>
                                 <button
                                   onClick={() => {
-                                    if (window.confirm('Delete this caption and remove the image from the gallery?')) {
-                                      deleteImage(img.id, true);
+                                    if (window.confirm('Remove from Captioning? The image stays in your Gallery.')) {
+                                      patchImage(img, { postCaption: '', postHashtags: [], tags: [] });
                                     }
                                   }}
                                   className="px-3 py-1.5 text-xs bg-red-600/80 hover:bg-red-500 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
