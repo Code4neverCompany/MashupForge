@@ -2032,7 +2032,7 @@ export function MainContent() {
                 // curated workflow — ephemeral gallery images shouldn't
                 // pollute this tab. Images promoted to Post Ready are
                 // excluded so the two tabs form a clean pipeline.
-                const all = savedImages.filter((i) => !i.isPostReady);
+                const all = savedImages.filter((i) => !i.isPostReady && i.approved);
                 const captioned = all.filter((i) => !!i.postCaption);
                 const uncaptioned = all.filter((i) => !i.postCaption);
                 const visible =
