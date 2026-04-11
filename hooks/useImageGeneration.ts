@@ -36,7 +36,9 @@ export async function applyWatermark(baseImageSrc: string, settings: WatermarkSe
       ctx.drawImage(img, 0, 0);
       ctx.globalAlpha = settings.opacity || 0.8;
 
-      const padding = canvas.width * 0.03;
+      // 8% padding (up from 3%) gives watermarks more breathing room
+      // even if Instagram applies minor adjustments to the padded image.
+      const padding = canvas.width * 0.08;
 
       if (settings.image) {
         const wm = new Image();

@@ -1,5 +1,57 @@
 import { NextResponse } from 'next/server';
 import { TwitterApi } from 'twitter-api-v2';
+import sharp from 'sharp';
+
+/**
+ * Pad an image to fit Instagram's accepted aspect ratio range (4:5 → 1.91:1).
+ *
+ * Instagram center-crops any image outside this range on upload, which was
+ * cutting off watermarks placed near the edges. We instead letterbox the
+ * source image on a black canvas sized to the nearest safe ratio, so the
+ * entire original frame survives.
+ *
+ * - Too tall (ratio < 4/5): add horizontal black bars (pillarbox) until
+ *   the canvas reaches 4:5 portrait.
+ * - Too wide (ratio > 1.91): add vertical black bars (letterbox) until
+ *   the canvas reaches 1.91:1 landscape.
+ * - Already in range: returned unchanged.
+ */
+async function prepareForInstagram(buffer: Buffer): Promise<Buffer> {
+  const meta = await sharp(buffer).metadata();
+  const { width = 1080, height = 1080 } = meta;
+  const ratio = width / height;
+
+  const MIN_RATIO = 4 / 5; // 0.8 — tallest portrait IG accepts
+  const MAX_RATIO = 1.91;  // widest landscape IG accepts
+
+  if (ratio >= MIN_RATIO && ratio <= MAX_RATIO) {
+    return buffer;
+  }
+
+  let newWidth: number;
+  let newHeight: number;
+
+  if (ratio < MIN_RATIO) {
+    // Too tall → widen the canvas
+    newHeight = height;
+    newWidth = Math.ceil(height * MIN_RATIO);
+  } else {
+    // Too wide → grow the canvas vertically
+    newWidth = width;
+    newHeight = Math.ceil(width / MAX_RATIO);
+  }
+
+  return sharp(buffer)
+    .resize({
+      width: newWidth,
+      height: newHeight,
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 1 },
+      position: 'center',
+    })
+    .jpeg({ quality: 95 })
+    .toBuffer();
+}
 
 export async function POST(req: Request) {
   try {
@@ -52,29 +104,41 @@ export async function POST(req: Request) {
 
       const hostUrl = igAccessToken.startsWith('IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
 
-      // For Instagram, we need public URLs for all images
-      const igMediaUrls: string[] = [];
+      // Preprocess every image through prepareForInstagram so IG doesn't
+      // center-crop anything. We build a SEPARATE igItems array instead
+      // of mutating imageItems — Twitter / Pinterest / Discord run after
+      // this block and each has its own sizing rules that shouldn't get
+      // the IG letterboxing applied.
+      //
+      // Note: we intentionally DO NOT reuse pre-existing Leonardo URLs
+      // (item.url) for IG even when they're available. Passing the raw
+      // Leonardo URL directly would bypass our padding entirely and IG
+      // would crop the original. Every image is re-hosted via uguu with
+      // the padded buffer.
+      const igItems: { buffer: Buffer; mimeType: string }[] = [];
       for (const item of imageItems) {
-        if (item.url) {
-          igMediaUrls.push(item.url);
-        } else {
-          try {
-            const formData = new FormData();
-            const blob = new Blob([new Uint8Array(item.buffer)], { type: item.mimeType });
-            formData.append('files[]', blob, 'image.jpg');
-            
-            const uploadRes = await fetch('https://uguu.se/upload.php', {
-              method: 'POST',
-              body: formData
-            });
-            
-            if (!uploadRes.ok) throw new Error('Failed to upload image to temporary host');
-            const uploadData = await uploadRes.json();
-            if (!uploadData.success || !uploadData.files || !uploadData.files[0]) throw new Error('Temporary host returned invalid response');
-            igMediaUrls.push(uploadData.files[0].url);
-          } catch (err: any) {
-            throw new Error(`Failed to host image for Instagram: ${err.message}`);
-          }
+        const padded = await prepareForInstagram(item.buffer);
+        igItems.push({ buffer: padded, mimeType: 'image/jpeg' });
+      }
+
+      const igMediaUrls: string[] = [];
+      for (const item of igItems) {
+        try {
+          const formData = new FormData();
+          const blob = new Blob([new Uint8Array(item.buffer)], { type: item.mimeType });
+          formData.append('files[]', blob, 'image.jpg');
+
+          const uploadRes = await fetch('https://uguu.se/upload.php', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!uploadRes.ok) throw new Error('Failed to upload image to temporary host');
+          const uploadData = await uploadRes.json();
+          if (!uploadData.success || !uploadData.files || !uploadData.files[0]) throw new Error('Temporary host returned invalid response');
+          igMediaUrls.push(uploadData.files[0].url);
+        } catch (err: any) {
+          throw new Error(`Failed to host image for Instagram: ${err.message}`);
         }
       }
 
