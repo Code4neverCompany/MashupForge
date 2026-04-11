@@ -23,6 +23,7 @@ interface Message {
   groundingChunks?: any[];
   recommendations?: string[];
   trendingSources?: TrendSource[];
+  ideas?: Array<{ context: string; concept: string }>;
 }
 
 export function Sidebar() {
