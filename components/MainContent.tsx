@@ -393,9 +393,10 @@ export function MainContent() {
     return `${y}-${m}-${day}`;
   };
   /** Colour class for a scheduled-post status badge on the calendar. */
-  const calendarColorFor = (status?: 'scheduled' | 'posted' | 'failed'): string => {
+  const calendarColorFor = (status?: 'pending_approval' | 'scheduled' | 'posted' | 'failed'): string => {
     if (status === 'posted') return 'bg-emerald-500/80 border-emerald-400/60 text-emerald-50';
     if (status === 'failed') return 'bg-red-500/80 border-red-400/60 text-red-50';
+    if (status === 'pending_approval') return 'bg-indigo-500/80 border-indigo-400/60 text-indigo-50';
     return 'bg-amber-500/80 border-amber-400/60 text-amber-50';
   };
   /** 24-hour labels 00..23 used by the week-view row header. */

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { streamAIToString } from '@/lib/aiClient';
+import { streamAIToString, extractJsonFromLLM } from '@/lib/aiClient';
 import {
   LEONARDO_MODELS,
   type Idea,
@@ -18,6 +18,7 @@ interface UsePipelineDeps {
   settings: UserSettings;
   updateSettings: (newSettings: Partial<UserSettings>) => void;
   updateIdeaStatus: (id: string, status: 'idea' | 'in-work' | 'done') => void;
+  addIdea: (concept: string, context?: string) => void;
   generateImages: (customPrompts?: string[], append?: boolean) => Promise<void>;
   generateComparison: (prompt: string, modelIds: string[], options?: import('../types/mashup').GenerateOptions) => Promise<void>;
   generatePostContent: (image: GeneratedImage) => Promise<GeneratedImage | undefined>;
@@ -30,15 +31,30 @@ const PIPELINE_STORAGE_KEY = 'mashup_pipeline_state';
 interface PersistedPipelineState {
   enabled: boolean;
   delay: number;
+  continuous: boolean;
+  interval: number;
+  targetDays: number;
   log: { timestamp: string; step: string; ideaId: string; status: 'success' | 'error'; message: string }[];
 }
 
 function loadPersistedState(): PersistedPipelineState {
   try {
     const raw = localStorage.getItem(PIPELINE_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Backfill new fields on old persisted state so older installs
+      // don't crash after upgrading.
+      return {
+        enabled: parsed.enabled ?? false,
+        delay: parsed.delay ?? 30,
+        continuous: parsed.continuous ?? false,
+        interval: parsed.interval ?? 120,
+        targetDays: parsed.targetDays ?? 7,
+        log: parsed.log ?? [],
+      };
+    }
   } catch { /* ignore */ }
-  return { enabled: false, delay: 30, log: [] };
+  return { enabled: false, delay: 30, continuous: false, interval: 120, targetDays: 7, log: [] };
 }
 
 function persistState(state: PersistedPipelineState) {
@@ -47,12 +63,29 @@ function persistState(state: PersistedPipelineState) {
   } catch { /* ignore */ }
 }
 
+/**
+ * Count how many scheduled posts fall within the next `daysAhead` days
+ * from now. Used by the continuous-mode daemon to decide whether to
+ * auto-generate more ideas this cycle.
+ */
+function countFutureScheduledPosts(posts: ScheduledPost[] | undefined, daysAhead: number): number {
+  if (!posts || posts.length === 0) return 0;
+  const now = Date.now();
+  const horizon = now + daysAhead * 24 * 60 * 60 * 1000;
+  return posts.filter((p) => {
+    if (p.status === 'posted' || p.status === 'failed') return false;
+    const t = new Date(`${p.date}T${p.time}:00`).getTime();
+    return t >= now && t <= horizon;
+  }).length;
+}
+
 export function usePipeline(deps: UsePipelineDeps) {
   const {
     ideas,
     settings,
     updateSettings,
     updateIdeaStatus,
+    addIdea,
     generateImages,
     generateComparison,
     generatePostContent,
@@ -68,25 +101,47 @@ export function usePipeline(deps: UsePipelineDeps) {
     loadPersistedState().log.map(e => ({ ...e, timestamp: new Date(e.timestamp) }))
   );
   const [pipelineDelay, setPipelineDelayState] = useState(() => loadPersistedState().delay);
+  const [pipelineContinuous, setPipelineContinuous] = useState(() => loadPersistedState().continuous);
+  const [pipelineInterval, setPipelineIntervalState] = useState(() => loadPersistedState().interval);
+  const [pipelineTargetDays, setPipelineTargetDaysState] = useState(() => loadPersistedState().targetDays);
 
   const stopRequestedRef = useRef(false);
   const imagesRef = useRef(images);
   const savedImagesRef = useRef(savedImages);
+  // Refs for continuous-mode config so the running loop reads live
+  // values if the user toggles/edits them mid-run. Stale-closure
+  // avoidance — useCallback dep lists alone aren't enough because the
+  // running function was created before the change landed.
+  const ideasRef = useRef(ideas);
+  const settingsRef = useRef(settings);
+  const pipelineContinuousRef = useRef(pipelineContinuous);
+  const pipelineIntervalRef = useRef(pipelineInterval);
+  const pipelineTargetDaysRef = useRef(pipelineTargetDays);
+  const pipelineDelayRef = useRef(pipelineDelay);
 
   useEffect(() => { imagesRef.current = images; }, [images]);
   useEffect(() => { savedImagesRef.current = savedImages; }, [savedImages]);
+  useEffect(() => { ideasRef.current = ideas; }, [ideas]);
+  useEffect(() => { settingsRef.current = settings; }, [settings]);
+  useEffect(() => { pipelineContinuousRef.current = pipelineContinuous; }, [pipelineContinuous]);
+  useEffect(() => { pipelineIntervalRef.current = pipelineInterval; }, [pipelineInterval]);
+  useEffect(() => { pipelineTargetDaysRef.current = pipelineTargetDays; }, [pipelineTargetDays]);
+  useEffect(() => { pipelineDelayRef.current = pipelineDelay; }, [pipelineDelay]);
 
   // Persist state changes
   useEffect(() => {
     persistState({
       enabled: pipelineEnabled,
       delay: pipelineDelay,
+      continuous: pipelineContinuous,
+      interval: pipelineInterval,
+      targetDays: pipelineTargetDays,
       log: pipelineLog.slice(-100).map(e => ({
         ...e,
         timestamp: e.timestamp.toISOString(),
       })),
     });
-  }, [pipelineEnabled, pipelineDelay, pipelineLog]);
+  }, [pipelineEnabled, pipelineDelay, pipelineContinuous, pipelineInterval, pipelineTargetDays, pipelineLog]);
 
   const addLog = useCallback((step: string, ideaId: string, status: 'success' | 'error', message: string) => {
     setPipelineLog(prev => [...prev, { timestamp: new Date(), step, ideaId, status, message }]);
@@ -257,7 +312,10 @@ Return ONLY the prompt text, nothing else.`;
               time: slot.time,
               platforms: pipelinePlatforms,
               caption: captionedImg.postCaption || '',
-              status: 'scheduled',
+              // Pipeline posts enter the approval queue instead of going
+              // straight to 'scheduled'. User approves via Pipeline panel
+              // / Calendar / Post Ready before the auto-poster picks it up.
+              status: 'pending_approval',
             };
             accumulatedPosts.push(newPost);
             updateSettings({ scheduledPosts: [...allPosts, newPost] });
@@ -304,21 +362,52 @@ Return ONLY the prompt text, nothing else.`;
     addLog('complete', idea.id, 'success', `"${idea.concept}" pipeline complete`);
   }, [expandIdeaToPrompt, generateImages, generatePostContent, updateIdeaStatus, updateSettings, settings, addLog, findNextAvailableSlot]);
 
-  const startPipeline = useCallback(async () => {
-    const pendingIdeas = ideas.filter(i => i.status === 'idea');
-    if (pendingIdeas.length === 0) return;
+  /**
+   * Ask pi to generate `count` fresh content ideas aligned to the
+   * user's active niches/genres and agentPrompt. Returns the raw idea
+   * objects (not yet injected into state) so the caller can both
+   * inject them via addIdea AND operate on them within the same cycle
+   * without waiting for a re-render. Called by the continuous-mode
+   * daemon when the queue is empty.
+   */
+  const autoGenerateIdeas = useCallback(async (count: number): Promise<Idea[]> => {
+    const s = settingsRef.current;
+    const systemContext = `${s.agentPrompt || 'You are an elite AI art director.'}
+Active Niches: ${s.agentNiches?.join(', ') || 'All'}
+Active Genres: ${s.agentGenres?.join(', ') || 'All'}
 
+Generate ${count} unique, creative content ideas for social media posts.
+Each idea should be visually striking, shareable, and aligned with the niches/genres.
+Return ONLY a JSON array of objects with "concept" and "context" fields. Example:
+[{"concept": "Darth Vader as a grimdark Warhammer inquisitor...", "context": "Star Wars × WH40k crossover"}]`;
+
+    const text = await streamAIToString(systemContext, { mode: 'idea' });
+    const parsed = extractJsonFromLLM(text, 'array');
+    if (!Array.isArray(parsed)) return [];
+
+    const nowStamp = Date.now();
+    return parsed
+      .filter((idea: any) => idea && typeof idea.concept === 'string' && idea.concept.trim())
+      .map((idea: any, i: number): Idea => ({
+        id: `idea-auto-${nowStamp}-${i}-${Math.random().toString(36).slice(2, 8)}`,
+        concept: String(idea.concept).trim(),
+        context: typeof idea.context === 'string' ? idea.context.trim() : '',
+        status: 'idea' as const,
+        createdAt: nowStamp,
+      }));
+  }, []);
+
+  const startPipeline = useCallback(async () => {
     stopRequestedRef.current = false;
     setPipelineRunning(true);
-    setPipelineQueue(pendingIdeas);
-    addLog('pipeline-start', '', 'success', `Pipeline started with ${pendingIdeas.length} ideas`);
+    addLog('pipeline-start', '', 'success', `Pipeline started${pipelineContinuousRef.current ? ' (continuous mode)' : ''}`);
 
     // Refresh engagement data from Instagram (cached 24h)
     let engagement: CachedEngagement;
     try {
       engagement = await fetchInstagramEngagement(
-        settings.apiKeys?.instagram?.accessToken,
-        settings.apiKeys?.instagram?.igAccountId,
+        settingsRef.current.apiKeys?.instagram?.accessToken,
+        settingsRef.current.apiKeys?.instagram?.igAccountId,
       );
     } catch {
       engagement = loadEngagementData();
@@ -331,35 +420,110 @@ Return ONLY the prompt text, nothing else.`;
 
     // Accumulated posts across the entire pipeline run (prevents slot collisions)
     const accumulatedPosts: ScheduledPost[] = [];
+    let cycle = 0;
 
-    for (let i = 0; i < pendingIdeas.length; i++) {
-      if (stopRequestedRef.current) {
-        addLog('pipeline-stop', '', 'success', 'Pipeline stopped by user');
+    // Outer loop — one iteration per daemon cycle. Exits after one pass
+    // when pipelineContinuous is off, or when the user stops the run.
+    do {
+      cycle++;
+
+      // Pull the freshest list of pending ideas from the ref so new
+      // ideas added between cycles (via addIdea, either by the daemon
+      // or by the user in another tab) show up.
+      let pendingIdeas = ideasRef.current.filter(i => i.status === 'idea');
+
+      // Queue empty → auto-generate via pi. Happens both on first run
+      // when the user has no ideas yet and in continuous mode when
+      // we've exhausted the backlog.
+      if (pendingIdeas.length === 0) {
+        setPipelineProgress({ current: 0, total: 0, currentStep: 'Auto-generating ideas...', currentIdea: '' });
+        try {
+          const generated = await autoGenerateIdeas(3);
+          for (const g of generated) {
+            addIdea(g.concept, g.context || undefined);
+          }
+          addLog('auto-generate', '', 'success', `Queue empty → generated ${generated.length} ideas via pi`);
+          // Use the generated ideas directly for this cycle — we can't
+          // rely on ideasRef being updated this tick because addIdea
+          // dispatches through setState.
+          pendingIdeas = generated;
+        } catch (e: any) {
+          addLog('auto-generate', '', 'error', `Failed to auto-generate ideas: ${e?.message || e}`);
+          // If we couldn't generate and we're not in continuous mode,
+          // there's nothing more to do this run.
+          if (!pipelineContinuousRef.current) break;
+          // In continuous mode, sleep then retry the cycle.
+          setPipelineProgress({ current: 0, total: 0, currentStep: `Retry in ${pipelineIntervalRef.current} min`, currentIdea: '' });
+          await delay(pipelineIntervalRef.current * 60 * 1000);
+          continue;
+        }
+      }
+
+      if (pendingIdeas.length === 0) {
+        // Still nothing — bail out rather than spin forever.
+        addLog('pipeline-cycle', '', 'success', `Cycle ${cycle} — no ideas available, stopping`);
         break;
       }
 
-      const idea = pendingIdeas[i];
-      setPipelineQueue(pendingIdeas.slice(i));
+      setPipelineQueue(pendingIdeas);
+      addLog('pipeline-cycle', '', 'success', `Cycle ${cycle} — processing ${pendingIdeas.length} ideas`);
 
-      try {
-        await processIdea(idea, i, pendingIdeas.length, engagement, accumulatedPosts);
-      } catch (e: any) {
-        addLog('pipeline-error', idea.id, 'error', `Skipping idea due to error: ${e.message}`);
-        updateIdeaStatus(idea.id, 'idea'); // Reset on failure
+      for (let i = 0; i < pendingIdeas.length; i++) {
+        if (stopRequestedRef.current) {
+          addLog('pipeline-stop', '', 'success', 'Pipeline stopped by user');
+          break;
+        }
+
+        const idea = pendingIdeas[i];
+        setPipelineQueue(pendingIdeas.slice(i));
+
+        try {
+          await processIdea(idea, i, pendingIdeas.length, engagement, accumulatedPosts);
+        } catch (e: any) {
+          addLog('pipeline-error', idea.id, 'error', `Skipping idea due to error: ${e.message}`);
+          updateIdeaStatus(idea.id, 'idea'); // Reset on failure
+        }
+
+        // Delay between ideas (unless last or stopped)
+        if (i < pendingIdeas.length - 1 && !stopRequestedRef.current) {
+          setPipelineProgress(prev => prev ? { ...prev, currentStep: `Waiting ${pipelineDelayRef.current}s before next idea...` } : null);
+          await delay(pipelineDelayRef.current * 1000);
+        }
       }
 
-      // Delay between ideas (unless last or stopped)
-      if (i < pendingIdeas.length - 1 && !stopRequestedRef.current) {
-        setPipelineProgress(prev => prev ? { ...prev, currentStep: `Waiting ${pipelineDelay}s before next idea...` } : null);
-        await delay(pipelineDelay * 1000);
+      if (stopRequestedRef.current) break;
+
+      // Continuous-mode tail: check whether the schedule needs filling,
+      // log a status line, sleep for the configured interval, then loop.
+      if (pipelineContinuousRef.current) {
+        const allPosts = [...(settingsRef.current.scheduledPosts || []), ...accumulatedPosts];
+        const futurePosts = countFutureScheduledPosts(allPosts, pipelineTargetDaysRef.current);
+        const targetPerDay = 2; // two posts/day is a reasonable default
+        const targetTotal = pipelineTargetDaysRef.current * targetPerDay;
+
+        if (futurePosts < targetTotal) {
+          addLog('daemon', '', 'success', `Schedule has ${futurePosts}/${targetTotal} posts in next ${pipelineTargetDaysRef.current}d — will continue after sleep`);
+        } else {
+          addLog('daemon', '', 'success', `Schedule target met (${futurePosts}/${targetTotal}) — sleeping ${pipelineIntervalRef.current}m`);
+        }
+
+        setPipelineProgress({ current: 0, total: 0, currentStep: `Next cycle in ${pipelineIntervalRef.current} min`, currentIdea: '' });
+        // Sleep in small slices so stop-requests are honored quickly
+        // instead of forcing the user to wait up to `pipelineInterval`
+        // minutes after clicking Stop.
+        const sleepMs = pipelineIntervalRef.current * 60 * 1000;
+        const sliceMs = 2000;
+        for (let slept = 0; slept < sleepMs && !stopRequestedRef.current; slept += sliceMs) {
+          await delay(Math.min(sliceMs, sleepMs - slept));
+        }
       }
-    }
+    } while (pipelineContinuousRef.current && !stopRequestedRef.current);
 
     setPipelineRunning(false);
     setPipelineQueue([]);
     setPipelineProgress(null);
-    addLog('pipeline-end', '', 'success', 'Pipeline finished');
-  }, [ideas, processIdea, addLog, pipelineDelay, updateIdeaStatus]);
+    addLog('pipeline-end', '', 'success', `Pipeline finished after ${cycle} cycle${cycle === 1 ? '' : 's'}`);
+  }, [processIdea, addLog, updateIdeaStatus, autoGenerateIdeas, addIdea]);
 
   const stopPipeline = useCallback(() => {
     stopRequestedRef.current = true;
@@ -373,6 +537,23 @@ Return ONLY the prompt text, nothing else.`;
     setPipelineDelayState(d);
   }, []);
 
+  const toggleContinuous = useCallback(() => {
+    setPipelineContinuous(prev => !prev);
+  }, []);
+
+  const setPipelineInterval = useCallback((minutes: number) => {
+    // Clamp to sane range — 30min floor, 1 day ceiling.
+    setPipelineIntervalState(Math.max(30, Math.min(1440, minutes)));
+  }, []);
+
+  const setPipelineTargetDays = useCallback((days: number) => {
+    setPipelineTargetDaysState(Math.max(1, Math.min(30, days)));
+  }, []);
+
+  const clearPipelineLog = useCallback(() => {
+    setPipelineLog([]);
+  }, []);
+
   return {
     pipelineEnabled,
     pipelineRunning,
@@ -384,5 +565,12 @@ Return ONLY the prompt text, nothing else.`;
     togglePipeline,
     startPipeline,
     stopPipeline,
+    pipelineContinuous,
+    toggleContinuous,
+    pipelineInterval,
+    setPipelineInterval,
+    pipelineTargetDays,
+    setPipelineTargetDays,
+    clearPipelineLog,
   };
 }

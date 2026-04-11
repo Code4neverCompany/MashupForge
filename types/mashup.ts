@@ -117,7 +117,13 @@ export interface ScheduledPost {
   time: string;
   platforms: string[];
   caption: string;
-  status?: 'scheduled' | 'posted' | 'failed';
+  /**
+   * Pipeline-produced posts enter as 'pending_approval' and need an
+   * explicit approval step (via approveScheduledPost) before the auto-
+   * poster will pick them up. User-scheduled posts go straight to
+   * 'scheduled' and skip the approval queue.
+   */
+  status?: 'pending_approval' | 'scheduled' | 'posted' | 'failed';
   /**
    * Optional link between scheduled posts that belong to the same
    * carousel. When set, the auto-post worker collects every post with
@@ -522,4 +528,19 @@ export interface MashupContextType {
   togglePipeline: () => void;
   startPipeline: () => void;
   stopPipeline: () => void;
+  /** Continuous / daemon mode — keep regenerating ideas and posting on an interval. */
+  pipelineContinuous: boolean;
+  toggleContinuous: () => void;
+  /** Minutes between daemon cycles when continuous mode is on. */
+  pipelineInterval: number;
+  setPipelineInterval: (minutes: number) => void;
+  /** How many days ahead the daemon tries to keep the schedule filled. */
+  pipelineTargetDays: number;
+  setPipelineTargetDays: (days: number) => void;
+  /** Clear the pipeline log — leaves state/persistence intact otherwise. */
+  clearPipelineLog: () => void;
+  /** Approve a pending_approval post — flips its status to 'scheduled'. */
+  approveScheduledPost: (postId: string) => void;
+  /** Reject a pending_approval post — removes it from scheduledPosts. */
+  rejectScheduledPost: (postId: string) => void;
 }

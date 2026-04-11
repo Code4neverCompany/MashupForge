@@ -307,8 +307,8 @@ export function PipelinePanel() {
             {!pipelineRunning ? (
               <button
                 onClick={startPipeline}
-                disabled={!pipelineEnabled || pendingIdeas.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white text-sm font-medium rounded-xl transition-colors"
+                disabled={!pipelineEnabled}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-900/80 disabled:text-zinc-600 text-white text-sm font-medium rounded-xl transition-colors"
               >
                 <Play className="w-4 h-4" />
                 Start Pipeline

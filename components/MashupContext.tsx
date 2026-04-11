@@ -143,12 +143,32 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     settings,
     updateSettings,
     updateIdeaStatus,
+    addIdea,
     generateImages,
     generateComparison,
     generatePostContent,
     savedImages,
     images,
   });
+
+  // Approval flow for pending_approval scheduled posts. Pipeline-
+  // produced posts land in that status and need explicit action before
+  // the auto-poster will pick them up.
+  const approveScheduledPost = (postId: string) => {
+    const posts = settings.scheduledPosts || [];
+    updateSettings({
+      scheduledPosts: posts.map((p) =>
+        p.id === postId ? { ...p, status: 'scheduled' as const } : p
+      ),
+    });
+  };
+
+  const rejectScheduledPost = (postId: string) => {
+    const posts = settings.scheduledPosts || [];
+    updateSettings({
+      scheduledPosts: posts.filter((p) => p.id !== postId),
+    });
+  };
 
   // Compose loading state
   const isLoaded = isSettingsLoaded && isImagesLoaded && isCollectionsLoaded && ideasHook.isIdeasLoaded;
@@ -234,6 +254,15 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     togglePipeline: pipelineHook.togglePipeline,
     startPipeline: pipelineHook.startPipeline,
     stopPipeline: pipelineHook.stopPipeline,
+    pipelineContinuous: pipelineHook.pipelineContinuous,
+    toggleContinuous: pipelineHook.toggleContinuous,
+    pipelineInterval: pipelineHook.pipelineInterval,
+    setPipelineInterval: pipelineHook.setPipelineInterval,
+    pipelineTargetDays: pipelineHook.pipelineTargetDays,
+    setPipelineTargetDays: pipelineHook.setPipelineTargetDays,
+    clearPipelineLog: pipelineHook.clearPipelineLog,
+    approveScheduledPost,
+    rejectScheduledPost,
   };
 
   return (
