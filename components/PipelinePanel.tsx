@@ -62,7 +62,7 @@ function BestTimesWidget({ settings }: { settings: any }) {
         <button
           onClick={fetchInsights}
           disabled={loading}
-          className="text-[11px] px-2 py-1 bg-indigo-600/20 text-indigo-400 rounded-md hover:bg-indigo-600/30 transition-colors disabled:opacity-50"
+          className="text-[11px] px-2 py-1 bg-indigo-600/20 text-indigo-400 rounded-xl hover:bg-indigo-600/30 transition-colors disabled:opacity-50"
         >
           {loading ? 'Analyzing...' : insights ? 'Refresh' : 'Analyze'}
         </button>
@@ -349,7 +349,7 @@ export function PipelinePanel() {
             onChange={(e) =>
               setPipelineDelay(Math.max(5, Math.min(300, Number(e.target.value))))
             }
-            className="w-20 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded-md text-sm text-white text-center"
+            className="w-20 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-white text-center"
           />
           <span className="text-sm text-zinc-500">seconds</span>
         </div>
@@ -379,7 +379,7 @@ export function PipelinePanel() {
                 max={1440}
                 value={pipelineInterval}
                 onChange={(e) => setPipelineInterval(Math.max(30, Math.min(1440, Number(e.target.value))))}
-                className="w-20 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded-md text-sm text-white text-center"
+                className="w-20 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-white text-center"
               />
               <span className="text-sm text-zinc-500">min, target</span>
               <input
@@ -388,7 +388,7 @@ export function PipelinePanel() {
                 max={30}
                 value={pipelineTargetDays}
                 onChange={(e) => setPipelineTargetDays(Math.max(1, Math.min(30, Number(e.target.value))))}
-                className="w-16 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded-md text-sm text-white text-center"
+                className="w-16 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-white text-center"
               />
               <span className="text-sm text-zinc-500">days ahead</span>
             </>
@@ -558,7 +558,7 @@ export function PipelinePanel() {
             {pipelineLog.length > 0 && (
               <button
                 onClick={(e) => { e.stopPropagation(); clearPipelineLog(); }}
-                className="text-[10px] px-2 py-0.5 bg-zinc-800 text-zinc-400 rounded-md hover:bg-red-600/20 hover:text-red-400 transition-colors"
+                className="text-[10px] px-2 py-0.5 bg-zinc-800 text-zinc-400 rounded-xl hover:bg-red-600/20 hover:text-red-400 transition-colors"
               >
                 Clear
               </button>
