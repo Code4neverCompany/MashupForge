@@ -91,7 +91,15 @@ ${options?.style ? `Preferred style: ${options.style}` : ''}
 ${options?.aspectRatio ? `Preferred ratio: ${options.aspectRatio}` : ''}
 ${options?.negativePrompt ? `User negative prompt: ${options.negativePrompt}` : ''}
 
-Enhance the prompt with specific visual detail — lighting, atmosphere, textures, composition. Pick the best aspect ratio for the scene (wide/epic = 16:9, portrait/character = 9:16, other = 1:1). Pick the art style that fits the concept best. If negative prompts are supported, write one that prevents common quality issues (blurry, deformed, low detail).${isConceptArt ? `\n\nThis is a concept art prompt. The image must be a SINGLE illustration, NOT a reference sheet or multi-panel layout. Do NOT include "concept art sheet", "character sheet", "turnaround", or "grid layout" in the prompt.` : ''}
+Enhance the prompt with specific visual detail — lighting, atmosphere, textures, composition. Pick the best aspect ratio for the scene (wide/epic = 16:9, portrait/character = 9:16, other = 1:1). Pick the art style that fits the concept best. If negative prompts are supported, write one that prevents common quality issues (blurry, deformed, low detail).
+
+QUALITY BOOSTERS — include the ones that fit the subject. Do NOT blindly append all of them:
+- Resolution: 8K, ultra detailed, high resolution, intricate details
+- Lighting: volumetric lighting, cinematic lighting, golden hour, dramatic shadows, rim lighting, subsurface scattering
+- Rendering: ray tracing, global illumination, path tracing, ambient occlusion
+- Camera: depth of field, bokeh, lens flare, fisheye, tilt-shift
+- Texture: photorealistic textures, micro-details, material fidelity
+- Composition: rule of thirds, dynamic angle, low angle, bird's eye view${isConceptArt ? `\n\nThis is a concept art prompt. The image must be a SINGLE illustration, NOT a reference sheet or multi-panel layout. Do NOT include "concept art sheet", "character sheet", "turnaround", or "grid layout" in the prompt.` : ''}
 
 Return ONLY a JSON object:
 { "prompt": "...", "style": "...", "aspectRatio": "...", "negativePrompt": "..." }`,
