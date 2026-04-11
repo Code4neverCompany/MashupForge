@@ -4048,6 +4048,28 @@ export function MainContent() {
                           </div>
                         </div>
                       )}
+                      {img.status === 'error' && (
+                        <div className="absolute inset-0 z-40 bg-red-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-2 p-4 text-center">
+                          <div className="w-12 h-12 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center">
+                            <XCircle className="w-6 h-6 text-red-400" />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-bold text-red-300 uppercase tracking-widest">Generation Failed</p>
+                            <p className="text-[10px] text-red-200/80 max-w-[90%] leading-tight">
+                              {img.error || 'Unknown error'}
+                            </p>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteImage(img.id, view === 'gallery');
+                            }}
+                            className="mt-1 px-3 py-1 text-[10px] bg-red-600/80 hover:bg-red-500 text-white rounded-lg transition-colors"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      )}
                       {view === 'gallery' && !img.isVideo && img.imageId && (
                         <div className="absolute top-4 left-4 z-30">
                           <input

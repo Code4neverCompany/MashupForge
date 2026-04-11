@@ -332,7 +332,9 @@ Return ONLY a JSON array of objects, each with:
               width: dims.width,
               height: dims.height,
               styleIds: leonardoStyleUuids,
-              apiKey: settings.apiKeys.leonardo
+              apiKey: settings.apiKeys.leonardo,
+              // GPT-Image-1.5 only — other models ignore this field.
+              quality: selectedModel === 'gpt-image-1.5' ? (options?.quality || 'MEDIUM') : undefined,
             })
           });
 
@@ -398,6 +400,25 @@ Return ONLY a JSON array of objects, each with:
           }
         } catch (imgError: any) {
           console.error(`Error generating image ${i + 1} with ${modelName}:`, imgError);
+          // Don't leave the placeholder stuck on 'generating'. Flip it
+          // to 'error' with a human-readable reason so the UI can show
+          // the failure instead of a forever-spinning loader.
+          const rawMsg = imgError?.message || 'Generation failed';
+          // Content-filter detection: Leonardo returns COMPLETE with 0
+          // images when GPT-Image-1.5's moderation rejects a prompt.
+          // The poll route maps that to "no images found"; surface a
+          // more actionable message so the user knows to rephrase.
+          const isContentFilter =
+            rawMsg.toLowerCase().includes('no images found') ||
+            rawMsg.toLowerCase().includes('complete but no images');
+          const errMsg = isContentFilter && selectedModel === 'gpt-image-1.5'
+            ? `GPT-1.5 filtered this prompt. Try rephrasing to avoid potentially sensitive content.`
+            : rawMsg;
+          setImages(prev => prev.map(img =>
+            img.id === placeholders[i].id
+              ? { ...img, status: 'error', error: errMsg }
+              : img
+          ));
         }
         setProgress('');
       }
@@ -496,7 +517,9 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
             width: dims.width,
             height: dims.height,
             styleIds: leonardoStyleUuids,
-            apiKey: settings.apiKeys.leonardo
+            apiKey: settings.apiKeys.leonardo,
+            // GPT-Image-1.5 only — other models ignore this field.
+            quality: selectedModel === 'gpt-image-1.5' ? (options?.quality || 'MEDIUM') : undefined,
           })
         });
 

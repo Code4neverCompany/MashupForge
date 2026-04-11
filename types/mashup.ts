@@ -24,7 +24,15 @@ export interface GeneratedImage {
   isPostReady?: boolean;
   winner?: boolean;
   comparisonId?: string;
-  status?: 'generating' | 'animating' | 'ready';
+  status?: 'generating' | 'animating' | 'ready' | 'error';
+  /**
+   * Human-readable failure reason when status === 'error'. Set by the
+   * client when Leonardo generation fails (API error, content filter,
+   * timeout, or COMPLETE-with-0-images). Rendered as an overlay on
+   * the placeholder card so the user sees what happened instead of a
+   * stuck "generating" spinner.
+   */
+  error?: string;
   modelInfo?: {
     provider: 'leonardo';
     modelId: string;
@@ -74,6 +82,8 @@ export interface GenerateOptions {
   angle?: string;
   seed?: number;
   cfgScale?: number;
+  /** GPT-Image-1.5 only: LOW | MEDIUM | HIGH. Ignored by other models. */
+  quality?: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 
 export interface WatermarkSettings {

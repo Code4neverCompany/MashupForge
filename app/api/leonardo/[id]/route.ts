@@ -72,6 +72,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         const imageUrl = images[0].motionMP4URL || images[0].url;
         return NextResponse.json({ status: 'COMPLETE', url: imageUrl, imageId: images[0].id });
       }
+      // COMPLETE with 0 images typically means content-filter rejection
+      // (especially on gpt-image-1.5). Log the full payload + generation
+      // object keys so we can spot shape mismatches where the images
+      // field lives under an unexpected name.
+      console.error(
+        '[Leonardo] COMPLETE but 0 images. Full response:',
+        JSON.stringify(getData).slice(0, 1000)
+      );
+      console.error(
+        '[Leonardo] Generation object keys:',
+        Object.keys(generation)
+      );
       return NextResponse.json({ status: 'FAILED', error: 'Generation complete but no images found' });
     } else if (generation.status === 'FAILED') {
       const failureReason = generation.failure_reason || 'Unknown reason';
