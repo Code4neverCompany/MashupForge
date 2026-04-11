@@ -20,6 +20,7 @@ import {
   MODEL_PROMPT_GUIDES,
   getLeonardoModel,
 } from '../types/mashup';
+import { CONCEPT_ART_NEGATIVES, CONCEPT_ART_NEGATIVES_SHORT, isConceptArtPrompt } from './negativePrompts';
 
 export interface ModelEnhancement {
   prompt: string;
@@ -52,7 +53,19 @@ export async function enhancePromptForModel(
   options?: EnhanceOptions
 ): Promise<ModelEnhancement> {
   const guide = MODEL_PROMPT_GUIDES[modelId];
-  if (!guide) return { prompt: basePrompt };
+  if (!guide) {
+    // No model guide — still apply concept art negatives
+    if (isConceptArtPrompt(basePrompt)) {
+      const neg = basePrompt.length > 600 ? CONCEPT_ART_NEGATIVES_SHORT : CONCEPT_ART_NEGATIVES;
+      return { prompt: `${basePrompt}. Avoid: ${neg}` };
+    }
+    return { prompt: basePrompt };
+  }
+
+  const isConceptArt = isConceptArtPrompt(basePrompt);
+  const conceptArtNegBlock = isConceptArt
+    ? (basePrompt.length > 600 ? CONCEPT_ART_NEGATIVES_SHORT : CONCEPT_ART_NEGATIVES)
+    : '';
 
   const modelConfig = getLeonardoModel(modelId);
   const supportedRatios = modelConfig?.aspectRatios.map((r) => r.label).join(', ') || '1:1';
@@ -85,6 +98,13 @@ RULES:
 - Pick the aspect ratio that makes the scene most impactful (wide landscapes = 16:9, portraits = 9:16, etc.)
 - Pick the art style from the supported list that elevates the concept furthest.
 - If negative prompts are supported, write one that eliminates ALL quality issues.
+${isConceptArt ? `
+CRITICAL — CONCEPT ART ANTI-ARTIFACT RULES:
+The Leonardo v2 API does NOT support a separate negative_prompt field. You MUST bake avoidance instructions directly into the prompt text.
+Append this EXACT block at the end of your rewritten prompt:
+"Avoid: ${conceptArtNegBlock}"
+Do NOT include the words "concept art sheet", "reference sheet", "character sheet", "turnaround", "grid layout", "multiple views" in the POSITIVE prompt — only in the avoidance block.
+The image should be a SINGLE stunning illustration, NOT a multi-panel reference sheet.` : ''}
 
 Return ONLY a JSON object:
 { "prompt": "...", "style": "...", "aspectRatio": "...", "negativePrompt": "..." }`,
@@ -92,8 +112,15 @@ Return ONLY a JSON object:
     );
 
     const data = extractJsonFromLLM(result, 'object');
+    let finalPrompt = (typeof data.prompt === 'string' && data.prompt.trim()) || basePrompt;
+
+    // Safety net: if pi forgot to bake negatives for concept art, append them
+    if (isConceptArt && !finalPrompt.toLowerCase().includes('avoid:')) {
+      finalPrompt = `${finalPrompt}. Avoid: ${conceptArtNegBlock}`;
+    }
+
     return {
-      prompt: (typeof data.prompt === 'string' && data.prompt.trim()) || basePrompt,
+      prompt: finalPrompt,
       style: (typeof data.style === 'string' && data.style) || undefined,
       aspectRatio: (typeof data.aspectRatio === 'string' && data.aspectRatio) || undefined,
       negativePrompt:
