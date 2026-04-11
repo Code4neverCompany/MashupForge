@@ -9,12 +9,20 @@ import { streamAI } from '@/lib/aiClient';
 
 type Tab = 'chat' | 'content' | 'history';
 
+interface TrendSource {
+  topic: string;
+  headline: string;
+  source: string;
+  url: string;
+}
+
 interface Message {
   id: string;
   role: 'user' | 'model';
   text: string;
   groundingChunks?: any[];
   recommendations?: string[];
+  trendingSources?: TrendSource[];
 }
 
 export function Sidebar() {
@@ -97,6 +105,7 @@ export function Sidebar() {
       try {
         // Step 1: Fetch trending data for all active niches/genres
         let trendingSummary = '';
+        let trendingResults: TrendSource[] = [];
         try {
           const trendRes = await fetch('/api/trending', {
             method: 'POST',
@@ -110,6 +119,9 @@ export function Sidebar() {
           const trendData = await trendRes.json();
           if (trendData.success && trendData.summary) {
             trendingSummary = trendData.summary;
+          }
+          if (trendData.success && Array.isArray(trendData.results)) {
+            trendingResults = trendData.results;
           }
         } catch { /* non-blocking */ }
 
@@ -143,13 +155,8 @@ Return ONLY the JSON array, no prose.`;
         let acc = '';
         for await (const delta of streamAI(message, { mode: 'idea' })) {
           acc += delta;
-          const preview = acc.length > 400 ? `${acc.slice(0, 400)}…` : acc;
           setContentMessages((prev) =>
-            prev.map((m) =>
-              m.id === modelMsgId
-                ? { ...m, text: `⏳ Generating ideas…\n\n\`\`\`\n${preview}\n\`\`\`` }
-                : m
-            )
+            prev.map((m) => (m.id === modelMsgId ? { ...m, text: acc } : m))
           );
         }
 
@@ -170,7 +177,11 @@ Return ONLY the JSON array, no prose.`;
         setContentMessages((prev) =>
           prev.map((m) =>
             m.id === modelMsgId
-              ? { ...m, text: `✨ Generated ${ideaCount} ideas and saved them to your Ideas Board!` }
+              ? {
+                  ...m,
+                  text: `✨ Generated ${ideaCount} ideas and saved them to your Ideas Board!`,
+                  trendingSources: trendingResults,
+                }
               : m
           )
         );
@@ -336,6 +347,33 @@ Return ONLY the JSON array, no prose.`;
                   }
                   return null;
                 })}
+              </div>
+            )}
+            {msg.trendingSources && msg.trendingSources.length > 0 && (
+              <div className="mt-2 space-y-1 w-full pl-2 border-l-2 border-indigo-500/40">
+                <p className="text-xs text-zinc-500 font-medium">Trending sources:</p>
+                {msg.trendingSources.map((src, j) =>
+                  src.url ? (
+                    <a
+                      key={j}
+                      href={src.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 truncate"
+                    >
+                      <ExternalLink className="w-3 h-3 shrink-0" />
+                      <span className="truncate">
+                        <span className="text-zinc-500">[{src.source}]</span> {src.headline}
+                      </span>
+                    </a>
+                  ) : (
+                    <div key={j} className="flex items-center gap-1 text-xs text-zinc-400 truncate">
+                      <span className="truncate">
+                        <span className="text-zinc-500">[{src.source}]</span> {src.headline}
+                      </span>
+                    </div>
+                  )
+                )}
               </div>
             )}
           </div>
