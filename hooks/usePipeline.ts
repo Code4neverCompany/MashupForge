@@ -11,7 +11,7 @@ import {
   type PipelineProgress,
   type ScheduledPost,
 } from '../types/mashup';
-import { findBestSlot, fetchInstagramEngagement, loadEngagementData } from '@/lib/smartScheduler';
+import { findBestSlot, findBestSlots, fetchInstagramEngagement, loadEngagementData, type CachedEngagement, type EngagementHour, type EngagementDay } from '@/lib/smartScheduler';
 
 interface UsePipelineDeps {
   ideas: Idea[];
@@ -113,12 +113,18 @@ Return ONLY the prompt text, nothing else.`;
   }, [settings]);
 
   /** Smart slot picker — uses engagement data (Instagram insights or research-backed defaults). */
-  const findNextAvailableSlot = useCallback((existingPosts: ScheduledPost[]): { date: string; time: string } => {
-    const engagement = loadEngagementData();
-    return findBestSlot(existingPosts, engagement);
+  const findNextAvailableSlot = useCallback((existingPosts: ScheduledPost[], engagement?: CachedEngagement): { date: string; time: string; reason: string } => {
+    const eng = engagement || loadEngagementData();
+    const slot = findBestSlot(existingPosts, eng);
+    const topHour = eng.hours.reduce((a: EngagementHour, b: EngagementHour) => a.weight > b.weight ? a : b);
+    const topDay = eng.days.reduce((a: EngagementDay, b: EngagementDay) => a.multiplier > b.multiplier ? a : b);
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const slotDate = new Date(slot.date);
+    const reason = `${slot.time} on ${dayNames[slotDate.getDay()]} (${eng.source === 'instagram' ? 'IG insights' : 'research'} — best hour ${topHour.hour}:00, best day ${dayNames[topDay.day]})`;
+    return { ...slot, reason };
   }, []);
 
-  const processIdea = useCallback(async (idea: Idea, index: number, total: number) => {
+  const processIdea = useCallback(async (idea: Idea, index: number, total: number, engagement: CachedEngagement, accumulatedPosts: ScheduledPost[]) => {
     // Respect the new pipeline stage toggles (defaults: tag/caption/schedule on, post off).
     const autoCaption = settings.pipelineAutoCaption ?? true;
     const autoSchedule = settings.pipelineAutoSchedule ?? true;
@@ -235,14 +241,15 @@ Return ONLY the prompt text, nothing else.`;
           }
         }
 
-        // Step f: Schedule post
+        // Step f: Schedule post (smart — uses engagement data)
         if (autoSchedule) {
           setPipelineProgress({ current: index + 1, total, currentStep: `Scheduling ${modelLabel}`, currentIdea: idea.concept });
           if (pipelinePlatforms.length === 0) {
             addLog('schedule', idea.id, 'error', 'No platforms configured — skipped');
           } else {
-            const existingPosts = settings.scheduledPosts || [];
-            const slot = findNextAvailableSlot(existingPosts);
+            // Merge existing settings posts + posts accumulated during this pipeline run
+            const allPosts = [...(settings.scheduledPosts || []), ...accumulatedPosts];
+            const slot = findNextAvailableSlot(allPosts, engagement);
             const newPost: ScheduledPost = {
               id: `post-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               imageId: latestImage.id,
@@ -252,8 +259,9 @@ Return ONLY the prompt text, nothing else.`;
               caption: captionedImg.postCaption || '',
               status: 'scheduled',
             };
-            updateSettings({ scheduledPosts: [...existingPosts, newPost] });
-            addLog('schedule', idea.id, 'success', `[${modelLabel}] Scheduled for ${slot.date} at ${slot.time}`);
+            accumulatedPosts.push(newPost);
+            updateSettings({ scheduledPosts: [...allPosts, newPost] });
+            addLog('schedule', idea.id, 'success', `[${modelLabel}] ${slot.reason}`);
           }
         }
 
@@ -306,15 +314,23 @@ Return ONLY the prompt text, nothing else.`;
     addLog('pipeline-start', '', 'success', `Pipeline started with ${pendingIdeas.length} ideas`);
 
     // Refresh engagement data from Instagram (cached 24h)
+    let engagement: CachedEngagement;
     try {
-      const eng = await fetchInstagramEngagement(
+      engagement = await fetchInstagramEngagement(
         settings.apiKeys?.instagram?.accessToken,
         settings.apiKeys?.instagram?.igAccountId,
       );
-      addLog('engagement', '', 'success', `Posting times: ${eng.source === 'instagram' ? 'Instagram insights' : 'research-backed defaults'}`);
     } catch {
-      addLog('engagement', '', 'success', 'Using default posting times');
+      engagement = loadEngagementData();
     }
+    const topHours = engagement.hours
+      .sort((a: EngagementHour, b: EngagementHour) => b.weight - a.weight)
+      .slice(0, 3)
+      .map((h: EngagementHour) => `${h.hour}:00`);
+    addLog('engagement', '', 'success', `Scheduler: ${engagement.source === 'instagram' ? 'IG insights' : 'research defaults'} — top hours: ${topHours.join(', ')}`);
+
+    // Accumulated posts across the entire pipeline run (prevents slot collisions)
+    const accumulatedPosts: ScheduledPost[] = [];
 
     for (let i = 0; i < pendingIdeas.length; i++) {
       if (stopRequestedRef.current) {
@@ -326,7 +342,7 @@ Return ONLY the prompt text, nothing else.`;
       setPipelineQueue(pendingIdeas.slice(i));
 
       try {
-        await processIdea(idea, i, pendingIdeas.length);
+        await processIdea(idea, i, pendingIdeas.length, engagement, accumulatedPosts);
       } catch (e: any) {
         addLog('pipeline-error', idea.id, 'error', `Skipping idea due to error: ${e.message}`);
         updateIdeaStatus(idea.id, 'idea'); // Reset on failure

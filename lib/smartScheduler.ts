@@ -62,7 +62,7 @@ const DEFAULT_DAY_MULTIPLIERS: EngagementDay[] = [
 const CACHE_KEY = 'mashup_engagement_cache';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-interface CachedEngagement {
+export interface CachedEngagement {
   hours: EngagementHour[];
   days: EngagementDay[];
   fetchedAt: number;

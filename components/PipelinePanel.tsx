@@ -125,11 +125,12 @@ const STAGES: {
   toggleKey?: 'pipelineAutoTag' | 'pipelineAutoCaption' | 'pipelineAutoSchedule' | 'pipelineAutoPost';
 }[] = [
   { key: 'idea', label: 'Idea', icon: Lightbulb, matchStep: 'Updating status' },
+  { key: 'trending', label: 'Trending', icon: TrendingUp, matchStep: 'Researching trending' },
   { key: 'prompt', label: 'Prompt', icon: Sparkles, matchStep: 'Expanding idea' },
-  { key: 'image', label: 'Image', icon: ImageIcon, matchStep: 'Generating image' },
+  { key: 'image', label: 'Image', icon: ImageIcon, matchStep: 'Generating' },
   { key: 'tag', label: 'Tag', icon: Tag, matchStep: 'Tagging', toggleKey: 'pipelineAutoTag' },
-  { key: 'caption', label: 'Caption', icon: Edit3, matchStep: 'Generating caption', toggleKey: 'pipelineAutoCaption' },
-  { key: 'schedule', label: 'Schedule', icon: Calendar, matchStep: 'Scheduling post', toggleKey: 'pipelineAutoSchedule' },
+  { key: 'caption', label: 'Caption', icon: Edit3, matchStep: 'Captioning', toggleKey: 'pipelineAutoCaption' },
+  { key: 'schedule', label: 'Schedule', icon: Calendar, matchStep: 'Scheduling', toggleKey: 'pipelineAutoSchedule' },
   { key: 'post', label: 'Post', icon: Send, matchStep: 'Posting', toggleKey: 'pipelineAutoPost' },
 ];
 
