@@ -1,58 +1,29 @@
 'use client';
 
-import { useState } from 'react';
-import { AlertCircle, RefreshCw, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { motion } from 'motion/react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 
-interface APIErrorFallbackProps {
-  operation: string;
-  error: string;
-  onRetry?: () => void;
-  onDismiss: () => void;
-}
-
-export function APIErrorFallback({ operation, error, onRetry, onDismiss }: APIErrorFallbackProps) {
-  const [showDetails, setShowDetails] = useState(false);
-
+export function APIErrorFallback({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) {
   return (
-    <div className="bg-red-950/30 border border-red-900/50 rounded-lg p-4 my-2">
-      <div className="flex items-start gap-3">
-        <AlertCircle className="w-5 h-5 text-red-400 mt-0.5 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-red-300">
-            {operation} failed
-          </p>
-          <button
-            onClick={() => setShowDetails(!showDetails)}
-            className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-400 mt-1 transition-colors"
-          >
-            {showDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            {showDetails ? 'Hide' : 'Show'} details
-          </button>
-          {showDetails && (
-            <pre className="mt-2 text-xs text-zinc-400 bg-zinc-900/50 rounded p-2 overflow-x-auto whitespace-pre-wrap break-words">
-              {error}
-            </pre>
-          )}
-          <div className="flex gap-2 mt-3">
-            {onRetry && (
-              <button
-                onClick={onRetry}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-medium transition-colors"
-              >
-                <RefreshCw className="w-3 h-3" />
-                Retry
-              </button>
-            )}
-            <button
-              onClick={onDismiss}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-medium transition-colors"
-            >
-              <X className="w-3 h-3" />
-              Dismiss
-            </button>
-          </div>
+    <div className="flex items-center justify-center h-full p-4">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="glass-card p-6 max-w-sm w-full text-center border-emerald-500/20"
+      >
+        <div className="w-12 h-12 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-3">
+          <AlertCircle className="w-6 h-6 text-emerald-500" />
         </div>
-      </div>
+        <h3 className="text-sm font-semibold text-white">API Error</h3>
+        <p className="text-xs text-zinc-400 mt-1 mb-4">{error.message}</p>
+        <button
+          onClick={resetErrorBoundary}
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-2 mx-auto transition-all"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          Retry Request
+        </button>
+      </motion.div>
     </div>
   );
 }
