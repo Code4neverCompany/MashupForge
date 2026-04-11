@@ -11,6 +11,7 @@ import {
   type PipelineProgress,
   type ScheduledPost,
 } from '../types/mashup';
+import { findBestSlot, fetchInstagramEngagement, loadEngagementData } from '@/lib/smartScheduler';
 
 interface UsePipelineDeps {
   ideas: Idea[];
@@ -111,25 +112,10 @@ Return ONLY the prompt text, nothing else.`;
     return text.trim() || idea.concept;
   }, [settings]);
 
+  /** Smart slot picker — uses engagement data (Instagram insights or research-backed defaults). */
   const findNextAvailableSlot = useCallback((existingPosts: ScheduledPost[]): { date: string; time: string } => {
-    const now = new Date();
-    // Start from tomorrow at 10:00, then 14:00, 18:00 slots
-    const slots = ['10:00', '14:00', '18:00'];
-    const startDate = new Date(now);
-    startDate.setDate(startDate.getDate() + 1);
-
-    for (let dayOffset = 0; dayOffset < 30; dayOffset++) {
-      const checkDate = new Date(startDate);
-      checkDate.setDate(checkDate.getDate() + dayOffset);
-      const dateStr = checkDate.toISOString().split('T')[0];
-
-      for (const time of slots) {
-        const taken = existingPosts.some(p => p.date === dateStr && p.time === time);
-        if (!taken) return { date: dateStr, time };
-      }
-    }
-    // Fallback
-    return { date: startDate.toISOString().split('T')[0], time: '12:00' };
+    const engagement = loadEngagementData();
+    return findBestSlot(existingPosts, engagement);
   }, []);
 
   const processIdea = useCallback(async (idea: Idea, index: number, total: number) => {
@@ -318,6 +304,17 @@ Return ONLY the prompt text, nothing else.`;
     setPipelineRunning(true);
     setPipelineQueue(pendingIdeas);
     addLog('pipeline-start', '', 'success', `Pipeline started with ${pendingIdeas.length} ideas`);
+
+    // Refresh engagement data from Instagram (cached 24h)
+    try {
+      const eng = await fetchInstagramEngagement(
+        settings.apiKeys?.instagram?.accessToken,
+        settings.apiKeys?.instagram?.igAccountId,
+      );
+      addLog('engagement', '', 'success', `Posting times: ${eng.source === 'instagram' ? 'Instagram insights' : 'research-backed defaults'}`);
+    } catch {
+      addLog('engagement', '', 'success', 'Using default posting times');
+    }
 
     for (let i = 0; i < pendingIdeas.length; i++) {
       if (stopRequestedRef.current) {
