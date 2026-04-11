@@ -243,50 +243,42 @@ export function PipelinePanel() {
 
       {/* Stage flow visualization */}
       <div className="bg-zinc-900/80 backdrop-blur-sm rounded-2xl border border-zinc-800/60 p-5 overflow-x-auto">
-        <div className="flex items-center gap-1 min-w-max">
-          {STAGES.map((stage, i) => {
-            const Icon = stage.icon;
-            const isActive = activeStageKey === stage.key;
-            const isDisabled =
-              (stage.toggleKey === 'pipelineAutoTag' && !autoTag) ||
-              (stage.toggleKey === 'pipelineAutoCaption' && !autoCaption) ||
-              (stage.toggleKey === 'pipelineAutoSchedule' && !autoSchedule) ||
-              (stage.toggleKey === 'pipelineAutoPost' && !autoPost);
-            return (
-              <div key={stage.key} className="flex items-center gap-1">
-                <div
-                  className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl border transition-all ${
-                    isDisabled
-                      ? 'bg-zinc-950/60 border-zinc-800/60 opacity-40'
-                      : isActive
-                        ? 'bg-indigo-500/20 border-indigo-400/50 animate-pulse'
-                        : 'bg-zinc-800/50 border-zinc-700/50'
-                  }`}
-                >
-                  <Icon
-                    className={`w-5 h-5 ${
-                      isDisabled
-                        ? 'text-zinc-600'
-                        : isActive
-                          ? 'text-indigo-300'
-                          : 'text-zinc-400'
-                    }`}
-                  />
-                  <span
-                    className={`text-[10px] font-bold uppercase tracking-wider ${
-                      isDisabled ? 'text-zinc-600' : isActive ? 'text-indigo-200' : 'text-zinc-500'
-                    }`}
-                  >
-                    {stage.label}
-                  </span>
-                </div>
-                {i < STAGES.length - 1 && (
-                  <div className="w-6 h-px bg-zinc-700/50" />
+      <div className="glass-card p-6 h-full flex flex-col">
+      <h2 className="text-lg font-semibold text-white mb-6">Automation Pipeline</h2>
+      <div className="space-y-4">
+        {STAGES.map((stage, idx) => {
+          const isActive = activeStageKey === stage.key;
+          const isCompleted = idx < STAGES.findIndex(s => s.key === activeStageKey); // Simplified logic
+          const Icon = stage.icon;
+          return (
+            <motion.div 
+              key={stage.key}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: idx * 0.05 }}
+              className={`relative p-4 rounded-xl border transition-all ${
+                isActive ? 'bg-emerald-600/10 border-emerald-500/30' : 
+                isCompleted ? 'bg-zinc-800/40 border-zinc-700/30' : 'bg-zinc-900/20 border-zinc-800/40'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                {isActive ? (
+                  <div className="relative w-3 h-3">
+                    <div className="absolute inset-0 bg-emerald-500 rounded-full animate-ping" />
+                    <div className="relative bg-emerald-500 w-3 h-3 rounded-full" />
+                  </div>
+                ) : (
+                  <div className={`w-3 h-3 rounded-full ${isCompleted ? 'bg-emerald-500' : 'bg-zinc-700'}`} />
                 )}
+                <span className={`text-sm font-medium ${isActive ? 'text-emerald-400' : isCompleted ? 'text-white' : 'text-zinc-500'}`}>
+                  {stage.label}
+                </span>
               </div>
-            );
-          })}
-        </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
       </div>
 
       {/* Controls */}
