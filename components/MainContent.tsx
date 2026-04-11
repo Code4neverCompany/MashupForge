@@ -1378,45 +1378,45 @@ export function MainContent() {
         </div>
         
         <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
-          <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800 overflow-x-auto hide-scrollbar snap-x">
+          <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800/60 overflow-x-auto hide-scrollbar snap-x">
             <button
               onClick={() => setView('ideas')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'ideas' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-xl transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'ideas' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
               <Lightbulb className="w-4 h-4 hidden sm:block" />
               Ideas
             </button>
             <button
               onClick={() => setView('compare')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'compare' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-xl transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'compare' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
               <Sparkles className="w-4 h-4 hidden sm:block" />
               Studio
             </button>
             <button
               onClick={() => setView('gallery')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'gallery' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-xl transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'gallery' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
               <LayoutGrid className="w-4 h-4 hidden sm:block" />
               Gallery ({savedImages.length})
             </button>
             <button
               onClick={() => setView('captioning')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'captioning' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-xl transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'captioning' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
               <Edit3 className="w-4 h-4 hidden sm:block" />
               Captioning
             </button>
             <button
               onClick={() => setView('post-ready')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'post-ready' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-xl transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'post-ready' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
               <Save className="w-4 h-4 hidden sm:block" />
               Post Ready
             </button>
             <button
               onClick={() => setView('pipeline')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'pipeline' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-xl transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'pipeline' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
               <Zap className="w-4 h-4 hidden sm:block" />
               Pipeline
@@ -1884,7 +1884,7 @@ export function MainContent() {
                                     {model?.name || modelId}
                                   </span>
                                   {preview && (
-                                    <details className="mt-2 text-xs border border-zinc-800 rounded-lg overflow-hidden">
+                                    <details className="mt-2 text-xs border border-zinc-800/60 rounded-lg overflow-hidden">
                                       <summary className="px-3 py-2 cursor-pointer hover:bg-zinc-800/50 flex items-center gap-2 text-zinc-400">
                                         <span className="text-indigo-400">AI Optimized</span>
                                         <span className="text-zinc-600">|</span>
@@ -2472,7 +2472,7 @@ export function MainContent() {
                                       setPreparingPostId(null);
                                     }
                                   }}
-                                  className="flex-1 px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md flex items-center justify-center gap-1.5 transition-colors"
+                                  className="flex-1 px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
                                 >
                                   <Sparkles className="w-3.5 h-3.5" />
                                   {img.postCaption ? 'Regenerate' : 'Generate'}
@@ -3056,7 +3056,7 @@ export function MainContent() {
                                                 e.stopPropagation();
                                                 setEditingPostId((current) => (current === p.id ? null : p.id));
                                               }}
-                                              className={`relative w-full text-left px-2 py-1 rounded-md border text-[10px] truncate cursor-grab active:cursor-grabbing ${calendarColorFor(p.status)} ${
+                                              className={`relative w-full text-left px-2 py-1 rounded-xl border text-[10px] truncate cursor-grab active:cursor-grabbing ${calendarColorFor(p.status)} ${
                                                 dragPostId === p.id ? 'opacity-50' : ''
                                               }`}
                                               title={`${p.time} · ${p.platforms.join(', ')}\n${p.caption}`}
@@ -3555,7 +3555,7 @@ export function MainContent() {
                                             type="date"
                                             value={carouselSchedule.date}
                                             onChange={(e) => setScheduleFor(key, { date: e.target.value })}
-                                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                                           />
                                         </div>
                                         <div className="space-y-1">
@@ -3563,7 +3563,7 @@ export function MainContent() {
                                           <TimePicker24
                                             value={carouselSchedule.time}
                                             onChange={(v) => setScheduleFor(key, { time: v })}
-                                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                                           />
                                         </div>
                                       </div>
@@ -3645,7 +3645,7 @@ export function MainContent() {
                           return (
                             <div
                               key={img.id}
-                              className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col md:flex-row"
+                              className="bg-zinc-900 border border-zinc-800/60 rounded-xl overflow-hidden flex flex-col md:flex-row"
                             >
                               {/* Image */}
                               <div className="relative md:w-48 md:shrink-0 aspect-square bg-zinc-950">
@@ -3755,7 +3755,7 @@ export function MainContent() {
                                         type="date"
                                         value={schedule.date}
                                         onChange={(e) => setScheduleFor(img.id, { date: e.target.value })}
-                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
                                       />
                                     </div>
                                     <div className="space-y-1">
@@ -3765,7 +3765,7 @@ export function MainContent() {
                                       <TimePicker24
                                         value={schedule.time}
                                         onChange={(v) => setScheduleFor(img.id, { time: v })}
-                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
                                       />
                                     </div>
                                   </div>
@@ -3775,14 +3775,14 @@ export function MainContent() {
                                     <button
                                       disabled={!!busy || selPlatforms.length === 0 || !schedule.date || !schedule.time}
                                       onClick={() => scheduleImage(img, selPlatforms, schedule.date, schedule.time)}
-                                      className="px-2 py-1.5 text-[11px] bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1.5 transition-colors"
+                                      className="px-2 py-1.5 text-[11px] bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
                                     >
                                       <Clock className="w-3.5 h-3.5" /> Schedule
                                     </button>
                                     <button
                                       disabled={!!busy || selPlatforms.length === 0}
                                       onClick={() => postImageNow(img, selPlatforms)}
-                                      className="px-2 py-1.5 text-[11px] bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1.5 transition-colors"
+                                      className="px-2 py-1.5 text-[11px] bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
                                     >
                                       {busy === 'posting' ? (
                                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -3798,7 +3798,7 @@ export function MainContent() {
                                     <button
                                       onClick={() => copyWithFeedback(formatPost(img), `all-${img.id}`)}
                                       disabled={!img.postCaption}
-                                      className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
+                                      className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1 transition-colors"
                                     >
                                       {copiedId === `all-${img.id}` ? (
                                         <Check className="w-3 h-3 text-emerald-400" />
@@ -3817,7 +3817,7 @@ export function MainContent() {
                                           setPreparingPostId(null);
                                         }
                                       }}
-                                      className="px-2 py-1.5 text-[10px] bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
+                                      className="px-2 py-1.5 text-[10px] bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-1 transition-colors"
                                     >
                                       {isRegen ? (
                                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -3828,7 +3828,7 @@ export function MainContent() {
                                     </button>
                                     <button
                                       onClick={() => patchImage(img, { isPostReady: false })}
-                                      className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-red-500/80 text-white rounded-md flex items-center justify-center gap-1 transition-colors"
+                                      className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-red-500/80 text-white rounded-xl flex items-center justify-center gap-1 transition-colors"
                                     >
                                       <MinusCircle className="w-3 h-3" />
                                       Unready
@@ -3857,7 +3857,7 @@ export function MainContent() {
                         onClick={() => setShowScheduleAll(false)}
                       >
                         <div
-                          className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto"
+                          className="bg-zinc-900 border border-zinc-800/60 rounded-xl w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex items-center justify-between">
@@ -4484,7 +4484,7 @@ export function MainContent() {
                       <XCircle className="w-3 h-3" />
                       Negative Prompt
                     </h4>
-                    <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-sm text-zinc-400 leading-relaxed italic">
+                    <div className="bg-zinc-950 border border-zinc-800/60 rounded-2xl p-4 text-sm text-zinc-400 leading-relaxed italic">
                       {selectedImage.negativePrompt}
                     </div>
                   </div>
@@ -4495,7 +4495,7 @@ export function MainContent() {
                     <Sparkles className="w-3 h-3" />
                     Prompt
                   </h4>
-                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-sm text-zinc-300 leading-relaxed group relative">
+                  <div className="bg-zinc-950 border border-zinc-800/60 rounded-2xl p-4 text-sm text-zinc-300 leading-relaxed group relative">
                     {selectedImage.prompt}
                     <button 
                       onClick={() => navigator.clipboard.writeText(selectedImage.prompt)}
@@ -4569,7 +4569,7 @@ export function MainContent() {
                         setSelectedImage({ ...selectedImage, collectionId: undefined });
                       }
                     }}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                   >
                     <option value="">None</option>
                     {collections.map(col => (
@@ -4617,7 +4617,7 @@ export function MainContent() {
 
                 <div className="pt-8 border-t border-zinc-800 space-y-4">
                   {selectedImage.imageId && !selectedImage.isVideo && (
-                    <div className="space-y-4 bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800">
+                    <div className="space-y-4 bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/60">
                       <div className="flex items-center justify-between text-xs text-zinc-400">
                         <span>Duration</span>
                         <select
@@ -4689,7 +4689,7 @@ export function MainContent() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+            className="bg-zinc-900 border border-zinc-800/60 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
           >
             <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-zinc-950/50 shrink-0">
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -4715,7 +4715,7 @@ export function MainContent() {
                     value={settings.apiKeys.leonardo || ''}
                     onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, leonardo: e.target.value } })}
                     placeholder="••••••••••••••••"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                   />
                 </div>
                 
@@ -4730,14 +4730,14 @@ export function MainContent() {
                         value={settings.apiKeys.instagram?.igAccountId || ''}
                         onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, instagram: { ...settings.apiKeys.instagram, igAccountId: e.target.value } as any } })}
                         placeholder="Instagram Business Account ID"
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                       />
                       <input
                         type="password"
                         value={settings.apiKeys.instagram?.accessToken || ''}
                         onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, instagram: { ...settings.apiKeys.instagram, accessToken: e.target.value } as any } })}
                         placeholder="Long-lived Page Access Token"
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                       />
                     </div>
                     <p className="text-[10px] text-zinc-500 mt-1">Requires a Facebook Developer App linked to an Instagram Business account.</p>
@@ -4752,14 +4752,14 @@ export function MainContent() {
                         value={settings.apiKeys.pinterest?.accessToken || ''}
                         onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, pinterest: { ...settings.apiKeys.pinterest, accessToken: e.target.value } as any } })}
                         placeholder="Pinterest Access Token"
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                       />
                       <input
                         type="text"
                         value={settings.apiKeys.pinterest?.boardId || ''}
                         onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, pinterest: { ...settings.apiKeys.pinterest, boardId: e.target.value } as any } })}
                         placeholder="Board ID (optional — defaults to account's first board)"
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                       />
                     </div>
                     <p className="text-[10px] text-zinc-500 mt-1">
@@ -4778,7 +4778,7 @@ export function MainContent() {
                     <select
                       value={settings.defaultLeonardoModel}
                       onChange={(e) => updateSettings({ defaultLeonardoModel: e.target.value })}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                      className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                     >
                       {LEONARDO_MODELS.map(m => (
                         <option key={m.id} value={m.id}>{m.name}</option>
@@ -4917,7 +4917,7 @@ export function MainContent() {
                 </div>
 
                 {settings.watermark?.enabled && (
-                  <div className="space-y-4 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800">
+                  <div className="space-y-4 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/60">
                     <div>
                       <label className="block text-sm text-zinc-400 mb-2">Upload Logo</label>
                       <input 
@@ -4961,7 +4961,7 @@ export function MainContent() {
                           </div>
                           
                           {/* Visual Indicator Box */}
-                          <div className="relative aspect-video bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden flex items-center justify-center group">
+                          <div className="relative aspect-video bg-zinc-900 rounded-xl border border-zinc-800/60 overflow-hidden flex items-center justify-center group">
                             <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#333_1px,transparent_1px)] [background-size:16px_16px]" />
                             <span className="text-[10px] text-zinc-700 font-mono uppercase tracking-[0.2em] select-none">Image Canvas Preview</span>
                             
@@ -5012,7 +5012,7 @@ export function MainContent() {
                       </div>
                       <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-2">
                         {collections.map(col => (
-                          <div key={col.id} className="group bg-zinc-900 border border-zinc-800 rounded-xl p-3 flex items-center justify-between hover:border-zinc-700 transition-all">
+                          <div key={col.id} className="group bg-zinc-900 border border-zinc-800/60 rounded-xl p-3 flex items-center justify-between hover:border-zinc-700 transition-all">
                             <div className="space-y-0.5">
                               <h5 className="text-xs font-bold text-white">{col.name}</h5>
                               <p className="text-[9px] text-zinc-600 uppercase tracking-tighter">
@@ -5050,7 +5050,7 @@ export function MainContent() {
                           value={settings.channelName || ''}
                           onChange={(e) => updateSettings({ channelName: e.target.value })}
                           placeholder="e.g. MultiverseMashupAI"
-                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
                         />
                       </div>
                     </div>
@@ -5061,7 +5061,7 @@ export function MainContent() {
                         <select 
                           value={settings.watermark.position || 'bottom-right'}
                           onChange={(e) => updateSettings({ watermark: { ...settings.watermark, position: e.target.value as any } as any })}
-                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
+                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
                         >
                           <option value="bottom-right">Bottom Right</option>
                           <option value="bottom-left">Bottom Left</option>
@@ -5076,7 +5076,7 @@ export function MainContent() {
                         <select 
                           value={settings.watermark.opacity || 0.8}
                           onChange={(e) => updateSettings({ watermark: { ...settings.watermark, opacity: parseFloat(e.target.value) } as any })}
-                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
+                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
                         >
                           {[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0].map(val => (
                             <option key={val} value={val}>{Math.round(val * 100)}%</option>
@@ -5090,7 +5090,7 @@ export function MainContent() {
                       <select 
                         value={settings.watermark.scale || 0.15}
                         onChange={(e) => updateSettings({ watermark: { ...settings.watermark, scale: parseFloat(e.target.value) } as any })}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
+                        className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
                       >
                         {[0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5].map(val => (
                           <option key={val} value={val}>{Math.round(val * 100)}%</option>
@@ -5104,13 +5104,13 @@ export function MainContent() {
               {/* Video Generation Settings */}
               <div className="mt-8 pt-6 border-t border-zinc-800">
                 <h4 className="text-lg font-medium text-white mb-4">Default Video Settings</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/60">
                   <div className="space-y-2">
                     <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Default Duration</label>
                     <select 
                       value={settings.defaultAnimationDuration || 5}
                       onChange={(e) => updateSettings({ defaultAnimationDuration: Number(e.target.value) as 5 | 10 })}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
+                      className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
                     >
                       <option value={5}>5 Seconds</option>
                       <option value={10}>10 Seconds</option>
@@ -5121,7 +5121,7 @@ export function MainContent() {
                     <select 
                       value={settings.defaultAnimationStyle || 'DYNAMIC'}
                       onChange={(e) => updateSettings({ defaultAnimationStyle: e.target.value })}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
+                      className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
                     >
                       <option value="DYNAMIC">Dynamic</option>
                       <option value="STATIC">Static</option>
@@ -5133,7 +5133,7 @@ export function MainContent() {
                     <select 
                       value={settings.defaultVideoModel || 'kling-3.0'}
                       onChange={(e) => updateSettings({ defaultVideoModel: e.target.value })}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
+                      className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
                     >
                       <option value="kling-video-o-3">Kling O3 Omni (New)</option>
                       <option value="kling-3.0">Kling 3.0 (Pro Quality)</option>
@@ -5147,14 +5147,14 @@ export function MainContent() {
               {/* AI System Prompt + Personality */}
               <div className="mt-8 pt-6 border-t border-zinc-800">
                 <h4 className="text-lg font-medium text-white mb-4">AI System Prompt</h4>
-                <div className="space-y-6 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800">
+                <div className="space-y-6 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/60">
                   <div className="space-y-2">
                     <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">System Prompt</label>
                     <textarea
                       value={settings.agentPrompt}
                       onChange={(e) => updateSettings({ agentPrompt: e.target.value })}
                       placeholder="Define who the AI is, how it speaks, and what it focuses on..."
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 min-h-[220px] resize-y leading-relaxed font-mono"
+                      className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 min-h-[220px] resize-y leading-relaxed font-mono"
                     />
                     <p className="text-[10px] text-zinc-500 leading-tight">
                       This prompt shapes every AI interaction: idea generation, prompt enhancement, captions, and parameter selection. Applied to every pi request on top of the mode directive. Restart pi (Settings → Pi.dev AI Engine → Stop + Start) after editing.
@@ -5193,7 +5193,7 @@ export function MainContent() {
                               }
                             }
                           }}
-                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                         />
                         <div className="pt-2">
                           <p className="text-[10px] text-zinc-500 mb-2 uppercase tracking-tight font-semibold">Recommended Niches</p>
@@ -5202,7 +5202,7 @@ export function MainContent() {
                               <button
                                 key={n}
                                 onClick={() => updateSettings({ agentNiches: [...(settings.agentNiches || []), n] })}
-                                className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-emerald-400 text-[9px] rounded-md border border-zinc-800 transition-all flex items-center gap-1"
+                                className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-emerald-400 text-[9px] rounded-xl border border-zinc-800/60 transition-all flex items-center gap-1"
                               >
                                 <Plus className="w-2 h-2" />
                                 {n}
@@ -5244,7 +5244,7 @@ export function MainContent() {
                               }
                             }
                           }}
-                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                         />
                         <div className="pt-2">
                           <p className="text-[10px] text-zinc-500 mb-2 uppercase tracking-tight font-semibold">Recommended Genres</p>
@@ -5253,7 +5253,7 @@ export function MainContent() {
                               <button
                                 key={g}
                                 onClick={() => updateSettings({ agentGenres: [...(settings.agentGenres || []), g] })}
-                                className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-indigo-400 text-[9px] rounded-md border border-zinc-800 transition-all flex items-center gap-1"
+                                className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-indigo-400 text-[9px] rounded-xl border border-zinc-800/60 transition-all flex items-center gap-1"
                               >
                                 <Plus className="w-2 h-2" />
                                 {g}
@@ -5294,7 +5294,7 @@ export function MainContent() {
                     
                     <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
                       {settings.savedPersonalities?.map(p => (
-                        <div key={p.id} className="flex items-center justify-between bg-zinc-900/50 border border-zinc-800 rounded-xl p-3 group">
+                        <div key={p.id} className="flex items-center justify-between bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-3 group">
                           <div className="flex flex-col">
                             <span className="text-sm font-medium text-white">{p.name}</span>
                             <span className="text-[10px] text-zinc-500">{p.niches.length} Niches • {p.genres.length} Genres</span>
@@ -5373,7 +5373,7 @@ export function MainContent() {
                         'Minimalist Design'
                       ]
                     })}
-                    className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl font-bold transition-all border border-zinc-800 flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest"
+                    className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl font-bold transition-all border border-zinc-800/60 flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest"
                   >
                     <RefreshCw className="w-3 h-3" />
                     Reset to Default Agent Personality
@@ -5399,7 +5399,7 @@ export function MainContent() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden"
+            className="w-full max-w-md bg-zinc-900 border border-zinc-800/60 rounded-2xl shadow-2xl overflow-hidden"
           >
             <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
               <h3 className="text-lg font-bold text-white">Create New Collection</h3>
@@ -5415,7 +5415,7 @@ export function MainContent() {
                   value={newCollectionName}
                   onChange={(e) => setNewCollectionName(e.target.value)}
                   placeholder="e.g., Epic Battles, Cyberpunk DC..."
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 />
               </div>
               <div className="space-y-2">
@@ -5424,7 +5424,7 @@ export function MainContent() {
                   value={newCollectionDesc}
                   onChange={(e) => setNewCollectionDesc(e.target.value)}
                   placeholder="What is this collection about?"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 min-h-[100px] resize-none"
+                  className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 min-h-[100px] resize-none"
                 />
               </div>
             </div>
@@ -5461,7 +5461,7 @@ export function MainContent() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden"
+              className="w-full max-w-md bg-zinc-900 border border-zinc-800/60 rounded-2xl shadow-2xl overflow-hidden"
             >
               <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -5480,7 +5480,7 @@ export function MainContent() {
                     value={bulkTagsInput}
                     onChange={(e) => setBulkTagsInput(e.target.value)}
                     placeholder="e.g. Marvel, Cinematic, 4k"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                   />
                 </div>
                 <div className="flex gap-4">
