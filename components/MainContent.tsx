@@ -1983,7 +1983,11 @@ export function MainContent() {
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-4 duration-500">
                             {group.map((img) => (
-                              <div key={img.id} className={`group relative bg-zinc-900 rounded-2xl overflow-hidden border transition-all duration-300 hover:-translate-y-1 ${img.winner ? 'border-green-500 ring-2 ring-green-500/20' : 'border-zinc-800 shadow-xl'}`}>
+                              <motion.div
+                                key={img.id}
+                                whileHover={{ scale: 1.02, y: -4, transition: { type: "spring", stiffness: 300, damping: 25 } }}
+                                className={`group relative bg-zinc-900 rounded-2xl overflow-hidden border transition-all duration-300 ${img.winner ? 'border-green-500 ring-2 ring-green-500/20' : 'border-zinc-800 shadow-xl'}`}
+                              >
                                 <div className="absolute top-0 left-0 right-0 z-20 bg-black/60 backdrop-blur-md px-4 py-2 flex justify-between items-center border-b border-white/10">
                                   <div className="flex items-center gap-2">
                                     <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">
@@ -2024,21 +2028,23 @@ export function MainContent() {
                                         className="object-cover transition-transform duration-700 group-hover:scale-110"
                                         referrerPolicy="no-referrer"
                                       />
+                                      <div className="absolute bottom-0 left-0 right-0 h-1/3 bg-gradient-to-t from-black/60 via-black/20 to-transparent pointer-events-none" />
                                       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6 pointer-events-none">
                                         <div className="flex gap-3 pointer-events-auto">
-                                          <button
+                                          <motion.button
+                                            whileTap={{ scale: 0.9 }}
                                             onClick={(e) => { e.stopPropagation(); pickComparisonWinner(img.id); }}
                                             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-colors ${img.winner ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}`}
                                           >
                                             {img.winner ? <CheckCircle2 className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
                                             {img.winner ? 'Picked' : 'Keep this version'}
-                                          </button>
+                                          </motion.button>
                                         </div>
                                       </div>
                                     </>
                                   )}
                                 </div>
-                              </div>
+                              </motion.div>
                             ))}
                           </div>
                         </div>
@@ -2494,7 +2500,7 @@ export function MainContent() {
                         onClick={() => setShowCarouselPicker(false)}
                       >
                         <div
-                          className="bg-zinc-900/95 backdrop-blur border border-zinc-800/60 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col"
+                          className="bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/60 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex items-center justify-between p-5 border-b border-zinc-800/60">
@@ -2536,8 +2542,10 @@ export function MainContent() {
                                   );
                                   const selected = pickerSelected.has(img.id);
                                   return (
-                                    <button
+                                    <motion.button
                                       key={img.id}
+                                      whileHover={inAnotherGroup ? undefined : { scale: 1.03, transition: { type: "spring", stiffness: 300, damping: 25 } }}
+                                      whileTap={inAnotherGroup ? undefined : { scale: 0.9 }}
                                       onClick={() => {
                                         if (inAnotherGroup) return;
                                         const next = new Set(pickerSelected);
@@ -2572,7 +2580,7 @@ export function MainContent() {
                                           <Check className="w-3 h-3" />
                                         </div>
                                       )}
-                                    </button>
+                                    </motion.button>
                                   );
                                 })}
                               </div>
@@ -3235,7 +3243,7 @@ export function MainContent() {
                           onClick={() => setCalendarSlotClick(null)}
                         >
                           <div
-                            className="bg-zinc-900/95 backdrop-blur border border-zinc-800/60 rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col"
+                            className="bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/60 rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="flex items-center justify-between p-5 border-b border-zinc-800/60">
@@ -3272,8 +3280,10 @@ export function MainContent() {
                                     {postReady.map((img) => {
                                       const isSel = img.id === selectedImageId;
                                       return (
-                                        <button
+                                        <motion.button
                                           key={img.id}
+                                          whileHover={{ scale: 1.03, transition: { type: "spring", stiffness: 300, damping: 25 } }}
+                                          whileTap={{ scale: 0.9 }}
                                           onClick={() =>
                                             setCalendarSlotClick({ ...slot, imageId: img.id })
                                           }
@@ -3300,7 +3310,7 @@ export function MainContent() {
                                               <Check className="w-2.5 h-2.5 text-white" />
                                             </div>
                                           )}
-                                        </button>
+                                        </motion.button>
                                       );
                                     })}
                                   </div>
@@ -3837,11 +3847,11 @@ export function MainContent() {
                     {/* Schedule-All mini modal */}
                     {showScheduleAll && (
                       <div
-                        className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4"
+                        className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
                         onClick={() => setShowScheduleAll(false)}
                       >
                         <div
-                          className="bg-zinc-900 border border-zinc-800/60 rounded-xl w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto"
+                          className="bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/60 rounded-xl w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex items-center justify-between">
@@ -4021,8 +4031,9 @@ export function MainContent() {
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: idx * 0.1, ease: "easeOut" }}
+                    whileHover={{ scale: 1.02, y: -4, transition: { type: "spring", stiffness: 300, damping: 25 } }}
                     onClick={() => setSelectedImage(img)}
-                    className={`group relative bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer hover:-translate-y-0.5 hover:border-emerald-500/30 ${
+                    className={`group relative bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer hover:border-emerald-500/30 ${
                       dragOverCollection ? 'ring-2 ring-emerald-500 border-emerald-500/60' : 'border-zinc-800/60 hover:border-zinc-700/50'
                     }`}
                     draggable={view === 'gallery'}
@@ -4673,7 +4684,7 @@ export function MainContent() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className="bg-zinc-900 border border-zinc-800/60 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+            className="bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/60 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
           >
             <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-zinc-950/50 shrink-0">
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -5380,10 +5391,10 @@ export function MainContent() {
 
       {showCollectionModal && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-zinc-900 border border-zinc-800/60 rounded-2xl shadow-2xl overflow-hidden"
+            className="w-full max-w-md bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/60 rounded-2xl shadow-2xl overflow-hidden"
           >
             <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
               <h3 className="text-lg font-bold text-white">Create New Collection</h3>
@@ -5441,11 +5452,11 @@ export function MainContent() {
       <AnimatePresence>
         {showBulkTagModal && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md bg-zinc-900 border border-zinc-800/60 rounded-2xl shadow-2xl overflow-hidden"
+              className="w-full max-w-md bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/60 rounded-2xl shadow-2xl overflow-hidden"
             >
               <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">

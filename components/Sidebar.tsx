@@ -222,8 +222,8 @@ Return ONLY the JSON array, no prose.`;
         <div className="flex p-2 gap-2 border-b border-zinc-800">
           <button
             onClick={() => setActiveTab('content')}
-            className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
-              activeTab === 'content' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+            className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === 'content' ? 'bg-emerald-600/10 text-emerald-400 border-emerald-500' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 border-transparent'
             }`}
           >
             <Search className="w-4 h-4" />
@@ -231,8 +231,8 @@ Return ONLY the JSON array, no prose.`;
           </button>
           <button
             onClick={() => setActiveTab('chat')}
-            className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
-              activeTab === 'chat' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+            className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === 'chat' ? 'bg-emerald-600/10 text-emerald-400 border-emerald-500' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 border-transparent'
             }`}
           >
             <MessageSquare className="w-4 h-4" />
@@ -240,8 +240,8 @@ Return ONLY the JSON array, no prose.`;
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
-              activeTab === 'history' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+            className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === 'history' ? 'bg-emerald-600/10 text-emerald-400 border-emerald-500' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 border-transparent'
             }`}
           >
             <History className="w-4 h-4" />
