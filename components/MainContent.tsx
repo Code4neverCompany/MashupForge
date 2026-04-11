@@ -72,6 +72,8 @@ import { streamAIToString, extractJsonFromLLM } from '@/lib/aiClient';
 import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import { findBestSlots, fetchInstagramEngagement, loadEngagementData, type SlotScore } from '@/lib/smartScheduler';
 import type { CarouselGroup } from './MashupContext';
+import TimePicker24 from './TimePicker24';
+import { formatTime24, formatTimeShort } from './TimePicker24';
 
 /**
  * Auto-sizing textarea that grows with its content. Resets to
@@ -2869,10 +2871,9 @@ export function MainContent() {
                                     </div>
                                     <div className="space-y-1">
                                       <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Time</label>
-                                      <input
-                                        type="time"
+                                      <TimePicker24
                                         value={editing.time}
-                                        onChange={(e) => patchField({ time: e.target.value })}
+                                        onChange={(v) => patchField({ time: v })}
                                         className="w-full bg-zinc-900 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                                       />
                                     </div>
@@ -3354,10 +3355,9 @@ export function MainContent() {
                                 </div>
                                 <div className="space-y-1">
                                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Time</label>
-                                  <input
-                                    type="time"
+                                  <TimePicker24
                                     value={slot.time}
-                                    onChange={(e) => setCalendarSlotClick({ ...slot, time: e.target.value })}
+                                    onChange={(v) => setCalendarSlotClick({ ...slot, time: v })}
                                     className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                                   />
                                 </div>
@@ -3541,10 +3541,9 @@ export function MainContent() {
                                         </div>
                                         <div className="space-y-1">
                                           <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Time</label>
-                                          <input
-                                            type="time"
+                                          <TimePicker24
                                             value={carouselSchedule.time}
-                                            onChange={(e) => setScheduleFor(key, { time: e.target.value })}
+                                            onChange={(v) => setScheduleFor(key, { time: v })}
                                             className="w-full bg-zinc-950 border border-zinc-800/60 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                                           />
                                         </div>
@@ -3622,7 +3621,7 @@ export function MainContent() {
                             : scheduled?.status === 'failed'
                               ? { text: 'Failed', color: 'bg-red-600' }
                               : scheduled?.status === 'scheduled'
-                                ? { text: `Scheduled ${scheduled.date} ${scheduled.time}`, color: 'bg-amber-600' }
+                                ? { text: `Scheduled ${scheduled.date} ${formatTimeShort(scheduled.time)}`, color: 'bg-amber-600' }
                                 : { text: 'Ready', color: 'bg-emerald-600' };
                           return (
                             <div
@@ -3744,10 +3743,9 @@ export function MainContent() {
                                       <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                                         Time
                                       </label>
-                                      <input
-                                        type="time"
+                                      <TimePicker24
                                         value={schedule.time}
-                                        onChange={(e) => setScheduleFor(img.id, { time: e.target.value })}
+                                        onChange={(v) => setScheduleFor(img.id, { time: v })}
                                         className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
                                       />
                                     </div>
@@ -3885,7 +3883,7 @@ export function MainContent() {
                                     >
                                       <span className="text-[10px] text-zinc-500 w-5">#{i + 1}</span>
                                       <span className="text-xs font-mono text-white">{slot.date}</span>
-                                      <span className="text-xs font-mono text-amber-400">{slot.time}</span>
+                                      <span className="text-xs font-mono text-amber-400">{formatTimeShort(slot.time)}</span>
                                       <span className="text-[10px] text-zinc-600">{dayLabel}</span>
                                       <div className="flex-1" />
                                       <div className="w-20 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
