@@ -57,9 +57,15 @@ async function fetchGoogleNews(query: string): Promise<TrendResult[]> {
   }
 }
 
-async function fetchReddit(query: string): Promise<TrendResult[]> {
+async function fetchReddit(query: string, subreddits?: string[]): Promise<TrendResult[]> {
   try {
-    const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=hot&t=week&limit=5`;
+    let url: string;
+    if (subreddits && subreddits.length > 0) {
+      const subQuery = subreddits.join('+');
+      url = `https://www.reddit.com/r/${subQuery}/search.json?q=${encodeURIComponent(query)}&sort=hot&t=week&limit=5&restrict_sr=on`;
+    } else {
+      url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=hot&t=week&limit=5`;
+    }
     const res = await fetch(url, {
       signal: AbortSignal.timeout(8000),
       headers: { 'User-Agent': 'MashupForge/1.0' },
@@ -69,7 +75,7 @@ async function fetchReddit(query: string): Promise<TrendResult[]> {
     const items: TrendResult[] = [];
     for (const child of data?.data?.children || []) {
       const post = child.data;
-      if (post.title && post.score > 10) {
+      if (post.title && post.score > 5) {
         items.push({
           topic: query,
           headline: `[${post.score}↑] ${post.title}`,
@@ -103,35 +109,64 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Build search queries from available context
+    // Build franchise-aware search queries.
+    const FRANCHISE_SUBREDDITS: Record<string, string[]> = {
+      'star wars': ['StarWars', 'StarWarsCantina', 'MawInstallation'],
+      'marvel': ['MarvelStudios', 'marvelstudiosspoilers', 'comicbooks'],
+      'dc': ['DCcomics', 'DC_Cinematic', 'comicbooks'],
+      'warhammer': ['Warhammer40k', 'Warhammer', 'ageofsigmar'],
+      'anime': ['Anime', 'AnimeArt', 'ImaginaryAnime'],
+      'cyberpunk': ['cyberpunkgame', 'cyberpunk'],
+      'lord of the rings': ['lotr', 'MiddleEarth'],
+    };
+
+    const ART_SUBREDDITS = ['ImaginaryCharacterArt', 'DigitalArt', 'ImaginaryMonsters', 'conceptart'];
+
+    const allTopics = [...new Set([...tags, ...niches])];
     const searchTerms: string[] = [];
 
-    // Combine tags and niches into focused search queries
-    const allTopics = [...new Set([...tags, ...niches])];
-    for (const topic of allTopics.slice(0, 5)) {
-      searchTerms.push(`${topic} trending 2026`);
-    }
-
-    // Add idea-specific searches
     if (ideaConcept) {
-      // Extract key entities from the idea concept
       const keywords = ideaConcept
         .split(/[\s,;.]+/)
-        .filter(w => w.length > 3 && !['with', 'from', 'that', 'this', 'what', 'where', 'when'].includes(w.toLowerCase()))
-        .slice(0, 3);
+        .filter(w => w.length > 3 && !['with', 'from', 'that', 'this', 'what', 'where', 'when', 'wielding', 'wearing', 'standing', 'fighting'].includes(w.toLowerCase()))
+        .slice(0, 4);
       if (keywords.length > 0) {
-        searchTerms.push(keywords.join(' ') + ' news');
+        searchTerms.push(keywords.join(' '));
       }
     }
 
-    // Deduplicate and limit
+    const lowerNiches = allTopics.map(n => n.toLowerCase());
+    const franchisePairs: string[][] = [];
+    for (let i = 0; i < lowerNiches.length && franchisePairs.length < 3; i++) {
+      for (let j = i + 1; j < lowerNiches.length && franchisePairs.length < 3; j++) {
+        franchisePairs.push([lowerNiches[i], lowerNiches[j]]);
+      }
+    }
+    for (const [a, b] of franchisePairs) {
+      searchTerms.push(`${a} ${b} crossover art`);
+    }
+
+    for (const topic of allTopics.slice(0, 2)) {
+      searchTerms.push(`${topic} art trending`);
+    }
+
     const uniqueTerms = [...new Set(searchTerms)].slice(0, 6);
+
+    const targetedSubs: string[] = [...ART_SUBREDDITS];
+    for (const niche of lowerNiches) {
+      for (const [franchise, subs] of Object.entries(FRANCHISE_SUBREDDITS)) {
+        if (niche.includes(franchise)) {
+          targetedSubs.push(...subs);
+        }
+      }
+    }
+    const uniqueSubs = [...new Set(targetedSubs)].slice(0, 10);
 
     // Fetch trending data in parallel
     const allResults: TrendResult[] = [];
     const fetches = uniqueTerms.flatMap(term => [
       fetchGoogleNews(term),
-      fetchReddit(term),
+      fetchReddit(term, uniqueSubs),
     ]);
 
     const results = await Promise.allSettled(fetches);
