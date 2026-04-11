@@ -218,7 +218,7 @@ Return ONLY the JSON array, no prose.`;
         />
       )}
       
-      <div className={`fixed md:static inset-y-0 left-0 z-50 w-[85vw] sm:w-80 border-r border-zinc-800 bg-zinc-900/95 md:bg-zinc-900/50 flex flex-col h-full shrink-0 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+      <div className={`fixed md:static inset-y-0 left-0 z-50 w-[85vw] sm:w-80 glass-panel flex flex-col h-full shrink-0 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="flex p-2 gap-2 border-b border-zinc-800">
           <button
             onClick={() => setActiveTab('content')}

@@ -24,7 +24,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
-      <body className="font-sans antialiased bg-zinc-950 text-zinc-50" suppressHydrationWarning>
+      <body className="font-sans antialiased bg-zinc-950 text-zinc-50 selection:bg-emerald-500/30" suppressHydrationWarning>
         {children}
       </body>
     </html>

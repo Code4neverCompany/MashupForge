@@ -333,8 +333,7 @@ Return ONLY a JSON array of objects, each with:
               height: dims.height,
               styleIds: leonardoStyleUuids,
               apiKey: settings.apiKeys.leonardo,
-              // GPT-Image-1.5 only — other models ignore this field.
-              quality: selectedModel === 'gpt-image-1.5' ? (options?.quality || 'MEDIUM') : undefined,
+              quality: options?.quality || 'HIGH',
             })
           });
 
@@ -518,8 +517,7 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
             height: dims.height,
             styleIds: leonardoStyleUuids,
             apiKey: settings.apiKeys.leonardo,
-            // GPT-Image-1.5 only — other models ignore this field.
-            quality: selectedModel === 'gpt-image-1.5' ? (options?.quality || 'MEDIUM') : undefined,
+            quality: options?.quality || 'HIGH',
           })
         });
 

@@ -3,8 +3,9 @@ import { NextResponse } from 'next/server';
 /**
  * Leonardo AI Image Generation API Route
  * 
- * Supports 3 API-documented models:
- * - Nano Banana 2 (nano-banana-2): 20 styles, 10 aspect ratios, max 8 images
+ * Supports 4 API-documented models:
+ * - Nano Banana (nano-banana): 20 styles, 10 aspect ratios, max 8 images
+ * - Nano Banana 2 (nano-banana-2): 20 styles, 10 aspect ratios, max 8 images  
  * - Nano Banana Pro (gemini-image-2): 20 styles, 3 aspect ratios, max 8 images  
  * - GPT Image-1.5 (gpt-image-1.5): no styles, quality param, 3 aspect ratios, max 4 images
  * 
@@ -15,11 +16,13 @@ import { NextResponse } from 'next/server';
  */
 
 // Map internal id → Leonardo API model id (exact strings required by
-// https://cloud.leonardo.ai/api/rest/v2/generations — see Leonardo docs for
-// nano-banana and nano-banana-pro). Sending 'nano-banana-2' verbatim to the
-// v2 API returns 400 VALIDATION_ERROR: the API expects 'gemini-2.5-flash-image'.
+// https://cloud.leonardo.ai/api/rest/v2/generations).
+// Nano Banana (original) → 'gemini-2.5-flash-image' (Leonardo's API ID)
+// Nano Banana 2 → 'nano-banana-2' (accepted directly, no mapping needed)
+// Nano Banana Pro → 'gemini-image-2'
 const MODEL_ID_MAP: Record<string, string> = {
-  'nano-banana-2': 'gemini-2.5-flash-image',
+  'nano-banana': 'gemini-2.5-flash-image',
+  'nano-banana-2': 'nano-banana-2',
   'nano-banana-pro': 'gemini-image-2',
   'gpt-image-1.5': 'gpt-image-1.5',
 };
@@ -60,16 +63,20 @@ export async function POST(req: Request) {
       prompt_enhance: "ON",
     };
 
+    // Quality: sent for ALL models — tested against v2 API, accepted without error.
+    // HIGH by default. GPT-Image-1.5 docs explicitly document this parameter;
+    // Nano Banana models accept it silently.
+    parameters.quality = quality || 'HIGH';
+
     // Model-specific parameters
     if (modelId === 'gpt-image-1.5') {
-      // GPT Image-1.5: uses quality instead of style_ids
-      parameters.quality = quality || 'MEDIUM';
+      // GPT Image-1.5: max 4 images per request
       parameters.quantity = Math.min(parameters.quantity, 4);
-    } else {
-      // Nano Banana 2 / Pro: uses style_ids (UUID array)
-      if (Array.isArray(styleIds) && styleIds.length > 0) {
-        parameters.style_ids = styleIds;
-      }
+    }
+
+    // Nano Banana 2 / Pro: uses style_ids (UUID array)
+    if (Array.isArray(styleIds) && styleIds.length > 0) {
+      parameters.style_ids = styleIds;
     }
 
     const requestPayload = {

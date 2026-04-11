@@ -275,9 +275,9 @@ const LEONARDO_SHARED_STYLES = [
 
 export const LEONARDO_MODELS: LeonardoModelConfig[] = [
   {
-    id: 'nano-banana-2',
-    name: 'Nano Banana 2',
-    apiModelId: 'nano-banana-2',
+    id: 'nano-banana',
+    name: 'Nano Banana',
+    apiModelId: 'nano-banana',
     version: 'v2',
     supportsStyleIds: true,
     supportsQuality: false,
@@ -291,6 +291,29 @@ export const LEONARDO_MODELS: LeonardoModelConfig[] = [
       { label: '4:3', width: 1024, height: 768 },
       { label: '9:16', width: 768, height: 1344 },
       { label: '16:9', width: 1344, height: 768 },
+    ],
+    styles: LEONARDO_SHARED_STYLES,
+  },
+  {
+    id: 'nano-banana-2',
+    name: 'Nano Banana 2',
+    apiModelId: 'nano-banana-2',
+    version: 'v2',
+    supportsStyleIds: true,
+    supportsQuality: false,
+    supportsGuidance: true,
+    maxQuantity: 8,
+    aspectRatios: [
+      { label: '1:1', width: 1024, height: 1024 },
+      { label: '2:3', width: 848, height: 1264 },
+      { label: '3:2', width: 1264, height: 848 },
+      { label: '3:4', width: 896, height: 1200 },
+      { label: '4:3', width: 1200, height: 896 },
+      { label: '4:5', width: 928, height: 1152 },
+      { label: '5:4', width: 1152, height: 928 },
+      { label: '9:16', width: 768, height: 1376 },
+      { label: '16:9', width: 1376, height: 768 },
+      { label: '21:9', width: 1584, height: 672 },
     ],
     styles: LEONARDO_SHARED_STYLES,
   },
@@ -336,6 +359,13 @@ export const LEONARDO_MODELS: LeonardoModelConfig[] = [
  * optimise for the user-facing model choice.
  */
 export const MODEL_PROMPT_GUIDES: Record<string, string> = {
+  'nano-banana': `This model works best with concise, visually descriptive prompts focused on:
+- Clear subject description with specific visual attributes (colors, textures, materials)
+- Explicit lighting and atmosphere keywords (dramatic lighting, golden hour, neon glow)
+- Art style keywords (digital art, concept art, cinematic, illustration style)
+- Avoid overly long prompts — keep it focused and vivid
+- Negative prompts are effective for this model`,
+
   'nano-banana-2': `This model works best with concise, visually descriptive prompts focused on:
 - Clear subject description with specific visual attributes (colors, textures, materials)
 - Explicit lighting and atmosphere keywords (dramatic lighting, golden hour, neon glow)

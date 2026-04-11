@@ -1,11 +1,26 @@
 @import "tailwindcss";
 
 @layer utilities {
+  @reference "tailwindcss";
+
   .hide-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Glassmorphism Classes */
+  .glass {
+    @apply backdrop-blur-xl bg-white/[0.03] border border-white/[0.08];
+  }
+  
+  .glass-card {
+    @apply backdrop-blur-lg bg-zinc-900/[0.4] border border-zinc-800/[0.6] shadow-[0_8px_32px_0_rgba(0,0,0,0.36)];
+  }
+
+  .glass-panel {
+    @apply backdrop-blur-2xl bg-zinc-950/[0.6] border-r border-zinc-800/[0.5] shadow-[0_0_20px_0_rgba(0,0,0,0.4)];
   }
 }
