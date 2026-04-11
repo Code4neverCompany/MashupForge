@@ -1363,7 +1363,7 @@ export function MainContent() {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden relative">
       {/* Header */}
-      <header className="h-16 border-b border-zinc-800 flex items-center justify-between px-4 md:px-6 shrink-0 bg-zinc-950/80 backdrop-blur-md z-10">
+      <header className="h-16 glass-panel relative flex items-center justify-between px-4 md:px-6 shrink-0 z-10 after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-emerald-500/20 after:to-transparent">
         <div className="flex items-center gap-2 md:gap-3">
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -1378,50 +1378,34 @@ export function MainContent() {
         </div>
         
         <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
-          <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800/60 overflow-x-auto hide-scrollbar snap-x">
-            <button
-              onClick={() => setView('ideas')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-xl transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'ideas' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-            >
-              <Lightbulb className="w-4 h-4 hidden sm:block" />
-              Ideas
-            </button>
-            <button
-              onClick={() => setView('compare')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-xl transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'compare' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-            >
-              <Sparkles className="w-4 h-4 hidden sm:block" />
-              Studio
-            </button>
-            <button
-              onClick={() => setView('gallery')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-xl transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'gallery' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-            >
-              <LayoutGrid className="w-4 h-4 hidden sm:block" />
-              Gallery ({savedImages.length})
-            </button>
-            <button
-              onClick={() => setView('captioning')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-xl transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'captioning' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-            >
-              <Edit3 className="w-4 h-4 hidden sm:block" />
-              Captioning
-            </button>
-            <button
-              onClick={() => setView('post-ready')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-xl transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'post-ready' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-            >
-              <Save className="w-4 h-4 hidden sm:block" />
-              Post Ready
-            </button>
-            <button
-              onClick={() => setView('pipeline')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-xl transition-colors flex items-center gap-2 shrink-0 snap-start ${view === 'pipeline' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-            >
-              <Zap className="w-4 h-4 hidden sm:block" />
-              Pipeline
-            </button>
+          <div className="relative flex bg-zinc-900/50 rounded-lg p-1 border border-zinc-800/60 overflow-x-auto hide-scrollbar snap-x group">
+            {/* Active Tab Indicator - Animated via motion layoutId */}
+            {['ideas', 'compare', 'gallery', 'captioning', 'post-ready', 'pipeline'].map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v as any)}
+                className={`relative px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 shrink-0 snap-start z-10 ${view === v ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+              >
+                {view === v && (
+                  <motion.div
+                    layoutId="activeTab"
+                    className="absolute inset-0 bg-zinc-800 rounded-md shadow-sm"
+                    transition={{ type: 'spring', duration: 0.5, bounce: 0.2 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-2">
+                    {v === 'ideas' && <Lightbulb className="w-4 h-4 hidden sm:block" />}
+                    {v === 'compare' && <Sparkles className="w-4 h-4 hidden sm:block" />}
+                    {v === 'gallery' && <LayoutGrid className="w-4 h-4 hidden sm:block" />}
+                    {v === 'captioning' && <Edit3 className="w-4 h-4 hidden sm:block" />}
+                    {v === 'post-ready' && <Save className="w-4 h-4 hidden sm:block" />}
+                    {v === 'pipeline' && <Zap className="w-4 h-4 hidden sm:block" />}
+                    {v.charAt(0).toUpperCase() + v.slice(1).replace('-', ' ')}
+                </span>
+              </button>
+            ))}
           </div>
+...
 
           <button
             onClick={logout}
