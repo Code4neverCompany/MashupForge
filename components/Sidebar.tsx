@@ -382,6 +382,26 @@ Return ONLY the JSON array, no prose.`;
                 )}
               </div>
             )}
+            {msg.ideas && msg.ideas.length > 0 && (
+              <div className="mt-2 space-y-2 w-full pl-3 border-l-2 border-emerald-500/30">
+                {msg.ideas.map((idea, j) => (
+                  <div
+                    key={j}
+                    className="group cursor-pointer rounded-lg bg-zinc-800/50 border border-zinc-700/50 hover:border-emerald-500/40 p-2.5 transition-colors"
+                    onClick={() => {
+                      setComparisonPrompt(idea.concept);
+                      setView('compare');
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-medium text-white leading-tight">{idea.context || `Idea ${j + 1}`}</p>
+                      <span className="shrink-0 text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">On Board</span>
+                    </div>
+                    <p className="text-[11px] text-zinc-400 mt-1 line-clamp-3 leading-relaxed">{idea.concept}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
         {isLoading && (
