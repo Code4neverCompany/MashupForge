@@ -37,7 +37,7 @@ export function APIErrorFallback({ operation, error, onRetry, onDismiss }: APIEr
             {onRetry && (
               <button
                 onClick={onRetry}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-medium transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-medium transition-colors"
               >
                 <RefreshCw className="w-3 h-3" />
                 Retry
@@ -45,7 +45,7 @@ export function APIErrorFallback({ operation, error, onRetry, onDismiss }: APIEr
             )}
             <button
               onClick={onDismiss}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md text-xs font-medium transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-medium transition-colors"
             >
               <X className="w-3 h-3" />
               Dismiss
