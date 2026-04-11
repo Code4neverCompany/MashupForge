@@ -1879,36 +1879,53 @@ export function MainContent() {
                               const preview = modelPreviews[modelId];
                               const fallbackRatio = model?.aspectRatios?.[0]?.label || '1:1';
                               return (
-                                <div key={modelId} className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-[10px] font-mono text-zinc-500 w-28 shrink-0">
+                                <div key={modelId} className="flex flex-col gap-1">
+                                  <span className="text-[10px] font-mono text-zinc-500">
                                     {model?.name || modelId}
                                   </span>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    <span className="px-2 py-0.5 bg-zinc-800 text-zinc-400 text-[10px] rounded-md">
-                                      {preview?.aspectRatio || comparisonOptions.aspectRatio || fallbackRatio}
-                                    </span>
-                                    {(preview?.style || comparisonOptions.style) && (
-                                      <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-[10px] rounded-md border border-emerald-500/20">
-                                        {preview?.style || comparisonOptions.style}
-                                      </span>
-                                    )}
-                                    {(preview?.lighting || comparisonOptions.lighting) && (
-                                      <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 text-[10px] rounded-md border border-amber-500/20">
-                                        {preview?.lighting || comparisonOptions.lighting}
-                                      </span>
-                                    )}
-                                    {(preview?.angle || comparisonOptions.angle) && (
-                                      <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 text-[10px] rounded-md border border-indigo-500/20">
-                                        {preview?.angle || comparisonOptions.angle}
-                                      </span>
-                                    )}
-                                    {(preview?.negativePrompt || comparisonOptions.negativePrompt) && (
-                                      <span className="px-2 py-0.5 bg-red-500/10 text-red-400 text-[10px] rounded-md border border-red-500/20">
-                                        not: {(preview?.negativePrompt || comparisonOptions.negativePrompt || '').slice(0, 50)}
-                                        {(preview?.negativePrompt || comparisonOptions.negativePrompt || '').length > 50 ? '…' : ''}
-                                      </span>
-                                    )}
-                                  </div>
+                                  {preview && (
+                                    <details className="mt-2 text-xs border border-zinc-800 rounded-lg overflow-hidden">
+                                      <summary className="px-3 py-2 cursor-pointer hover:bg-zinc-800/50 flex items-center gap-2 text-zinc-400">
+                                        <span className="text-indigo-400">AI Optimized</span>
+                                        <span className="text-zinc-600">|</span>
+                                        <span>{preview.style || 'Auto'}</span>
+                                        <span className="text-zinc-600">|</span>
+                                        <span>{preview.aspectRatio || fallbackRatio}</span>
+                                        {preview.negativePrompt && (
+                                          <>
+                                            <span className="text-zinc-600">|</span>
+                                            <span className="text-red-400/70">Negative: yes</span>
+                                          </>
+                                        )}
+                                      </summary>
+                                      <div className="px-3 py-2 space-y-2 border-t border-zinc-800 bg-zinc-900/30">
+                                        {preview.prompt && (
+                                          <div>
+                                            <span className="text-zinc-500 text-[10px] uppercase tracking-wider">Enhanced Prompt</span>
+                                            <p className="text-zinc-300 mt-0.5 max-h-[200px] overflow-y-auto whitespace-pre-wrap leading-relaxed">{preview.prompt}</p>
+                                          </div>
+                                        )}
+                                        {preview.style && (
+                                          <div>
+                                            <span className="text-zinc-500 text-[10px] uppercase tracking-wider">Style</span>
+                                            <p className="text-zinc-300 mt-0.5">{preview.style}</p>
+                                          </div>
+                                        )}
+                                        {preview.aspectRatio && (
+                                          <div>
+                                            <span className="text-zinc-500 text-[10px] uppercase tracking-wider">Aspect Ratio</span>
+                                            <p className="text-zinc-300 mt-0.5">{preview.aspectRatio}</p>
+                                          </div>
+                                        )}
+                                        {preview.negativePrompt && (
+                                          <div>
+                                            <span className="text-zinc-500 text-[10px] uppercase tracking-wider">Negative Prompt</span>
+                                            <p className="text-zinc-300 mt-0.5">{preview.negativePrompt}</p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </details>
+                                  )}
                                 </div>
                               );
                             })}
