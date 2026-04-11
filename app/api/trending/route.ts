@@ -20,6 +20,9 @@ interface TrendResult {
   url: string;
 }
 
+const trendCache = new Map<string, { results: TrendResult[]; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000;
+
 async function fetchGoogleNews(query: string): Promise<TrendResult[]> {
   try {
     const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
@@ -86,6 +89,20 @@ export async function POST(req: NextRequest) {
     const body: TrendingRequest = await req.json();
     const { tags = [], niches = [], genres = [], ideaConcept = '' } = body;
 
+    const cacheKeyParts = [...(tags || []), ...(niches || []), ...(genres || [])].sort();
+    if (ideaConcept) cacheKeyParts.push(ideaConcept);
+    const cacheKey = cacheKeyParts.join('|');
+
+    const cached = trendCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return NextResponse.json({
+        success: true,
+        results: cached.results,
+        summary: cached.results.slice(0, 15).map(item => `- [${item.source}] ${item.headline}`).join('\n'),
+        queriesUsed: ['(cached)'],
+      });
+    }
+
     // Build search queries from available context
     const searchTerms: string[] = [];
 
@@ -139,6 +156,15 @@ export async function POST(req: NextRequest) {
     const summary = unique.slice(0, 15).map(item =>
       `- [${item.source}] ${item.headline}`
     ).join('\n');
+
+    trendCache.set(cacheKey, { results: unique.slice(0, 15), timestamp: Date.now() });
+
+    if (trendCache.size > 50) {
+      const now = Date.now();
+      for (const [key, entry] of trendCache) {
+        if (now - entry.timestamp > CACHE_TTL) trendCache.delete(key);
+      }
+    }
 
     return NextResponse.json({
       success: true,
