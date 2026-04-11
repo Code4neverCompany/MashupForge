@@ -162,12 +162,14 @@ Return ONLY the JSON array, no prose.`;
         }
 
         let ideaCount = 0;
+        let parsedIdeas: Array<{ context: string; concept: string }> = [];
         try {
           const cleaned = acc.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
           const ideasArray = JSON.parse(cleaned);
           for (const item of ideasArray) {
             if (item.concept) {
               addIdea(item.concept, item.context);
+              parsedIdeas.push({ context: item.context || '', concept: item.concept });
               ideaCount++;
             }
           }
@@ -180,8 +182,11 @@ Return ONLY the JSON array, no prose.`;
             m.id === modelMsgId
               ? {
                   ...m,
-                  text: `✨ Generated ${ideaCount} ideas and saved them to your Ideas Board!`,
+                  text: parsedIdeas.length > 0
+                    ? `✨ Generated ${ideaCount} ideas and saved them to your Ideas Board!`
+                    : acc,
                   trendingSources: trendingResults,
+                  ideas: parsedIdeas.length > 0 ? parsedIdeas : undefined,
                 }
               : m
           )
