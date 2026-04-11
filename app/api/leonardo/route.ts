@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       width: Number(width) || 1024,
       height: Number(height) || 1024,
       quantity: Math.min(Number(quantity) || 1, 8),
-      prompt_enhance: "OFF",
+      prompt_enhance: "ON",
     };
 
     // Model-specific parameters
