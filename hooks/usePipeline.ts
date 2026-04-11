@@ -20,7 +20,7 @@ interface UsePipelineDeps {
   updateIdeaStatus: (id: string, status: 'idea' | 'in-work' | 'done') => void;
   addIdea: (concept: string, context?: string) => void;
   generateImages: (customPrompts?: string[], append?: boolean) => Promise<void>;
-  generateComparison: (prompt: string, modelIds: string[], options?: import('../types/mashup').GenerateOptions) => Promise<void>;
+  generateComparison: (prompt: string, modelIds: string[], options?: import('../types/mashup').GenerateOptions, cachedEnhancements?: Record<string, import('./useComparison').CachedEnhancement>) => Promise<void>;
   generatePostContent: (image: GeneratedImage) => Promise<GeneratedImage | undefined>;
   savedImages: GeneratedImage[];
   images: GeneratedImage[];

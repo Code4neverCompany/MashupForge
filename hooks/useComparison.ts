@@ -22,6 +22,13 @@ interface UseComparisonDeps {
   applyWatermark: (baseImageSrc: string, wm: WatermarkSettings, channelName?: string) => Promise<string>;
 }
 
+export interface CachedEnhancement {
+  prompt?: string;
+  style?: string;
+  aspectRatio?: string;
+  negativePrompt?: string;
+}
+
 export function useComparison({ settings, saveImage, applyWatermark }: UseComparisonDeps) {
   const [comparisonResults, setComparisonResults] = useState<GeneratedImage[]>([]);
   const [comparisonPrompt, setComparisonPrompt] = useState('');
@@ -57,7 +64,12 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
     }
   }, [comparisonResults, isComparisonLoaded]);
 
-  const generateComparison = async (prompt: string, modelIds: string[], options?: GenerateOptions) => {
+  const generateComparison = async (
+    prompt: string,
+    modelIds: string[],
+    options?: GenerateOptions,
+    cachedEnhancements?: Record<string, CachedEnhancement>
+  ) => {
     setIsGenerating(true);
     setComparisonError(null);
     const comparisonId = `comp-group-${Date.now()}`;
@@ -92,19 +104,26 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
         const modelId = modelIds[i];
         const modelName = getModelName(modelId);
 
-        // Rewrite the prompt per model so each Leonardo variant gets a
-        // version tuned to its strengths (photorealism vs. stylised,
-        // keyword-heavy vs. natural language, etc.). pi also picks the
-        // best supported aspect ratio, art style, and negative prompt
-        // for this specific model.
-        setProgress(`Optimizing prompt for ${modelName}...`);
-        const enhancement = options?.skipEnhance
-          ? { prompt: finalPrompt }
-          : await enhancePromptForModel(finalPrompt, modelId, {
-              style: options?.style,
-              aspectRatio: options?.aspectRatio,
-              negativePrompt: options?.negativePrompt,
-            });
+        // Use cached enhancement from preview if available, otherwise call pi.
+        setProgress(cachedEnhancements?.[modelId]?.prompt
+          ? `Generating with ${modelName}...`
+          : `Optimizing prompt for ${modelName}...`
+        );
+        const cached = cachedEnhancements?.[modelId];
+        const enhancement = cached?.prompt
+          ? {
+              prompt: cached.prompt,
+              style: cached.style,
+              aspectRatio: cached.aspectRatio,
+              negativePrompt: cached.negativePrompt,
+            }
+          : options?.skipEnhance
+            ? { prompt: finalPrompt }
+            : await enhancePromptForModel(finalPrompt, modelId, {
+                style: options?.style,
+                aspectRatio: options?.aspectRatio,
+                negativePrompt: options?.negativePrompt,
+              });
         const modelPrompt = enhancement.prompt;
         const modelRatio =
           enhancement.aspectRatio || options?.aspectRatio || '1:1';

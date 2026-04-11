@@ -20,6 +20,8 @@ import {
   Calendar,
   Send,
   LayoutGrid,
+  X,
+  RefreshCw,
 } from 'lucide-react';
 import { TrendingUp } from 'lucide-react';
 import { useMashup } from './MashupContext';
@@ -141,6 +143,7 @@ export function PipelinePanel() {
     pipelineQueue,
     pipelineProgress,
     pipelineLog,
+    clearPipelineLog,
     pipelineDelay,
     setPipelineDelay,
     togglePipeline,
@@ -149,6 +152,15 @@ export function PipelinePanel() {
     ideas,
     settings,
     updateSettings,
+    images,
+    approveScheduledPost,
+    rejectScheduledPost,
+    pipelineContinuous,
+    toggleContinuous,
+    pipelineInterval,
+    setPipelineInterval,
+    pipelineTargetDays,
+    setPipelineTargetDays,
   } = useMashup();
 
   const [logExpanded, setLogExpanded] = useState(true);
@@ -342,6 +354,47 @@ export function PipelinePanel() {
           <span className="text-sm text-zinc-500">seconds</span>
         </div>
 
+        {/* Continuous mode */}
+        <div className="flex items-center gap-3 pt-2 border-t border-zinc-800/60">
+          <RefreshCw className="w-4 h-4 text-zinc-500" />
+          <span className="text-sm text-zinc-400">Continuous mode</span>
+          <button
+            onClick={toggleContinuous}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              pipelineContinuous ? 'bg-indigo-600' : 'bg-zinc-700'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                pipelineContinuous ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+          {pipelineContinuous && (
+            <>
+              <span className="text-sm text-zinc-500">Every</span>
+              <input
+                type="number"
+                min={30}
+                max={1440}
+                value={pipelineInterval}
+                onChange={(e) => setPipelineInterval(Math.max(30, Math.min(1440, Number(e.target.value))))}
+                className="w-20 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded-md text-sm text-white text-center"
+              />
+              <span className="text-sm text-zinc-500">min, target</span>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={pipelineTargetDays}
+                onChange={(e) => setPipelineTargetDays(Math.max(1, Math.min(30, Number(e.target.value))))}
+                className="w-16 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded-md text-sm text-white text-center"
+              />
+              <span className="text-sm text-zinc-500">days ahead</span>
+            </>
+          )}
+        </div>
+
         {/* Best posting times */}
         <BestTimesWidget settings={settings} />
 
@@ -494,19 +547,29 @@ export function PipelinePanel() {
 
       {/* Log */}
       <div className="bg-zinc-900/80 backdrop-blur-sm rounded-2xl border border-zinc-800/60 overflow-hidden">
-        <button
+        <div
           onClick={() => setLogExpanded(!logExpanded)}
-          className="w-full flex items-center justify-between p-4 hover:bg-zinc-800/50 transition-colors"
+          className="w-full flex items-center justify-between p-4 hover:bg-zinc-800/50 transition-colors cursor-pointer"
         >
-          <span className="text-sm font-medium text-zinc-300">
-            Pipeline Log ({pipelineLog.length})
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-zinc-300">
+              Pipeline Log ({pipelineLog.length})
+            </span>
+            {pipelineLog.length > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); clearPipelineLog(); }}
+                className="text-[10px] px-2 py-0.5 bg-zinc-800 text-zinc-400 rounded-md hover:bg-red-600/20 hover:text-red-400 transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
           {logExpanded ? (
             <ChevronUp className="w-4 h-4 text-zinc-500" />
           ) : (
             <ChevronDown className="w-4 h-4 text-zinc-500" />
           )}
-        </button>
+        </div>
         {logExpanded && (
           <div className="border-t border-zinc-800/60 max-h-80 overflow-y-auto">
             {reversedLog.length === 0 ? (
@@ -537,6 +600,70 @@ export function PipelinePanel() {
           </div>
         )}
       </div>
+
+      {/* Pending Approval */}
+      {(settings.scheduledPosts || []).filter((p) => p.status === 'pending_approval').length > 0 && (
+        <div className="bg-amber-500/10 rounded-2xl border border-amber-500/30 p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-amber-400" />
+              <span className="text-sm font-medium text-amber-300">
+                Awaiting Approval ({(settings.scheduledPosts || []).filter((p) => p.status === 'pending_approval').length})
+              </span>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {(settings.scheduledPosts || [])
+              .filter((p) => p.status === 'pending_approval')
+              .map((post) => {
+                const img = images.find((i) => i.id === post.imageId);
+                return (
+                  <div
+                    key={post.id}
+                    className="flex items-center gap-3 bg-zinc-900/80 rounded-xl p-3 border border-zinc-800/60"
+                  >
+                    {/* Thumbnail */}
+                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-zinc-800 shrink-0">
+                      {img ? (
+                        <img
+                          src={img.url || (img.base64 ? `data:image/png;base64,${img.base64}` : '')}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <ImageIcon className="w-4 h-4 text-zinc-600" />
+                        </div>
+                      )}
+                    </div>
+                    {/* Caption + schedule */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-zinc-300 truncate">{post.caption || 'No caption'}</p>
+                      <p className="text-xs text-zinc-500">
+                        {post.date} at {post.time} &rarr; {post.platforms?.join(', ') || 'No platforms'}
+                      </p>
+                    </div>
+                    {/* Actions */}
+                    <button
+                      onClick={() => approveScheduledPost(post.id)}
+                      className="p-2 bg-emerald-600/20 hover:bg-emerald-600/40 rounded-lg text-emerald-400 transition-colors"
+                      title="Approve"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => rejectScheduledPost(post.id)}
+                      className="p-2 bg-red-600/20 hover:bg-red-600/40 rounded-lg text-red-400 transition-colors"
+                      title="Reject"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

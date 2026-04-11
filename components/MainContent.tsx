@@ -184,7 +184,7 @@ export function MainContent() {
   const [isComparing, setIsComparing] = useState(false);
   const [isGeneratingIdea, setIsGeneratingIdea] = useState(false);
   /** Per-model parameter preview (set by pi when prompt changes). */
-  const [modelPreviews, setModelPreviews] = useState<Record<string, { style?: string; aspectRatio?: string; negativePrompt?: string; lighting?: string; angle?: string }>>({});
+  const [modelPreviews, setModelPreviews] = useState<Record<string, { prompt?: string; style?: string; aspectRatio?: string; negativePrompt?: string; lighting?: string; angle?: string }>>({});
   const [isAutoSelecting, setIsAutoSelecting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   // Track which image is currently having its caption generated so we can
@@ -929,7 +929,7 @@ export function MainContent() {
     }
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
     previewTimerRef.current = setTimeout(async () => {
-      const previews: Record<string, { style?: string; aspectRatio?: string; negativePrompt?: string; lighting?: string; angle?: string }> = {};
+      const previews: Record<string, { prompt?: string; style?: string; aspectRatio?: string; negativePrompt?: string; lighting?: string; angle?: string }> = {};
       await Promise.all(comparisonModels.map(async (modelId) => {
         try {
           const enh = await enhancePromptForModel(comparisonPrompt, modelId, {
@@ -938,6 +938,7 @@ export function MainContent() {
             negativePrompt: comparisonOptions.negativePrompt,
           });
           previews[modelId] = {
+            prompt: enh.prompt,
             style: enh.style,
             aspectRatio: enh.aspectRatio,
             negativePrompt: enh.negativePrompt,
@@ -1190,7 +1191,7 @@ export function MainContent() {
 
     setIsComparing(true);
     try {
-      await generateComparison(comparisonPrompt, comparisonModels, comparisonOptions);
+      await generateComparison(comparisonPrompt, comparisonModels, comparisonOptions, modelPreviews);
     } catch (e) {
       console.error('Comparison failed', e);
     } finally {

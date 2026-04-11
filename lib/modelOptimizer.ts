@@ -76,35 +76,22 @@ export async function enhancePromptForModel(
 
   try {
     const result = await streamAIToString(
-      `You are the world's best AI image prompt engineer. Your job: take this prompt and make it UNSTOPPABLE for this specific model.
+      `Analyze and enhance this image prompt for optimal results with this model:
 
 TARGET MODEL: ${getModelName(modelId)}
-MODEL CAPABILITIES: ${guide}
+MODEL STRENGTHS: ${guide}
 
-AVAILABLE PARAMETERS:
+AVAILABLE OPTIONS:
 - Aspect ratios: ${supportedRatios}
 - Art styles: ${supportedStyles}
-- Negative prompts: ${supportsNegPrompt ? 'YES — use aggressively' : 'NO — do not include'}
+- Negative prompts: ${supportsNegPrompt ? 'supported' : 'not supported'}
 
 ORIGINAL PROMPT: "${basePrompt}"
-${options?.style ? `HINT — user prefers style: ${options.style}` : ''}
-${options?.aspectRatio ? `HINT — user prefers ratio: ${options.aspectRatio}` : ''}
-${options?.negativePrompt ? `HINT — user negative prompt: ${options.negativePrompt}` : ''}
+${options?.style ? `Preferred style: ${options.style}` : ''}
+${options?.aspectRatio ? `Preferred ratio: ${options.aspectRatio}` : ''}
+${options?.negativePrompt ? `User negative prompt: ${options.negativePrompt}` : ''}
 
-REWRITE THE PROMPT to absolutely maximize visual impact for this model. Then pick the perfect parameters.
-
-RULES:
-- The prompt must be jaw-dropping. Add cinematic detail, dramatic atmosphere, rich textures.
-- Pick the aspect ratio that makes the scene most impactful (wide landscapes = 16:9, portraits = 9:16, etc.)
-- Pick the art style from the supported list that elevates the concept furthest.
-- If negative prompts are supported, write one that eliminates ALL quality issues.
-${isConceptArt ? `
-CRITICAL — CONCEPT ART ANTI-ARTIFACT RULES:
-The Leonardo v2 API does NOT support a separate negative_prompt field. You MUST bake avoidance instructions directly into the prompt text.
-Append this EXACT block at the end of your rewritten prompt:
-"Avoid: ${conceptArtNegBlock}"
-Do NOT include the words "concept art sheet", "reference sheet", "character sheet", "turnaround", "grid layout", "multiple views" in the POSITIVE prompt — only in the avoidance block.
-The image should be a SINGLE stunning illustration, NOT a multi-panel reference sheet.` : ''}
+Enhance the prompt with specific visual detail — lighting, atmosphere, textures, composition. Pick the best aspect ratio for the scene (wide/epic = 16:9, portrait/character = 9:16, other = 1:1). Pick the art style that fits the concept best. If negative prompts are supported, write one that prevents common quality issues (blurry, deformed, low detail).${isConceptArt ? `\n\nThis is a concept art prompt. The image must be a SINGLE illustration, NOT a reference sheet or multi-panel layout. Do NOT include "concept art sheet", "character sheet", "turnaround", or "grid layout" in the prompt.` : ''}
 
 Return ONLY a JSON object:
 { "prompt": "...", "style": "...", "aspectRatio": "...", "negativePrompt": "..." }`,
