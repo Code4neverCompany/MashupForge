@@ -22,6 +22,7 @@ interface UsePipelineDeps {
   generateImages: (customPrompts?: string[], append?: boolean) => Promise<void>;
   generateComparison: (prompt: string, modelIds: string[], options?: import('../types/mashup').GenerateOptions, cachedEnhancements?: Record<string, import('./useComparison').CachedEnhancement>) => Promise<void>;
   generatePostContent: (image: GeneratedImage) => Promise<GeneratedImage | undefined>;
+  saveImage: (img: GeneratedImage) => void;
   savedImages: GeneratedImage[];
   images: GeneratedImage[];
 }
@@ -89,6 +90,7 @@ export function usePipeline(deps: UsePipelineDeps) {
     generateImages,
     generateComparison,
     generatePostContent,
+    saveImage,
     savedImages,
     images,
   } = deps;
@@ -216,7 +218,9 @@ Return ONLY the prompt text, nothing else.`;
       const data = await res.json();
       if (data.success && data.summary) {
         trendingContext = data.summary;
-        addLog('trending', idea.id, 'success', `Found ${data.results?.length || 0} trending items for: ${(data.queriesUsed || []).join(', ')}`);
+        const queries = data.queriesUsed;
+        const queryLabel = Array.isArray(queries) ? queries.join(', ') : Object.values(queries || {}).flat().join(', ');
+        addLog('trending', idea.id, 'success', `Found ${data.results?.length || 0} trending items for: ${queryLabel}`);
       } else {
         addLog('trending', idea.id, 'success', 'No trending data found — proceeding without');
       }
@@ -237,7 +241,7 @@ Return ONLY the prompt text, nothing else.`;
 
     // Step d: Generate with ALL models (same as Studio compare).
     // Each model gets its own pi-optimized prompt via modelOptimizer.
-    const allModelIds = LEONARDO_MODELS.map(m => m.id);
+    const allModelIds = LEONARDO_MODELS.filter(m => m.id !== 'nano-banana').map(m => m.id);
     setPipelineProgress({ current: index + 1, total, currentStep: `Generating with ${allModelIds.length} models`, currentIdea: idea.concept });
     try {
       await generateComparison(expandedPrompt, allModelIds, { skipEnhance: false });
@@ -279,6 +283,9 @@ Return ONLY the prompt text, nothing else.`;
         const latestImage = readyImages[imgIdx];
         const modelLabel = latestImage.modelInfo?.modelName || `model-${imgIdx + 1}`;
 
+        // Save to Gallery so the image appears in Gallery + Captioning tabs
+        saveImage(latestImage);
+
         // Step e: Generate caption
         let captionedImg = latestImage;
         if (autoCaption) {
@@ -287,6 +294,7 @@ Return ONLY the prompt text, nothing else.`;
             const withCaption = await generatePostContent(latestImage);
             if (withCaption) {
               captionedImg = withCaption;
+              saveImage(withCaption);
               addLog('caption', idea.id, 'success', `[${modelLabel}] Caption: "${withCaption.postCaption?.slice(0, 60)}..."`);
             } else {
               addLog('caption', idea.id, 'error', `[${modelLabel}] Caption returned empty`);
