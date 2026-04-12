@@ -66,6 +66,31 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ error: 'Generation not found' }, { status: 404 });
     }
 
+    // Flatten Leonardo's prompt_moderations array into a single list
+    // of classification strings. Leonardo returns it as
+    // [{moderationClassification: ["NSFW", "TRADEMARK"]}] — the nesting
+    // is historical, one entry per pipeline stage. Clients only care
+    // about the union so we deduplicate here.
+    const extractModeration = (gen: any): {
+      classifications: string[];
+      raw: any;
+    } => {
+      const mods = Array.isArray(gen?.prompt_moderations) ? gen.prompt_moderations : [];
+      const classifications: string[] = [];
+      for (const m of mods) {
+        const list = m?.moderationClassification;
+        if (Array.isArray(list)) {
+          for (const c of list) {
+            if (typeof c === 'string' && c.trim()) classifications.push(c.trim());
+          }
+        }
+      }
+      return {
+        classifications: [...new Set(classifications)],
+        raw: mods,
+      };
+    };
+
     if (generation.status === 'COMPLETE') {
       const images = generation.generated_images || generation.images || [];
       if (images.length > 0) {
@@ -84,13 +109,32 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         '[Leonardo] Generation object keys:',
         Object.keys(generation)
       );
-      return NextResponse.json({ status: 'FAILED', error: 'Generation complete but no images found' });
+      const mod = extractModeration(generation);
+      const error = mod.classifications.length > 0
+        ? `Blocked by content moderation: ${mod.classifications.join(', ')}`
+        : 'Generation complete but no images found';
+      return NextResponse.json({
+        status: 'FAILED',
+        error,
+        moderation: { moderationClassification: mod.classifications },
+        promptModerations: mod.raw,
+        failedPrompt: typeof generation.prompt === 'string' ? generation.prompt : undefined,
+        images: [],
+      });
     } else if (generation.status === 'FAILED') {
       const failureReason = generation.failure_reason || 'Unknown reason';
       console.error('Leonardo generation failed:', failureReason, JSON.stringify(generation));
+      const mod = extractModeration(generation);
+      const error = mod.classifications.length > 0
+        ? `Blocked by content moderation: ${mod.classifications.join(', ')}`
+        : `Leonardo generation failed: ${failureReason}. This can happen due to prompt filters or technical issues on Leonardo's side.`;
       return NextResponse.json({
         status: 'FAILED',
-        error: `Leonardo generation failed: ${failureReason}. This can happen due to prompt filters or technical issues on Leonardo's side.`
+        error,
+        moderation: { moderationClassification: mod.classifications },
+        promptModerations: mod.raw,
+        failedPrompt: typeof generation.prompt === 'string' ? generation.prompt : undefined,
+        images: [],
       });
     }
 
