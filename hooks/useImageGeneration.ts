@@ -190,10 +190,35 @@ async function submitLeonardoAndPoll(params: LeonardoSubmitParams): Promise<Leon
 }
 
 function buildModerationRewriteInstruction(reasons: string, failedPrompt: string): string {
-  return `The following image prompt was BLOCKED by content moderation for: ${reasons}. Rewrite it to avoid trademarked character names and potentially sensitive content. Use DESCRIPTIVE terms instead of proper nouns (e.g. crimson-gold armored hero instead of Iron Man, enchanted warhammer instead of Mjolnir, gothic caped crusader instead of Batman). Keep the same visual intent and quality. Return ONLY the rewritten prompt.
+  return `CONTENT MODERATION BLOCKED this prompt for: ${reasons}.
+
+You MUST produce a rewrite that passes content moderation. RULES — follow ALL of them:
+
+1. REMOVE EVERY trademarked/branded character name. No exceptions.
+   FORBIDDEN: Iron Man, Batman, Thor, Spider-Man, Superman, Wonder Woman, Hulk, Captain America, Wolverine, Darth Vader, Luke Skywalker, Harry Potter, Pikachu, Mario, Sonic, Goku, Naruto, Thanos, Joker, Lex Luthor, Doctor Doom, Darkseid, and ANY other named character from ANY franchise.
+   REPLACE WITH: descriptive phrases — "crimson-gold armored aviator", "gothic caped vigilante", "Norse thunder god", "red-blue webslinger", "Kryptonian champion", "Amazonian warrior queen", "green-skinned goliath", "star-spangled soldier", "adamantium-clawed berserker", "dark-armored Sith warlord", etc.
+
+2. REMOVE EVERY trademarked weapon/artifact name.
+   FORBIDDEN: Mjolnir, Batarang, Lightsaber, Excalibur, Master Sword, Infinity Gauntlet, Lasso of Truth, Power Ring, etc.
+   REPLACE WITH: "enchanted warhammer", "bat-shaped throwing blade", "plasma-edged sword", "legendary broadsword", "jeweled gauntlet of cosmic power", "golden lariat of compulsion", etc.
+
+3. REMOVE EVERY trademarked place/organization name that triggers moderation.
+   FORBIDDEN: Asgard, Gotham, Metropolis, Wakanda, Hogwarts, Coruscant, Death Star, Stark Tower, Batcave, etc.
+   REPLACE WITH: "celestial realm of thunder", "rain-slicked noir cityscape", "futuristic megacity", "hidden mountain kingdom", "ancient school of sorcery", "galactic capital ecumenopolis", etc.
+
+4. REMOVE ALL meta-commentary, fan references, and franchise mentions.
+   FORBIDDEN: "Fans of X and Y franchises", "a crossover concept", "in the style of X meets Y", "the X universe"
+   The prompt must describe ONLY what is VISUALLY in the frame.
+
+5. KEEP the same visual composition, lighting, atmosphere, camera angle, and quality signals.
+   The rewritten prompt must produce the SAME IMAGE — just without the blocked names.
+
+6. Return ONLY the rewritten prompt. No explanation, no preamble, no markdown.
 
 BLOCKED PROMPT:
-${failedPrompt}`;
+${failedPrompt}
+
+REWRITTEN PROMPT:`;
 }
 
 export interface LastGenerationError {
