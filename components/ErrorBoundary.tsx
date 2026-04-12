@@ -43,9 +43,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
 
       return (
-        <div className="flex flex-col items-center justify-center p-8 min-h-[200px] bg-zinc-900 rounded-xl border border-zinc-800">
-          <AlertTriangle className="w-10 h-10 text-amber-500 mb-4" />
-          <h3 className="text-lg font-semibold text-zinc-100 mb-2">
+        <div className="flex flex-col items-center justify-center p-8 min-h-[200px] bg-zinc-900/80 backdrop-blur-sm rounded-2xl border border-zinc-800/60">
+          <AlertTriangle className="w-10 h-10 text-emerald-500 mb-4" />
+          <h3 className="text-lg font-semibold text-white mb-2">
             Something went wrong
           </h3>
           {this.props.section && (
@@ -59,14 +59,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <div className="flex gap-3">
             <button
               onClick={this.handleReset}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-medium transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
               Retry
             </button>
             <button
               onClick={this.handleReset}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-sm font-medium transition-colors"
             >
               <X className="w-4 h-4" />
               Reset
