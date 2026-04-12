@@ -2528,11 +2528,11 @@ export function MainContent() {
                     {/* Carousel multi-source picker modal */}
                     {showCarouselPicker && (
                       <div
-                        className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                        className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4"
                         onClick={() => setShowCarouselPicker(false)}
                       >
                         <div
-                          className="bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/60 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col"
+                          className="bg-zinc-900/90 backdrop-blur-xl border-0 sm:border border-zinc-800/60 rounded-none sm:rounded-2xl w-full sm:max-w-4xl h-full sm:h-auto max-h-[100dvh] sm:max-h-[85vh] flex flex-col"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex items-center justify-between p-5 border-b border-zinc-800/60">
@@ -3271,11 +3271,11 @@ export function MainContent() {
 
                       return (
                         <div
-                          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4"
                           onClick={() => setCalendarSlotClick(null)}
                         >
                           <div
-                            className="bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/60 rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col"
+                            className="bg-zinc-900/90 backdrop-blur-xl border-0 sm:border border-zinc-800/60 rounded-none sm:rounded-2xl w-full sm:max-w-xl h-full sm:h-auto max-h-[100dvh] sm:max-h-[85vh] flex flex-col"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="flex items-center justify-between p-5 border-b border-zinc-800/60">
@@ -3879,11 +3879,11 @@ export function MainContent() {
                     {/* Schedule-All mini modal */}
                     {showScheduleAll && (
                       <div
-                        className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                        className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4"
                         onClick={() => setShowScheduleAll(false)}
                       >
                         <div
-                          className="bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/60 rounded-xl w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto"
+                          className="bg-zinc-900/90 backdrop-blur-xl border-0 sm:border border-zinc-800/60 rounded-none sm:rounded-xl w-full sm:max-w-lg p-5 space-y-4 h-full sm:h-auto max-h-[100dvh] sm:max-h-[90vh] overflow-y-auto"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex items-center justify-between">
@@ -4710,13 +4710,13 @@ export function MainContent() {
       )}
 
       {showSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <motion.div 
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
+          <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className="bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/60 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+            className="bg-zinc-900/90 backdrop-blur-xl border-0 sm:border border-zinc-800/60 rounded-none sm:rounded-2xl w-full sm:max-w-2xl overflow-hidden shadow-2xl flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[90vh]"
           >
             <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-zinc-950/50 shrink-0">
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -5422,11 +5422,11 @@ export function MainContent() {
       )}
 
       {showCollectionModal && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/60 rounded-2xl shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-md bg-zinc-900/90 backdrop-blur-xl border-0 sm:border border-zinc-800/60 rounded-none sm:rounded-2xl shadow-2xl overflow-hidden h-full sm:h-auto max-h-[100dvh] sm:max-h-none"
           >
             <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
               <h3 className="text-lg font-bold text-white">Create New Collection</h3>
@@ -5483,12 +5483,12 @@ export function MainContent() {
       {/* Bulk Tag Modal */}
       <AnimatePresence>
         {showBulkTagModal && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/60 rounded-2xl shadow-2xl overflow-hidden"
+              className="w-full sm:max-w-md bg-zinc-900/90 backdrop-blur-xl border-0 sm:border border-zinc-800/60 rounded-none sm:rounded-2xl shadow-2xl overflow-hidden h-full sm:h-auto max-h-[100dvh] sm:max-h-none"
             >
               <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
