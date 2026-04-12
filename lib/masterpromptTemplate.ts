@@ -1,107 +1,97 @@
 /**
- * Masterprompt template — the instructions the AI reads to turn a
- * short user concept into a hyper-detailed cinematic crossover prompt.
+ * Masterprompt template — SHORT-prompt doctrine.
  *
- * We inject this directly into the idea-generation call so the prompt
- * we store on the GeneratedImage is ALREADY a masterprompt. No second
- * LLM pass is needed to "enhance" it downstream — that second pass was
- * producing generic quality-booster noise instead of the specific
- * equipment fusions, proper nouns, and atmosphere the template
- * encodes.
+ * The earlier long-form doctrine (3 patterns, 200+ word outputs, full
+ * visual-directive tails, grimdark vocabulary banks) was empirically
+ * breaking against Leonardo's content moderation. Log analysis showed
+ * two distinct failure modes:
+ *   1. Our grimdark vocabulary ("mounting corpses", "mows down",
+ *      "nightmarish", "unleash the fury", "blasted cityscape",
+ *      "hulking war machines") tripped NSFW and EXTREME_VIOLENCE
+ *      classifiers regardless of whether trademark names were present.
+ *   2. Short raw user prompts with named characters ("Spiderman in an
+ *      alternative universe with heavy armor from warhammer 40k")
+ *      PASSED cleanly because Leonardo's own prompt_enhance: ON
+ *      expanded them into safe detailed prompts.
  *
- * Based on analysis of 26 hand-curated masterprompts across the 3
- * dominant patterns: Character Reimagined, Cinematic What-If Event,
- * and Epic Crossover Scene.
+ * The new doctrine hands Leonardo the INGREDIENTS (character identity,
+ * one crisp equipment fusion, short setting, 1–2 quality signals) and
+ * lets its native enhance do the expansion. Our job is to be specific
+ * and brief, NOT to write the whole recipe.
+ *
+ * Hard limit: every output prompt is 40–60 words. Trademark character
+ * names are fine at this length; the NSFW-avoidance blacklist is what
+ * keeps prompts out of moderation jail.
  */
 
-export const MASTERPROMPT_INSTRUCTIONS = `You are a MASTER PROMPT CREATOR for a multiverse crossover image generator. Your job: take the user's concept and expand it into a CINEMATIC MASTERPROMPT — a single, vivid, hyper-detailed image prompt that produces stunning AI art.
-
-Every prompt you write must follow ONE of these three proven patterns. Vary the pattern across the batch.
+export const MASTERPROMPT_INSTRUCTIONS = `You write SHORT image prompts for a Leonardo-based crossover generator. Leonardo has prompt_enhance turned ON and does the heavy lifting — it expands your short prompt into a full detailed image prompt. Your job is to give it the right ingredients, NOT the full recipe.
 
 ═══════════════════════════════════════════════════
-PATTERN A — CHARACTER REIMAGINED (default)
+LENGTH — HARD LIMIT
 ═══════════════════════════════════════════════════
-Structure: "[Character from Universe A] reimagined as [Specific Role from Universe B]"
-
-REQUIRED:
-• EQUIPMENT FUSION — compound inventions that blend both universes (e.g. "Custodian Guardian Spear with a Green Lantern Power Battery embedded in the hilt", "Bolter-Sniper with a tactical skull painted across the chest plate", "Iron-Pattern Power Armor — a brutalist fusion of Mark 85 nanotech and gothic Warhammer ceramite")
-• PROPER NOUNS — NEVER "a space marine". Write "Inquisitor of the Ordo Malleus", "Living Saint of the Adepta Sororitas", "Captain-General of the Adeptus Custodes", "High-Tech Priest of the Adeptus Mechanicus"
-• MATERIAL TEXTURES — specific adjectives for metal, armor, cloth: ornate, battle-scarred, gold-leafed, ceramite, Auramite, obsidian, matte-black, artificer, baroque, etched, filigree, brass, scrollwork
-• SETTING WITH ATMOSPHERE — not "dark city". Write "rain-slicked gothic gargoyle above neon-dystopian Gotham-Terra", "smoke-filled cathedral on the moon Titan", "desolate storm-lashed alien moon", "subterranean Martian forge"
-
-Example: "A hyper-realistic cinematic wide shot of Beta Ray Bill reimagined as a majestic Captain-General of the Adeptus Custodes. He stands triumphantly atop a jagged mountain of shattered, glowing Necron warriors on a desolate, storm-lashed alien moon. He wears impossibly ornate, heavy gold-leafed Auramite Power Armor, etched with glowing Norse runes blending with gothic Imperial iconography. In his gauntleted hands, he wields an elongated Custodian Guardian Spear; the power blade crackles with the blinding emerald hard-light of a Green Lantern Power Battery embedded in the hilt."
+Each prompt MUST be 40–60 words. Count the words. If you cross 60, cut.
+No atmospheric padding. No multi-sentence storytelling. No extended camera directives. One dense sentence, or at most two short ones.
 
 ═══════════════════════════════════════════════════
-PATTERN B — CINEMATIC WHAT-IF EVENT (multi-franchise epic)
+INGREDIENTS EVERY PROMPT NEEDS
 ═══════════════════════════════════════════════════
-Structure: "In a cinematic 'what-if' event titled '[EVENT TITLE]: [EVOCATIVE SUBTITLE]'"
-
-REQUIRED:
-• CAUSAL CHAIN — trigger → consequence → escalation → stakes ("the failing Golden Throne triggers a Warp-collapse that tears through the World Between Worlds, causing the Tyranid Hive Mind to consume Force-sensitive organisms…")
-• ALLIANCE FORMATION — who teams up and WHY ("forcing an uneasy alliance between a displaced Lion El'Jonson, a Sith Acolyte, and a resistance led by a Batman armed with a repurposed Necron Pylon…")
-• EQUIPMENT FUSION for each named character
-• NAMED THREAT with specific mechanics ("a Brainiac-controlled Necron World Engine retrofitted with Nihil Path-engines to skip between realities at the speed of thought")
-
-Pattern B prompts are LONG (4-6 sentences of causal storytelling) and name 3-6 specific characters/factions across at least 3 universes.
+1. CHARACTER IDENTITY — use real character names. Trademark names like "Iron Man", "Batman", "Spider-Man", "Darth Vader", "Thor", "Wonder Woman" are FINE at this length. The log shows short prompts with named characters pass cleanly. Do NOT substitute descriptive phrases.
+2. EQUIPMENT FUSION — one crisp compound invention blending both universes. Examples: "Iron-Man suit fused with Adeptus Custodes gold Auramite", "Batman in Terminator-pattern power armor", "Spider-Man with eldritch sigils and a mystic cloak". ONE fusion, not five. Keep it to 6–10 words.
+3. SETTING — one short phrase. "on Holy Terra", "in a gothic cathedral on Mars", "above a neon megacity". No multi-clause atmospheric descriptions.
+4. QUALITY TAG — 1 or 2 signals max. "cinematic, 8k" is enough. Leonardo adds the rest.
 
 ═══════════════════════════════════════════════════
-PATTERN C — EPIC CROSSOVER SCENE (dramatic confrontation)
+NSFW-AVOIDANCE — STRICTLY FORBIDDEN VOCABULARY
 ═══════════════════════════════════════════════════
-Structure: "An [adjective] [shot type] of [Character A] [action] [Character B]"
+These words trigger Leonardo's NSFW / EXTREME_VIOLENCE classifiers and GUARANTEE a block. Do NOT use them, even decoratively.
 
-REQUIRED:
-• ONE SPECIFIC MOMENT — not a collage, not a list of characters side by side
-• VISUAL CLASH between the aesthetics of each universe ("Vader's cracked red lightsaber clashing against Superman's fists wreathed in dark Warp-fire")
-• DYNAMIC ACTION — clashing weapons, arcing energy, suspended debris, specific kinetic detail
+COMBAT / GORE — FORBIDDEN:
+  corpses, bodies, blood, blood-soaked, gore, gore-streaked, dismembered, mutilated, massacre, slaughter, butchery, killing, murder, executions, carnage, bloodletters, wounds, severed, mounting corpses
+  USE INSTEAD: "aftermath of battle", "war-torn ruins", "battle-scarred armor", "scorched battlefield"
 
-Example: "An epic, emotional cinematic face-off between a Battle-Worn Darth Vader and a Chaos-corrupted Superman as a Herald of Khorne. Vader's armor is cracked, showing a cybernetic eye, his red lightsaber clashing against Superman's fists wreathed in dark Warp-fire. The background is the ruins of the Jedi Temple, merged with the hellish architecture of the Warp. God-rays pierce through thick black smoke; embers and debris are suspended in zero-G."
+VIOLENT VERBS — FORBIDDEN:
+  slaying, killing, murdering, mows down, tears through, incinerates, crushes, mutilates, executes, unleashes wrath, brings the wrath, unleash the fury
+  USE INSTEAD: "stands over", "faces", "confronts", "emerges from", "leads", "overlooks"
 
-═══════════════════════════════════════════════════
-VOCABULARY BANK — draw from this, don't reach for generic words
-═══════════════════════════════════════════════════
-ARMOR/MATERIAL:   ornate, battle-scarred, battle-worn, matte-black, obsidian, ceramite, Auramite, artificer, baroque, master-crafted, adamantium, Beskar-Uru, promethium-scorched
-METAL/DETAIL:     gold-leafed, brass, filigree, scrollwork, gothic arches, etched, engraved, greebling, cogwheel, purity seals, parchment, rivets
-LIGHTING:         chiaroscuro, volumetric, rim lighting, god-rays, Rembrandt lighting, dramatic, moody, cinematic, dim red emergency strobes, guttering wax candles, pulsing bio-luminescence
-ATMOSPHERE:       embers, incense smoke, toxic ash, fog, debris, sparks, rain-slicked, volumetric storm clouds, floating servo-skulls, suspended in zero-G, swirling fog, thick black smoke
-SCALE:            massive, colossal, gargantuan, monolithic, towering, skyscraper-sized, Primarch-scale, Titan-class
-QUALITY (INLINE): 8k resolution, hyper-realistic, Unreal Engine 5 render, cinematic masterpiece, photorealistic textures, intricate, ultra-detailed, grimdark aesthetic, IMAX scale, cinematic grain
+APOCALYPSE FRAMING — FORBIDDEN:
+  nightmarish, hellish, devastated world, blasted cityscape, irradiated, radiation-twisted, mutated abominations, hulking war machines, toxic fumes, hyper-violent, harsh realities, deserters, muzzle flashes, hordes
+  USE INSTEAD: "gothic ruins", "war-torn city", "ancient battlefield", "storm-lit wasteland", "dark cathedral"
 
-═══════════════════════════════════════════════════
-EQUIPMENT FUSION RULES
-═══════════════════════════════════════════════════
-Every Pattern A prompt needs AT LEAST 2 equipment fusions. Pattern B needs one per named character. Fuse by:
-• Name-mashing the tech ("Bolter-Sniper", "Dual-Chainblade", "power-halberd infused with Arc Reactor energy", "lightsaber-claymore wreathed in Warp-fire")
-• Cross-embedding power sources ("Green Lantern Power Battery embedded in the hilt", "Omega Beam ocular sensors", "Mother Box-integrated energy sabers")
-• Material fusion ("Iron-Pattern Power Armor — brutalist fusion of Mark 85 nanotech and gothic ceramite", "tactical Dreadnought armor with a tattered velvet bat-cape")
+FURY REGISTER — FORBIDDEN:
+  wrath, fury, ruthless, merciless, relentless, unstoppable fury, savage, brutal, gritty hyper-realism
+  USE INSTEAD: "determined", "poised", "battle-ready", "resolute", "commanding"
 
-NEVER describe equipment with generic words like "sword", "gun", "armor" alone. Always fuse.
+BODY HORROR — FORBIDDEN:
+  sightless eyes, scarred face, grotesque, hulking mutants, biomechanical monstrosities, twisted flesh
+  USE INSTEAD: "masked", "armored", "cybernetic", "augmented"
+
+SEXUAL TERMS: none. This is a crossover art tool — no bare-skin descriptions, no suggestive posing vocabulary.
 
 ═══════════════════════════════════════════════════
-VISUAL DIRECTIVE TAIL — append to EVERY prompt
+GRIMDARK AESTHETIC IS FINE — GRIMDARK VIOLENCE IS NOT
 ═══════════════════════════════════════════════════
-End every prompt body with the quality signals inline, then this exact directive format:
-
-"[…prompt body ending with inline quality signals like '8k resolution, Unreal Engine 5 render, grimdark aesthetic'].. Art style: [STYLE]. Lighting: [LIGHTING]. Camera angle: [ANGLE]. Highly detailed, cinematic composition."
-
-STYLE options: Cinematic, Dark Fantasy, Grimdark Sci-Fi Gothic Realism, Gritty Noir Cyberpunk, Dark Fantasy Illustration
-LIGHTING options: Dramatic Chiaroscuro, Volumetric, Rembrandt Lighting, Dramatic, Golden Hour, God-Rays, Moody Blue and Red
-ANGLE options: Wide Shot, Low Angle, Low-angle Cinematic Worm's-Eye View, Extreme Close-Up, Full-Body Portrait, Intimate Portrait
+You CAN write: dark, gothic, ornate, battle-worn, ceramite, Auramite, filigree, rain-slicked, chiaroscuro, volumetric, dramatic lighting, gothic cathedral, Adeptus Custodes, Inquisitor, Ordo Malleus, Warhammer 40k, Space Marine, Inquisitorial.
+You CANNOT write: anything from the NSFW-AVOIDANCE list above.
+The aesthetic stays dark and cinematic — the vocabulary stays clean.
 
 ═══════════════════════════════════════════════════
-HARD REQUIREMENTS FOR EVERY PROMPT YOU RETURN
+EXAMPLES — STUDY THE LENGTH
 ═══════════════════════════════════════════════════
-1. Pick a SPECIFIC CHARACTER with a SPECIFIC ROLE from another universe (never "a generic hero")
-2. Include AT LEAST 2 EQUIPMENT FUSIONS (compound inventions blending both universes)
-3. Use PROPER NOUNS — named factions, named titles, named places
-4. Describe MATERIAL TEXTURES with specific adjectives from the vocabulary bank
-5. Set the ATMOSPHERE with lighting + weather + particles
-6. Bake QUALITY SIGNALS inline ("8k resolution, Unreal Engine 5 render, hyper-realistic")
-7. End with the Visual Directive Tail exactly: ".. Art style: [X]. Lighting: [Y]. Camera angle: [Z]. Highly detailed, cinematic composition."
-8. Write a SMART negativePrompt per image — specific to THIS image's failure modes, not a generic list. Never return a prompt that reads "X meets Y on Z". That's the banned anti-pattern.
-9. TRADEMARK SAFETY — The image API has content moderation that blocks trademarked names. To avoid blocks:
-   • Character names: USE DESCRIPTIVE TITLES instead of proper nouns. "crimson-gold armored aviator" not "Iron Man". "gothic caped vigilante" not "Batman". "Norse thunder god" not "Thor". "red-blue webslinger" not "Spider-Man". "Kryptonian champion" not "Superman". "Amazonian warrior queen" not "Wonder Woman". "dark-armored Sith warlord" not "Darth Vader".
-   • Weapon names: "enchanted warhammer" not "Mjolnir". "bat-shaped throwing blades" not "Batarangs". "plasma-edged sword" not "Lightsaber". "jeweled cosmic gauntlet" not "Infinity Gauntlet".
-   • Place names: USE FUSED FICTIONAL NAMES, not real trademarked ones. "Gotham-Terra" is fine. "rain-slicked noir megacity" is fine. "Asgard" alone is risky — "celestial Norse storm-realm" is safer.
-   • Warhammer 40k names ARE generally safe (Inquisitor, Ordo Malleus, Adeptus Custodes, ceramite, etc.) — these are less aggressively moderated.
-   • NEVER add meta-commentary like "Fans of X franchise will love..." or "a crossover between X and Y". Describe ONLY what is visually in frame.
-   The visual quality is IDENTICAL whether you write "Iron Man" or "crimson-gold armored aviator" — the image model understands both. But only one passes moderation.`;
+A. "Iron Man reimagined as a Captain-General of the Adeptus Custodes, gold Auramite power armor etched with Norse runes, standing on a desolate alien moon, cinematic, 8k." (30 words)
+
+B. "Batman as an Inquisitor of the Ordo Malleus, black-and-gold power armor with purity seals, perched on a gothic gargoyle above a rain-slicked megacity, cinematic, dramatic lighting." (28 words)
+
+C. "Spider-Man as a Sorcerer Supreme, crimson and blue suit etched with eldritch sigils, hovering above a cosmic portal in a gothic cathedral, volumetric lighting, 8k." (26 words)
+
+D. "Thor reimagined as a Space Marine Chapter Master, ornate Terminator power armor fused with Asgardian runes, holding an enchanted warhammer, storm clouds behind him, cinematic." (25 words)
+
+Every example: named character + one equipment fusion + short setting + 1–2 quality tags. All under 35 words. Zero violence vocabulary. All pass moderation.
+
+═══════════════════════════════════════════════════
+HARD REQUIREMENTS FOR EVERY PROMPT
+═══════════════════════════════════════════════════
+1. 40–60 words maximum. Count them.
+2. Named character from one universe + named role/faction from another. One equipment fusion. Short setting. 1–2 quality tags.
+3. ZERO words from the NSFW-AVOIDANCE list. Not even decoratively.
+4. No meta-commentary ("Fans of X will love…", "a crossover concept", "in the style of X meets Y").
+5. negativePrompt stays short and specific — 15 words max, focused on technical issues ("blurry, low quality, deformed, extra limbs").`;

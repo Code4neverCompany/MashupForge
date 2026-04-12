@@ -189,43 +189,49 @@ async function submitLeonardoAndPoll(params: LeonardoSubmitParams): Promise<Leon
   throw new Error('Timeout waiting for Leonardo generation');
 }
 
-function buildModerationRewriteInstruction(reasons: string, failedPrompt: string): string {
-  return `CONTENT MODERATION BLOCKED this prompt for: ${reasons}.
+function buildModerationRewriteInstruction(
+  classifications: string[],
+  failedPrompt: string
+): string {
+  const hasNsfw = classifications.some(c => c === 'NSFW' || c === 'EXTREME_VIOLENCE');
+  const hasTrademark = classifications.includes('TRADEMARK');
 
-You MUST produce a rewrite that passes content moderation. RULES — follow ALL of them:
+  const nsfwBlock = hasNsfw
+    ? `PRIMARY — strip every violence, gore, war-carnage, body-horror, and fury word. These are the actual triggers. Empirical log analysis shows NSFW/EXTREME_VIOLENCE blocks on grimdark vocabulary even when character names are unchanged.
 
-1. REMOVE EVERY trademarked/branded character name. No exceptions.
-   FORBIDDEN: Iron Man, Batman, Thor, Spider-Man, Superman, Wonder Woman, Hulk, Captain America, Wolverine, Darth Vader, Luke Skywalker, Harry Potter, Pikachu, Mario, Sonic, Goku, Naruto, Thanos, Joker, Lex Luthor, Doctor Doom, Darkseid, and ANY other named character from ANY franchise.
-   REPLACE WITH: descriptive phrases — "crimson-gold armored aviator", "gothic caped vigilante", "Norse thunder god", "red-blue webslinger", "Kryptonian champion", "Amazonian warrior queen", "green-skinned goliath", "star-spangled soldier", "adamantium-clawed berserker", "dark-armored Sith warlord", etc.
+   FORBIDDEN (strip all of these):
+     corpses, bodies, blood, blood-soaked, gore, gore-streaked, dismembered, mutilated, massacre, slaughter, butchery, killing, murder, executions, carnage, bloodletters, wounds, severed, mounting corpses,
+     slaying, mows down, tears through, incinerates, crushes, unleashes wrath, brings the wrath, unleash the fury,
+     nightmarish, hellish, devastated world, blasted cityscape, irradiated, radiation-twisted, mutated abominations, hulking war machines, toxic fumes, hyper-violent, harsh realities, deserters, muzzle flashes, hordes,
+     wrath, fury, ruthless, merciless, relentless, unstoppable fury, savage, brutal, gritty hyper-realism,
+     sightless eyes, scarred face, grotesque, biomechanical monstrosities, twisted flesh
 
-2. REMOVE EVERY studio, publisher, and brand name.
-   FORBIDDEN: Pixar, Studio Ghibli, Walt Disney, Warner Bros, Marvel Studios, DC Comics, Lucasfilm, Kodansha, Square Enix, Shueisha, Nintendo, Games Workshop, Hasbro, "in the style of X", "X-style".
-   The image model understands descriptive aesthetics without brand tags.
+   USE INSTEAD: "aftermath of battle", "war-torn ruins", "battle-scarred armor", "gothic ruins", "dark cathedral", "stands over", "faces", "confronts", "overlooks", "determined", "poised", "battle-ready", "resolute", "commanding".`
+    : '';
 
-3. REMOVE EVERY trademarked weapon/artifact name.
-   FORBIDDEN: Mjolnir, Batarang, Lightsaber, Excalibur, Master Sword, Infinity Gauntlet, Lasso of Truth, Power Ring, etc.
-   REPLACE WITH: "enchanted warhammer", "bat-shaped throwing blade", "plasma-edged sword", "legendary broadsword", "jeweled gauntlet of cosmic power", "golden lariat of compulsion", etc.
+  const trademarkBlock = hasTrademark && !hasNsfw
+    ? `PRIMARY — this prompt ONLY tripped TRADEMARK, not NSFW. The short-prompt log shows named characters pass cleanly when nothing else is flagged, so the issue is likely a specific weapon or place name, or a combination with a studio reference. Replace sparingly:
+   Mjolnir → "enchanted warhammer", Lightsaber → "plasma-edged sword", Batarang → "bat-shaped throwing blade", Infinity Gauntlet → "jeweled cosmic gauntlet",
+   Asgard → "celestial Norse realm", Gotham → "rain-slicked noir megacity", Wakanda → "hidden high-tech kingdom", Hogwarts → "ancient school of sorcery", Coruscant → "galactic capital ecumenopolis".
+   Keep the character names intact UNLESS the rewrite is still failing — named characters at short length generally pass.`
+    : hasTrademark
+      ? `SECONDARY (only if the NSFW strip is not enough) — soften trademark weapon/place names: Mjolnir → "enchanted warhammer", Lightsaber → "plasma-edged sword", Asgard → "celestial Norse realm", Gotham → "rain-slicked noir megacity". Leave the character name in — the NSFW strip is the main fix.`
+      : '';
 
-4. REMOVE EVERY trademarked place/organization name that triggers moderation.
-   FORBIDDEN: Asgard, Gotham, Metropolis, Wakanda, Hogwarts, Coruscant, Death Star, Stark Tower, Batcave, etc.
-   REPLACE WITH: "celestial realm of thunder", "rain-slicked noir cityscape", "futuristic megacity", "hidden mountain kingdom", "ancient school of sorcery", "galactic capital ecumenopolis", etc.
+  return `CONTENT MODERATION BLOCKED this prompt for: ${classifications.join(', ') || 'unknown'}.
 
-5. REMOVE ALL meta-commentary, fan references, and franchise mentions.
-   FORBIDDEN: "Fans of X and Y franchises", "a crossover concept", "in the style of X meets Y", "the X universe"
-   The prompt must describe ONLY what is VISUALLY in the frame.
+Rewrite the prompt so it passes moderation. Your PRIMARY job is to strip the language that matches the specific classifications above — not to shorten a list of trademark names.
 
-6. AVOID ICONIC SILHOUETTES AND FRAMINGS.
-   Leonardo runs a SECOND moderation pass on the rendered pixels. A purely descriptive prompt can still get blocked if the output looks too close to a famous image. DO NOT frame the character in their most recognizable pose:
-   • No arc-reactor chest close-ups on a crimson-gold armored hero.
-   • No bat-shaped silhouette against a full moon or gothic skyline.
-   • No Norse thunder god mid-air with lightning striking a raised hammer.
-   • No webslinger crouched on a skyscraper ledge in upside-down hang.
-   • No dark-armored Sith warlord backlit by red sabre with helmet in profile.
-   Vary the pose, angle, and focal point so the composition reads as an ORIGINAL character moment, not a tribute shot.
+${nsfwBlock}
 
-7. KEEP the same visual composition (where safe), lighting, atmosphere, camera angle, and inline quality signals (8k, Unreal Engine 5 render, hyper-realistic, grimdark aesthetic). The rewritten prompt must produce a SIMILAR image — just without the blocked names and iconic framings.
+${trademarkBlock}
 
-8. Return ONLY the rewritten prompt. No explanation, no preamble, no markdown.
+HARD RULES — follow ALL:
+1. Keep the rewrite SHORT — 40–60 words max. Leonardo's prompt_enhance will do the expansion. Long rewrites re-introduce the vocabulary that got blocked.
+2. Preserve the character identity and the core equipment fusion — that's the image the user wanted.
+3. Keep 1–2 quality tags ("cinematic, 8k"). Do not add a long visual-directive tail.
+4. No meta-commentary ("a crossover concept", "Fans of X will love…").
+5. Return ONLY the rewritten prompt. No explanation, no preamble, no markdown.
 
 BLOCKED PROMPT:
 ${failedPrompt}
@@ -234,30 +240,40 @@ REWRITTEN PROMPT:`;
 }
 
 function buildAggressiveRewriteInstruction(
-  reasons: string,
+  classifications: string[],
   firstRewriteFailed: string,
   originalBlockedPrompt: string
 ): string {
-  return `THE FIRST REWRITE ALSO FAILED content moderation for: ${reasons}.
+  const hasNsfw = classifications.some(c => c === 'NSFW' || c === 'EXTREME_VIOLENCE');
+  const hasTrademark = classifications.includes('TRADEMARK');
 
-This is the LAST retry before we give up. Be AGGRESSIVE. Apply these rules on top of the original rewrite rules:
+  const nsfwAggressive = hasNsfw
+    ? `• Strip ALL combat/war/apocalyptic/fury vocabulary — even words you thought were safe. No "battle", no "war", no "ruined", no "fallen", no "dark apocalyptic". Use peaceful static framing: "stands in a gothic cathedral", "overlooks a starfield", "poised in an ornate hall", "holds in an ancient chamber".
+• Replace every action verb with a STATIC pose verb — "stands", "holds", "overlooks", "rests upon", "faces". No motion, no combat, no confrontation.
+• Drop any word that ends in "-scarred", "-worn", "-torn", "-ravaged". Use "ornate", "gleaming", "engraved" instead.`
+    : '';
 
-A. STRIP ALL CAPITALIZED WORDS except basic sentence starters. If a word is Title-Case in the middle of a sentence, it is probably a brand risk. Lowercase it or replace it with a generic phrase.
+  const trademarkAggressive = hasTrademark
+    ? `• Replace every named character, weapon, and place with a descriptive phrase:
+    Iron Man → "a crimson-gold armored aviator", Batman → "a gothic caped vigilante", Spider-Man → "a red-blue webslinger", Thor → "a Norse thunder god", Darth Vader → "a dark-armored Sith warlord",
+    Mjolnir → "enchanted warhammer", Lightsaber → "plasma-edged sword",
+    Asgard → "celestial Norse realm", Gotham → "rain-slicked noir megacity".
+• Drop universe names and crossover language ("from X", "reimagined as", "in the Y universe").`
+    : '';
 
-B. REMOVE ANY COMPOUND DESCRIPTOR that hints at a specific character's color scheme or silhouette:
-   • NO "crimson-gold armored X" (reads as Iron Man)
-   • NO "gothic caped X" (reads as Batman)
-   • NO "red-blue X" (reads as Spider-Man)
-   • NO "kryptonian / amazonian / asgardian X" (still franchise-coded)
-   Instead use fully neutral phrases: "an armored warrior", "a cloaked vigilante", "an ancient warrior-god", "a spider-themed acrobat".
+  return `THE FIRST REWRITE ALSO FAILED moderation for: ${classifications.join(', ') || 'unknown'}. This is the LAST retry before we give up.
 
-C. DROP ALL MYTHOLOGY TITLES that overlap with active franchises (Thor, Odin, Loki, Zeus, Hades, Ares) — use "thunder deity", "one-eyed war elder", "trickster shape-shifter", "storm king".
+Be more aggressive on the PRIMARY trigger from the classifications above:
 
-D. DROP ALL UNIVERSE NAMES AND CROSSOVER LANGUAGE. No "from X", no "reimagined as", no hyphenated place names like "Gotham-Terra". Describe the image as one unified scene.
+${nsfwAggressive}
 
-E. KEEP only: lighting, atmosphere, materials (ornate armor, ceramite, filigree), environmental details, pose adjective, and the Visual Directive Tail. Strip everything else.
+${trademarkAggressive}
 
-F. Return ONLY the rewritten prompt. No explanation, no preamble, no markdown.
+HARD RULES:
+1. MAX 40 words. The shorter the better. Leonardo's prompt_enhance will expand.
+2. Keep ONE visual hook (the equipment fusion or unique material detail).
+3. No violence. No gore. No apocalyptic language. No iconic combat framings.
+4. Return ONLY the rewritten prompt. No explanation, no preamble.
 
 ORIGINAL BLOCKED PROMPT:
 ${originalBlockedPrompt}
@@ -335,7 +351,7 @@ async function submitWithModerationCascade(
     callbacks.onRetry({ attempt: 1, maxRetries, classifications, strategy: 'rewrite' });
 
     const rewritten = await streamAIToString(
-      buildModerationRewriteInstruction(classifications.join(', '), lErr.failedPrompt || activePrompt),
+      buildModerationRewriteInstruction(classifications, lErr.failedPrompt || activePrompt),
       { mode: 'enhance' }
     );
     activePrompt = (rewritten || '').trim() || activePrompt;
@@ -362,7 +378,7 @@ async function submitWithModerationCascade(
 
     const firstRewriteFailed = activePrompt;
     const aggressive = await streamAIToString(
-      buildAggressiveRewriteInstruction(classifications.join(', '), firstRewriteFailed, originalPrompt),
+      buildAggressiveRewriteInstruction(classifications, firstRewriteFailed, originalPrompt),
       { mode: 'enhance' }
     );
     activePrompt = (aggressive || '').trim() || firstRewriteFailed;
@@ -524,15 +540,15 @@ ${MASTERPROMPT_INSTRUCTIONS}
 ═══════════════════════════════════════════════════
 TASK
 ═══════════════════════════════════════════════════
-Generate 4 completely distinct masterprompts following the patterns and rules above. Vary the patterns across the batch (mix Character Reimagined, Cinematic What-If Event, and Epic Crossover Scene). Maximum variety in characters, franchises, and settings. Do NOT repeat characters across the 4 prompts.
+Generate 4 SHORT image prompts (40–60 words EACH) following the rules above. Leonardo's prompt_enhance will expand them — do NOT write long descriptions yourself. Maximum variety in characters, franchises, and settings. Do NOT repeat characters across the 4 prompts.
 
 Return ONLY a JSON array of 4 objects, each with:
-- "prompt": string — the full masterprompt ending with the Visual Directive Tail
+- "prompt": string — 40–60 words, named character + ONE equipment fusion + short setting + 1–2 quality tags
 - "aspectRatio": string — "16:9" for wide/epic, "9:16" for portrait/character, "1:1" otherwise
 - "tags": array of strings — 5-8 tags (universes, characters, themes)
 - "selectedNiches": array of strings
 - "selectedGenres": array of strings
-- "negativePrompt": string — specific to THIS image's failure modes, not generic
+- "negativePrompt": string — 15 words max, focused on technical failure modes (blurry, deformed, extra limbs, bad anatomy)
 
 Random Seed: ${Math.random()}`,
           { mode: 'idea' }
@@ -566,15 +582,15 @@ TASK
 ═══════════════════════════════════════════════════
 The user has sketched these rough ideas: ${JSON.stringify(customPrompts)}
 
-Transform EACH rough idea into a full masterprompt using the patterns and rules above. Preserve the user's core concept — the character pairing, the situation — but expand it with equipment fusions, proper-noun roles, material textures, atmosphere, and the Visual Directive Tail. Pick the pattern (A/B/C) that best fits each idea.
+Transform EACH rough idea into a SHORT image prompt (40–60 words) following the rules above. Preserve the user's core concept — the character pairing, the situation — and add ONE crisp equipment fusion plus a brief setting phrase. Do NOT write long cinematic descriptions. Leonardo's prompt_enhance will expand your short prompt into the full detailed image prompt — your job is ingredients, not the recipe.
 
 Return ONLY a JSON array of objects (one per input idea, in the same order), each with:
-- "prompt": string — the full masterprompt ending with the Visual Directive Tail
+- "prompt": string — 40–60 words, named character + ONE equipment fusion + short setting + 1–2 quality tags
 - "aspectRatio": string — "16:9" for wide/epic, "9:16" for portrait/character, "1:1" otherwise
 - "tags": array of strings — 5-8 tags
 - "selectedNiches": array of strings
 - "selectedGenres": array of strings
-- "negativePrompt": string — specific to THIS image's failure modes`,
+- "negativePrompt": string — 15 words max, focused on technical failure modes (blurry, deformed, extra limbs, bad anatomy)`,
           { mode: 'idea' }
         );
 
