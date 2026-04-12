@@ -1,4 +1,9 @@
 {
-  "completed": [],
-  "reports": []
+  "tasks": ["T-D002", "T-D003"],
+  "completed": ["T-D001"],
+  "reports": [
+    {"type": "completed", "task": "T-D001", "details": "Fixed carousel cropping issues."},
+    {"type": "active", "task": "T-D002", "details": "Implement design refresh per Workstream D (Tab bar, card design system, typography)."},
+    {"type": "active", "task": "T-D003", "details": "Audit MainContent for responsive layout compliance per Workstream A."}
+  ]
 }

@@ -1735,7 +1735,7 @@ export function MainContent() {
                                 key={idea.id}
                                 draggable
                                 onDragStart={(e) => e.dataTransfer.setData('ideaId', idea.id)}
-                                className={`bg-zinc-950/80 border border-zinc-800/60 rounded-xl p-4 flex flex-col gap-3 cursor-grab active:cursor-grabbing transition-colors ${statusCfg.hoverBorder}`}
+                                className={`bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl p-4 flex flex-col gap-3 cursor-grab active:cursor-grabbing transition-colors ${statusCfg.hoverBorder}`}
                               >
                                 {idea.context && <h4 className="text-sm font-bold text-amber-400">{idea.context}</h4>}
                                 <p className="text-xs text-zinc-300 line-clamp-4">{idea.concept}</p>
