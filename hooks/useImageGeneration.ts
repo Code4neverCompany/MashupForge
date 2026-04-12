@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { streamAIToString, extractJsonFromLLM } from '@/lib/aiClient';
 import { enhancePromptForModel } from '@/lib/modelOptimizer';
+import { MASTERPROMPT_INSTRUCTIONS } from '@/lib/masterpromptTemplate';
 import {
   type GeneratedImage,
   type GenerateOptions,
@@ -217,15 +218,20 @@ Active Genres: ${settings.agentGenres?.join(', ') || 'All'}`;
         const promptText = await streamAIToString(
           `${systemContext}
 
-Generate 4 completely distinct, highly detailed image generation prompts.
-Ensure maximum variety in characters, franchises, and settings. Do NOT repeat characters.
+${MASTERPROMPT_INSTRUCTIONS}
+
+═══════════════════════════════════════════════════
+TASK
+═══════════════════════════════════════════════════
+Generate 4 completely distinct masterprompts following the patterns and rules above. Vary the patterns across the batch (mix Character Reimagined, Cinematic What-If Event, and Epic Crossover Scene). Maximum variety in characters, franchises, and settings. Do NOT repeat characters across the 4 prompts.
+
 Return ONLY a JSON array of 4 objects, each with:
-- "prompt": string
-- "aspectRatio": string
-- "tags": array of strings
+- "prompt": string — the full masterprompt ending with the Visual Directive Tail
+- "aspectRatio": string — "16:9" for wide/epic, "9:16" for portrait/character, "1:1" otherwise
+- "tags": array of strings — 5-8 tags (universes, characters, themes)
 - "selectedNiches": array of strings
 - "selectedGenres": array of strings
-- "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)
+- "negativePrompt": string — specific to THIS image's failure modes, not generic
 
 Random Seed: ${Math.random()}`,
           { mode: 'idea' }
@@ -252,15 +258,22 @@ Random Seed: ${Math.random()}`,
         const promptText2 = await streamAIToString(
           `${systemContext}
 
-The user wants to generate images based on these ideas: ${JSON.stringify(customPrompts)}.
-Enhance these ideas into highly detailed, cinematic image generation prompts.
-Return ONLY a JSON array of objects, each with:
-- "prompt": string
-- "aspectRatio": string
-- "tags": array of strings
+${MASTERPROMPT_INSTRUCTIONS}
+
+═══════════════════════════════════════════════════
+TASK
+═══════════════════════════════════════════════════
+The user has sketched these rough ideas: ${JSON.stringify(customPrompts)}
+
+Transform EACH rough idea into a full masterprompt using the patterns and rules above. Preserve the user's core concept — the character pairing, the situation — but expand it with equipment fusions, proper-noun roles, material textures, atmosphere, and the Visual Directive Tail. Pick the pattern (A/B/C) that best fits each idea.
+
+Return ONLY a JSON array of objects (one per input idea, in the same order), each with:
+- "prompt": string — the full masterprompt ending with the Visual Directive Tail
+- "aspectRatio": string — "16:9" for wide/epic, "9:16" for portrait/character, "1:1" otherwise
+- "tags": array of strings — 5-8 tags
 - "selectedNiches": array of strings
 - "selectedGenres": array of strings
-- "negativePrompt": string (a smart, specific negative prompt for this exact image to avoid common artifacts or clashing elements)`,
+- "negativePrompt": string — specific to THIS image's failure modes`,
           { mode: 'idea' }
         );
 
