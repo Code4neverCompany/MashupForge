@@ -283,8 +283,8 @@ export function PipelinePanel() {
       </div>
 
       {/* Controls */}
-      <div className="bg-zinc-900/80 backdrop-blur-sm rounded-2xl border border-zinc-800/60 p-5 space-y-4">
-        <div className="flex items-center justify-between">
+      <div className="bg-zinc-900/80 backdrop-blur-sm rounded-2xl border border-zinc-800/60 p-4 sm:p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-zinc-300">Pipeline</span>
             <button
@@ -331,7 +331,7 @@ export function PipelinePanel() {
         </div>
 
         {/* Delay config */}
-        <div className="flex items-center gap-3 pt-2 border-t border-zinc-800/60">
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-zinc-800/60">
           <Clock className="w-4 h-4 text-zinc-500" />
           <span className="text-sm text-zinc-400">Delay between ideas:</span>
           <input
@@ -348,7 +348,7 @@ export function PipelinePanel() {
         </div>
 
         {/* Continuous mode */}
-        <div className="flex items-center gap-3 pt-2 border-t border-zinc-800/60">
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-zinc-800/60">
           <RefreshCw className="w-4 h-4 text-zinc-500" />
           <span className="text-sm text-zinc-400">Continuous mode</span>
           <button
