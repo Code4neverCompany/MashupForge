@@ -97,7 +97,8 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <motion.div 
+              <motion.div
+                role="alert"
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400 flex items-center gap-2"

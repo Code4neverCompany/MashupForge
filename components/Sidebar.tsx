@@ -212,13 +212,14 @@ Return ONLY the JSON array, no prose.`;
     <>
       {/* Mobile Backdrop */}
       {isSidebarOpen && (
-        <div 
+        <div
+          role="presentation"
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
       
-      <div className={`fixed md:static inset-y-0 left-0 z-50 w-[85vw] sm:w-80 glass-panel flex flex-col h-full shrink-0 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+      <aside aria-label="Sidebar" className={`fixed md:static inset-y-0 left-0 z-50 w-[85vw] sm:w-80 glass-panel flex flex-col h-full shrink-0 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="flex p-2 gap-2 border-b border-zinc-800/60">
           <button
             onClick={() => setActiveTab('content')}
@@ -271,16 +272,17 @@ Return ONLY the JSON array, no prose.`;
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 {images.filter(img => img.status === 'ready').map((img) => (
-                  <div 
-                    key={img.id} 
-                    className="group relative aspect-square bg-zinc-950 rounded-lg overflow-hidden border border-zinc-800 hover:border-indigo-500/50 transition-all cursor-pointer"
+                  <button
+                    key={img.id}
+                    className="group relative aspect-square bg-zinc-950 rounded-lg overflow-hidden border border-zinc-800 hover:border-indigo-500/50 transition-all cursor-pointer text-left"
                     onClick={() => {
                       setComparisonPrompt(img.prompt);
                       setView('compare');
                     }}
+                    aria-label={`Open in Studio: ${img.prompt.slice(0, 60)}`}
                   >
                     {img.url ? (
-                      <Image src={img.url} alt="" fill className="object-cover" unoptimized />
+                      <Image src={img.url} alt={`Generated: ${img.prompt.slice(0, 80)}`} fill className="object-cover" unoptimized />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Loader2 className="w-4 h-4 animate-spin text-zinc-700" />
@@ -289,7 +291,7 @@ Return ONLY the JSON array, no prose.`;
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2">
                       <p className="text-[10px] text-white line-clamp-2 leading-tight">{img.prompt}</p>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -452,14 +454,15 @@ Return ONLY the JSON array, no prose.`;
             suppressHydrationWarning
             type="submit"
             disabled={!input.trim() || isLoading}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-zinc-400 hover:text-white disabled:opacity-50 disabled:hover:text-zinc-400 transition-colors"
+            aria-label="Send message"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-zinc-400 hover:text-white disabled:opacity-50 disabled:hover:text-zinc-400 transition-colors"
           >
             <Send className="w-4 h-4" />
           </button>
         </form>
       </div>
       )}
-    </div>
+    </aside>
     </>
   );
 }
