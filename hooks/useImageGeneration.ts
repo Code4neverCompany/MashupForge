@@ -189,49 +189,8 @@ async function submitLeonardoAndPoll(params: LeonardoSubmitParams): Promise<Leon
   throw new Error('Timeout waiting for Leonardo generation');
 }
 
-function buildModerationRewriteInstruction(
-  classifications: string[],
-  failedPrompt: string
-): string {
-  const hasNsfw = classifications.some(c => c === 'NSFW' || c === 'EXTREME_VIOLENCE');
-  const hasTrademark = classifications.includes('TRADEMARK');
-
-  const nsfwBlock = hasNsfw
-    ? `PRIMARY — strip every violence, gore, war-carnage, body-horror, and fury word. These are the actual triggers. Empirical log analysis shows NSFW/EXTREME_VIOLENCE blocks on grimdark vocabulary even when character names are unchanged.
-
-   FORBIDDEN (strip all of these):
-     corpses, bodies, blood, blood-soaked, gore, gore-streaked, dismembered, mutilated, massacre, slaughter, butchery, killing, murder, executions, carnage, bloodletters, wounds, severed, mounting corpses,
-     slaying, mows down, tears through, incinerates, crushes, unleashes wrath, brings the wrath, unleash the fury,
-     nightmarish, hellish, devastated world, blasted cityscape, irradiated, radiation-twisted, mutated abominations, hulking war machines, toxic fumes, hyper-violent, harsh realities, deserters, muzzle flashes, hordes,
-     wrath, fury, ruthless, merciless, relentless, unstoppable fury, savage, brutal, gritty hyper-realism,
-     sightless eyes, scarred face, grotesque, biomechanical monstrosities, twisted flesh
-
-   USE INSTEAD: "aftermath of battle", "war-torn ruins", "battle-scarred armor", "gothic ruins", "dark cathedral", "stands over", "faces", "confronts", "overlooks", "determined", "poised", "battle-ready", "resolute", "commanding".`
-    : '';
-
-  const trademarkBlock = hasTrademark && !hasNsfw
-    ? `PRIMARY — this prompt ONLY tripped TRADEMARK, not NSFW. The short-prompt log shows named characters pass cleanly when nothing else is flagged, so the issue is likely a specific weapon or place name, or a combination with a studio reference. Replace sparingly:
-   Mjolnir → "enchanted warhammer", Lightsaber → "plasma-edged sword", Batarang → "bat-shaped throwing blade", Infinity Gauntlet → "jeweled cosmic gauntlet",
-   Asgard → "celestial Norse realm", Gotham → "rain-slicked noir megacity", Wakanda → "hidden high-tech kingdom", Hogwarts → "ancient school of sorcery", Coruscant → "galactic capital ecumenopolis".
-   Keep the character names intact UNLESS the rewrite is still failing — named characters at short length generally pass.`
-    : hasTrademark
-      ? `SECONDARY (only if the NSFW strip is not enough) — soften trademark weapon/place names: Mjolnir → "enchanted warhammer", Lightsaber → "plasma-edged sword", Asgard → "celestial Norse realm", Gotham → "rain-slicked noir megacity". Leave the character name in — the NSFW strip is the main fix.`
-      : '';
-
-  return `CONTENT MODERATION BLOCKED this prompt for: ${classifications.join(', ') || 'unknown'}.
-
-Rewrite the prompt so it passes moderation. Your PRIMARY job is to strip the language that matches the specific classifications above — not to shorten a list of trademark names.
-
-${nsfwBlock}
-
-${trademarkBlock}
-
-HARD RULES — follow ALL:
-1. Keep the rewrite SHORT — 40–60 words max. Leonardo's prompt_enhance will do the expansion. Long rewrites re-introduce the vocabulary that got blocked.
-2. Preserve the character identity and the core equipment fusion — that's the image the user wanted.
-3. Keep 1–2 quality tags ("cinematic, 8k"). Do not add a long visual-directive tail.
-4. No meta-commentary ("a crossover concept", "Fans of X will love…").
-5. Return ONLY the rewritten prompt. No explanation, no preamble, no markdown.
+function buildModerationRewriteInstruction(failedPrompt: string): string {
+  return `This prompt was blocked by content moderation. Rewrite it to be cleaner and shorter (40–60 words max). Remove any violence, gore, or explicit language. Keep the character names and core concept. Return ONLY the rewritten prompt.
 
 BLOCKED PROMPT:
 ${failedPrompt}
@@ -239,167 +198,57 @@ ${failedPrompt}
 REWRITTEN PROMPT:`;
 }
 
-function buildAggressiveRewriteInstruction(
-  classifications: string[],
-  firstRewriteFailed: string,
-  originalBlockedPrompt: string
-): string {
-  const hasNsfw = classifications.some(c => c === 'NSFW' || c === 'EXTREME_VIOLENCE');
-  const hasTrademark = classifications.includes('TRADEMARK');
-
-  const nsfwAggressive = hasNsfw
-    ? `• Strip ALL combat/war/apocalyptic/fury vocabulary — even words you thought were safe. No "battle", no "war", no "ruined", no "fallen", no "dark apocalyptic". Use peaceful static framing: "stands in a gothic cathedral", "overlooks a starfield", "poised in an ornate hall", "holds in an ancient chamber".
-• Replace every action verb with a STATIC pose verb — "stands", "holds", "overlooks", "rests upon", "faces". No motion, no combat, no confrontation.
-• Drop any word that ends in "-scarred", "-worn", "-torn", "-ravaged". Use "ornate", "gleaming", "engraved" instead.`
-    : '';
-
-  const trademarkAggressive = hasTrademark
-    ? `• Replace every named character, weapon, and place with a descriptive phrase:
-    Iron Man → "a crimson-gold armored aviator", Batman → "a gothic caped vigilante", Spider-Man → "a red-blue webslinger", Thor → "a Norse thunder god", Darth Vader → "a dark-armored Sith warlord",
-    Mjolnir → "enchanted warhammer", Lightsaber → "plasma-edged sword",
-    Asgard → "celestial Norse realm", Gotham → "rain-slicked noir megacity".
-• Drop universe names and crossover language ("from X", "reimagined as", "in the Y universe").`
-    : '';
-
-  return `THE FIRST REWRITE ALSO FAILED moderation for: ${classifications.join(', ') || 'unknown'}. This is the LAST retry before we give up.
-
-Be more aggressive on the PRIMARY trigger from the classifications above:
-
-${nsfwAggressive}
-
-${trademarkAggressive}
-
-HARD RULES:
-1. MAX 40 words. The shorter the better. Leonardo's prompt_enhance will expand.
-2. Keep ONE visual hook (the equipment fusion or unique material detail).
-3. No violence. No gore. No apocalyptic language. No iconic combat framings.
-4. Return ONLY the rewritten prompt. No explanation, no preamble.
-
-ORIGINAL BLOCKED PROMPT:
-${originalBlockedPrompt}
-
-FIRST REWRITE (also blocked):
-${firstRewriteFailed}
-
-FINAL REWRITTEN PROMPT:`;
+interface ModerationRetryCallback {
+  /** Fires once if the first submission hits a moderation block and we're about to rewrite-and-retry. */
+  onRetry: (classifications: string[]) => void;
 }
 
-// Defensive negative-prompt suffixes layered onto retry attempts so
-// the output-level moderation pass has explicit anti-trademark terms
-// in addition to whatever the masterprompt creator wrote.
-const MODERATION_NEG_HARD =
-  'trademarked logos, branded symbols, copyrighted characters, brand insignia, corporate mascots';
-const MODERATION_NEG_HARDER =
-  'trademarked logos, branded symbols, copyrighted characters, brand insignia, corporate mascots, iconic silhouettes, recognizable character poses, proper nouns, franchise references';
-
-function hardenNegativePrompt(original: string | undefined, extras: string): string {
-  if (!original || !original.trim()) return extras;
-  return `${original}, ${extras}`;
-}
-
-interface ModerationCascadeCallbacks {
-  /** Fires before each retry attempt. `attempt` is 1-based (1 = first retry after the initial submission). */
-  onRetry: (info: {
-    attempt: number;
-    maxRetries: number;
-    classifications: string[];
-    strategy: 'rewrite' | 'aggressive-rewrite';
-  }) => void;
-}
-
-interface CascadeResult {
+interface SubmitResult {
   success: LeonardoSuccess;
   finalPrompt: string;
-  /** Total submission attempts made. 1 = first-try success, 2 = rewrite succeeded, 3 = aggressive-rewrite succeeded. */
-  attemptsUsed: number;
+  /** true if the second attempt (rewrite) was used. false means first try succeeded. */
+  retried: boolean;
 }
 
 /**
- * Three-attempt moderation recovery cascade:
- *   1. Submit with the original prompt and negative.
- *   2. On moderation block → pi rewrites via buildModerationRewriteInstruction,
- *      resubmit with MODERATION_NEG_HARD appended to the negative prompt.
- *   3. On a second moderation block → pi rewrites again via
- *      buildAggressiveRewriteInstruction (strips titles, mythology names,
- *      iconic colour schemes), resubmit with MODERATION_NEG_HARDER.
- *   4. On a third block → throw the final LeonardoGenerationError with
- *      classifications intact so the outer catch surfaces the failure.
- * Non-moderation errors are rethrown immediately and skip the cascade.
+ * One-retry moderation recovery. Leonardo's moderation is empirically
+ * non-deterministic — a 3-attempt cascade with aggressive rewrites and
+ * defensive negative prompts gave marginal improvement for significant
+ * complexity. This helper does the simple thing: submit, and if it
+ * fails with a moderation classification, ask pi for a clean rewrite
+ * and try exactly one more time. No classification-aware branching,
+ * no forbidden lists, no negative-prompt escalation.
+ *
+ * Non-moderation errors rethrow immediately and skip the retry.
  */
-async function submitWithModerationCascade(
+async function submitWithOneRetry(
   initialPrompt: string,
   baseParams: Omit<LeonardoSubmitParams, 'prompt'>,
-  callbacks: ModerationCascadeCallbacks
-): Promise<CascadeResult> {
-  const maxRetries = 2;
-  let activePrompt = initialPrompt;
-  const originalPrompt = initialPrompt;
-
-  // Attempt 1 — unchanged prompt and negative.
+  callbacks: ModerationRetryCallback
+): Promise<SubmitResult> {
   try {
-    const success = await submitLeonardoAndPoll({ prompt: activePrompt, ...baseParams });
-    return { success, finalPrompt: activePrompt, attemptsUsed: 1 };
+    const success = await submitLeonardoAndPoll({ prompt: initialPrompt, ...baseParams });
+    return { success, finalPrompt: initialPrompt, retried: false };
   } catch (err) {
     const lErr = err as LeonardoGenerationError;
     const classifications = lErr.moderationClassification || [];
     if (classifications.length === 0) throw err;
 
-    console.warn('[moderation] attempt 1 blocked:', {
+    console.warn('[moderation-stats] first-try blocked:', {
+      model: baseParams.modelId,
       classifications,
-      failedPrompt: (lErr.failedPrompt || activePrompt).slice(0, 120),
+      failedPrompt: (lErr.failedPrompt || initialPrompt).slice(0, 120),
     });
-    callbacks.onRetry({ attempt: 1, maxRetries, classifications, strategy: 'rewrite' });
+    callbacks.onRetry(classifications);
 
     const rewritten = await streamAIToString(
-      buildModerationRewriteInstruction(classifications, lErr.failedPrompt || activePrompt),
+      buildModerationRewriteInstruction(lErr.failedPrompt || initialPrompt),
       { mode: 'enhance' }
     );
-    activePrompt = (rewritten || '').trim() || activePrompt;
-  }
+    const activePrompt = (rewritten || '').trim() || initialPrompt;
 
-  // Attempt 2 — first rewrite + hardened negative.
-  try {
-    const success = await submitLeonardoAndPoll({
-      prompt: activePrompt,
-      ...baseParams,
-      negativePrompt: hardenNegativePrompt(baseParams.negativePrompt, MODERATION_NEG_HARD),
-    });
-    return { success, finalPrompt: activePrompt, attemptsUsed: 2 };
-  } catch (err) {
-    const lErr = err as LeonardoGenerationError;
-    const classifications = lErr.moderationClassification || [];
-    if (classifications.length === 0) throw err;
-
-    console.warn('[moderation] attempt 2 blocked after first rewrite:', {
-      classifications,
-      failedPrompt: (lErr.failedPrompt || activePrompt).slice(0, 120),
-    });
-    callbacks.onRetry({ attempt: 2, maxRetries, classifications, strategy: 'aggressive-rewrite' });
-
-    const firstRewriteFailed = activePrompt;
-    const aggressive = await streamAIToString(
-      buildAggressiveRewriteInstruction(classifications, firstRewriteFailed, originalPrompt),
-      { mode: 'enhance' }
-    );
-    activePrompt = (aggressive || '').trim() || firstRewriteFailed;
-  }
-
-  // Attempt 3 — aggressive rewrite + even-harder negative. Any failure
-  // here propagates out and the caller surfaces it to the user.
-  try {
-    const success = await submitLeonardoAndPoll({
-      prompt: activePrompt,
-      ...baseParams,
-      negativePrompt: hardenNegativePrompt(baseParams.negativePrompt, MODERATION_NEG_HARDER),
-    });
-    return { success, finalPrompt: activePrompt, attemptsUsed: 3 };
-  } catch (err) {
-    const lErr = err as LeonardoGenerationError;
-    console.warn('[moderation] attempt 3 blocked after aggressive rewrite — giving up:', {
-      classifications: lErr.moderationClassification,
-      failedPrompt: (lErr.failedPrompt || activePrompt).slice(0, 120),
-    });
-    throw err;
+    const success = await submitLeonardoAndPoll({ prompt: activePrompt, ...baseParams });
+    return { success, finalPrompt: activePrompt, retried: true };
   }
 }
 
@@ -662,14 +511,13 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
             quality: options?.quality || 'HIGH',
           };
 
-          const { success, finalPrompt: activePrompt, attemptsUsed } = await submitWithModerationCascade(
+          const { success, finalPrompt: activePrompt, retried } = await submitWithOneRetry(
             modelPrompt,
             leonardoBaseParams,
             {
-              onRetry: ({ attempt, maxRetries, classifications, strategy }) => {
+              onRetry: (classifications) => {
                 const reasons = classifications.join(', ');
-                const label = strategy === 'rewrite' ? 'safer prompt' : 'aggressive rewrite';
-                const stageMsg = `Blocked by ${reasons} — retrying with ${label} (${attempt}/${maxRetries})…`;
+                const stageMsg = `Blocked by ${reasons} — rewriting and retrying once…`;
                 setLastError({
                   message: stageMsg,
                   classifications,
@@ -706,8 +554,8 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
               modelName: getModelName(selectedModel)
             }
           } : img));
-          if (attemptsUsed > 1) {
-            console.warn(`[moderation] Image ${i + 1} recovered after ${attemptsUsed - 1} rewrite(s).`);
+          if (retried) {
+            console.warn(`[moderation-stats] Image ${i + 1} recovered after rewrite (${selectedModel}).`);
             setLastError(null);
           }
         } catch (imgError: any) {
@@ -717,20 +565,23 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
           // the failure instead of a forever-spinning loader.
           const rawMsg = imgError?.message || 'Generation failed';
           const classifications: string[] = (imgError as LeonardoGenerationError)?.moderationClassification || [];
-          // Content-filter detection: Leonardo returns COMPLETE with 0
-          // images when GPT-Image-1.5's moderation rejects a prompt.
-          // The poll route maps that to "no images found"; surface a
-          // more actionable message so the user knows to rephrase.
           const isContentFilter =
             classifications.length > 0 ||
             rawMsg.toLowerCase().includes('no images found') ||
             rawMsg.toLowerCase().includes('complete but no images') ||
             rawMsg.toLowerCase().includes('blocked by content moderation');
+
+          console.warn('[moderation-stats] final failure:', {
+            model: selectedModel,
+            classifications,
+            message: rawMsg.slice(0, 160),
+          });
+
           let errMsg: string;
-          if (classifications.length > 0) {
-            errMsg = `Still blocked after rewrite: ${classifications.join(', ')}. Edit the prompt manually to remove trademarked names or sensitive content.`;
-          } else if (isContentFilter && selectedModel === 'gpt-image-1.5') {
-            errMsg = `GPT-1.5 filtered this prompt. Try rephrasing to avoid potentially sensitive content.`;
+          if (selectedModel === 'gpt-image-1.5' && isContentFilter) {
+            errMsg = 'GPT-image-1.5 failed the generation. This model blocks more often than the nano-banana variants — try switching model or changing the style.';
+          } else if (classifications.length > 0) {
+            errMsg = `Blocked after rewrite: ${classifications.join(', ')}. Edit the prompt manually or try a different model.`;
           } else {
             errMsg = rawMsg;
           }
@@ -843,14 +694,13 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
           quality: options?.quality || 'HIGH',
         };
 
-        const { success, finalPrompt: activePrompt, attemptsUsed } = await submitWithModerationCascade(
+        const { success, finalPrompt: activePrompt, retried } = await submitWithOneRetry(
           modelPrompt,
           leonardoBaseParams,
           {
-            onRetry: ({ attempt, maxRetries, classifications, strategy }) => {
+            onRetry: (classifications) => {
               const reasons = classifications.join(', ');
-              const label = strategy === 'rewrite' ? 'safer prompt' : 'aggressive rewrite';
-              const stageMsg = `Reroll blocked by ${reasons} — retrying with ${label} (${attempt}/${maxRetries})…`;
+              const stageMsg = `Reroll blocked by ${reasons} — rewriting and retrying once…`;
               setLastError({
                 message: stageMsg,
                 classifications,
@@ -887,8 +737,8 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
             modelName: getModelName(selectedModel)
           }
         };
-        if (attemptsUsed > 1) {
-          console.warn(`[moderation] Reroll recovered after ${attemptsUsed - 1} rewrite(s).`);
+        if (retried) {
+          console.warn(`[moderation-stats] Reroll recovered after rewrite (${selectedModel}).`);
           setLastError(null);
         }
       } catch (err) {
