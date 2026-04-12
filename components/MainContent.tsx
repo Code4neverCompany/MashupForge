@@ -1378,7 +1378,7 @@ export function MainContent() {
         </div>
         
         <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
-          <div className="relative flex bg-zinc-900/50 rounded-lg p-1 border border-zinc-800/60 overflow-x-auto hide-scrollbar snap-x group">
+          <div className="relative hidden md:flex bg-zinc-900/50 rounded-lg p-1 border border-zinc-800/60 overflow-x-auto hide-scrollbar snap-x group">
             {/* Active Tab Indicator - Animated via motion layoutId */}
             {['ideas', 'compare', 'gallery', 'captioning', 'post-ready', 'pipeline'].map((v) => (
               <button
@@ -1455,8 +1455,40 @@ export function MainContent() {
         </div>
       </header>
 
+      {/* Mobile bottom nav — replaces the header tab bar below md */}
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-900/90 backdrop-blur-xl border-t border-zinc-800/60 pb-[env(safe-area-inset-bottom)]"
+        aria-label="Primary"
+      >
+        <div className="flex justify-around items-stretch px-1 py-1">
+          {([
+            { key: 'ideas', icon: Lightbulb, label: 'Ideas' },
+            { key: 'compare', icon: Sparkles, label: 'Studio' },
+            { key: 'gallery', icon: LayoutGrid, label: 'Gallery' },
+            { key: 'captioning', icon: Edit3, label: 'Caption' },
+            { key: 'post-ready', icon: Save, label: 'Post' },
+            { key: 'pipeline', icon: Zap, label: 'Pipeline' },
+          ] as const).map(({ key, icon: Icon, label }) => {
+            const active = view === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setView(key)}
+                aria-current={active ? 'page' : undefined}
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[44px] rounded-lg transition-colors ${
+                  active ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                <span className="text-[10px] font-medium leading-none">{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-8">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
         <div className="max-w-5xl mx-auto">
           <AnimatePresence mode="wait">
             <motion.div
