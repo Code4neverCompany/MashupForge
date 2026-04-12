@@ -397,7 +397,7 @@ Return ONLY a JSON array of 4 objects, each with:
 - "tags": array of strings — 5-8 tags (universes, characters, themes)
 - "selectedNiches": array of strings
 - "selectedGenres": array of strings
-- "negativePrompt": string — 15 words max, focused on technical failure modes (blurry, deformed, extra limbs, bad anatomy)
+- "negativePrompt": string — 15 words max, focused on technical quality (blurry, deformed, extra limbs)
 
 Random Seed: ${Math.random()}`,
           { mode: 'idea' }
@@ -439,7 +439,7 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
 - "tags": array of strings — 5-8 tags
 - "selectedNiches": array of strings
 - "selectedGenres": array of strings
-- "negativePrompt": string — 15 words max, focused on technical failure modes (blurry, deformed, extra limbs, bad anatomy)`,
+- "negativePrompt": string — 15 words max, focused on technical quality (blurry, deformed, extra limbs)`,
           { mode: 'idea' }
         );
 
