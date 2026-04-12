@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * Trending research endpoint for content pipeline.
- * Takes tags/niches/genres, searches Google News RSS + Reddit JSON
- * for current trending topics, returns a structured summary.
+ * Trending research endpoint for the content pipeline.
+ *
+ * Sources:
+ *  1. SearXNG (self-hosted meta-search) on localhost:34567 — replaces
+ *     Google News RSS, which returned stale and off-topic results for
+ *     fandom/art queries. The time_range=week param ensures only
+ *     recent indexed news.
+ *  2. Reddit JSON — queried against a targeted franchise subreddit
+ *     list, split across sort=hot (quality) and sort=new (freshness).
+ *
+ * Results are date-filtered (30-day cutoff for web hits that expose a
+ * publishedDate), deduplicated, cached for 5 minutes, and returned
+ * with a `note` field when the total drops below 3 so the caller can
+ * surface a "limited data" hint.
  */
 
 interface TrendingRequest {
@@ -20,36 +31,47 @@ interface TrendResult {
   url: string;
 }
 
-const trendCache = new Map<string, { results: TrendResult[]; timestamp: number }>();
+const trendCache = new Map<string, { results: TrendResult[]; timestamp: number; note?: string }>();
 const CACHE_TTL = 5 * 60 * 1000;
+const SEARXNG_BASE = 'http://localhost:34567';
+const WEB_RESULT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
-async function fetchGoogleNews(query: string): Promise<TrendResult[]> {
+function hostnameFromUrl(u: string): string {
   try {
-    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+    return new URL(u).hostname.replace(/^www\./, '');
+  } catch {
+    return 'web';
+  }
+}
+
+async function fetchSearxng(query: string): Promise<TrendResult[]> {
+  try {
+    const url = `${SEARXNG_BASE}/search?q=${encodeURIComponent(query)}&format=json&time_range=week&categories=news`;
     const res = await fetch(url, {
       signal: AbortSignal.timeout(8000),
-      headers: { 'User-Agent': 'Mozilla/5.0' },
+      headers: { 'User-Agent': 'MashupForge/1.0' },
     });
     if (!res.ok) return [];
-    const xml = await res.text();
+    const data = await res.json();
     const items: TrendResult[] = [];
-    // Simple RSS parsing — extract <title> and <link> from <item> blocks
-    const itemRegex = /<item[\s\S]*?<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>|<item[\s\S]*?<title>([\s\S]*?)<\/title>/gi;
-    const linkRegex = /<link>([\s\S]*?)<\/link>/gi;
-    const items_raw = xml.split('<item>');
-    for (let i = 1; i < Math.min(items_raw.length, 6); i++) {
-      const block = items_raw[i];
-      const titleMatch = block.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/) ||
-                         block.match(/<title>([\s\S]*?)<\/title>/);
-      const linkMatch = block.match(/<link>([\s\S]*?)<\/link>/);
-      if (titleMatch) {
-        items.push({
-          topic: query,
-          headline: titleMatch[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"').trim(),
-          source: 'Google News',
-          url: linkMatch?.[1]?.trim() || '',
-        });
+    const now = Date.now();
+    for (const r of data?.results || []) {
+      if (!r?.title || !r?.url) continue;
+      // Reject anything older than 30 days IF we can parse a date.
+      // Many SearXNG engines don't expose publishedDate; skip filter
+      // in that case rather than drop the whole result.
+      const rawDate = r.publishedDate || r.pubdate || r.date;
+      if (rawDate) {
+        const published = new Date(rawDate).getTime();
+        if (!Number.isNaN(published) && now - published > WEB_RESULT_MAX_AGE_MS) continue;
       }
+      items.push({
+        topic: query,
+        headline: String(r.title).trim(),
+        source: hostnameFromUrl(r.url),
+        url: r.url,
+      });
+      if (items.length >= 6) break;
     }
     return items;
   } catch {
@@ -57,14 +79,18 @@ async function fetchGoogleNews(query: string): Promise<TrendResult[]> {
   }
 }
 
-async function fetchReddit(query: string, subreddits?: string[]): Promise<TrendResult[]> {
+async function fetchReddit(
+  query: string,
+  subreddits: string[] | undefined,
+  sort: 'hot' | 'new' = 'hot'
+): Promise<TrendResult[]> {
   try {
     let url: string;
     if (subreddits && subreddits.length > 0) {
       const subQuery = subreddits.join('+');
-      url = `https://www.reddit.com/r/${subQuery}/search.json?q=${encodeURIComponent(query)}&sort=hot&t=week&limit=5&restrict_sr=on`;
+      url = `https://www.reddit.com/r/${subQuery}/search.json?q=${encodeURIComponent(query)}&sort=${sort}&t=week&limit=8&restrict_sr=on`;
     } else {
-      url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=hot&t=week&limit=5`;
+      url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=${sort}&t=week&limit=8`;
     }
     const res = await fetch(url, {
       signal: AbortSignal.timeout(8000),
@@ -73,9 +99,12 @@ async function fetchReddit(query: string, subreddits?: string[]): Promise<TrendR
     if (!res.ok) return [];
     const data = await res.json();
     const items: TrendResult[] = [];
+    // sort=new posts often have low scores because they're fresh;
+    // drop the score floor there so genuinely new content surfaces.
+    const minScore = sort === 'new' ? 1 : 5;
     for (const child of data?.data?.children || []) {
       const post = child.data;
-      if (post.title && post.score > 5) {
+      if (post?.title && post?.score >= minScore) {
         items.push({
           topic: query,
           headline: `[${post.score}↑] ${post.title}`,
@@ -106,10 +135,13 @@ export async function POST(req: NextRequest) {
         results: cached.results,
         summary: cached.results.slice(0, 15).map(item => `- [${item.source}] ${item.headline}`).join('\n'),
         queriesUsed: ['(cached)'],
+        note: cached.note,
       });
     }
 
-    // Build franchise-aware search queries.
+    // Franchise → targeted subreddits. Order matters: the first few
+    // entries for each franchise are its main subs, deeper entries are
+    // lore/discussion subs that often have slower but richer threads.
     const FRANCHISE_SUBREDDITS: Record<string, string[]> = {
       'star wars': ['StarWars', 'StarWarsCantina', 'MawInstallation'],
       'marvel': ['MarvelStudios', 'marvelstudiosspoilers', 'comicbooks'],
@@ -118,24 +150,46 @@ export async function POST(req: NextRequest) {
       'anime': ['Anime', 'AnimeArt', 'ImaginaryAnime'],
       'cyberpunk': ['cyberpunkgame', 'cyberpunk'],
       'lord of the rings': ['lotr', 'MiddleEarth'],
+      'star trek': ['startrek', 'DaystromInstitute'],
+      'doctor who': ['doctorwho', 'gallifrey'],
+      'harry potter': ['harrypotter', 'HPMOR'],
+      'game of thrones': ['gameofthrones', 'asoiaf'],
+      'zelda': ['zelda', 'truezelda'],
+      'pokemon': ['pokemon', 'pokemonTCG'],
+      'minecraft': ['Minecraft', 'MinecraftBuilds'],
+      'destiny': ['DestinyTheGame'],
+      'halo': ['halo', 'halostory'],
+      'final fantasy': ['FinalFantasy', 'FFXIV'],
+      'one piece': ['OnePiece', 'MangaCollectors'],
+      'demon slayer': ['KimetsuNoYaiba'],
+      'jujutsu kaisen': ['JuJutsuKaisen'],
+      'dragon ball': ['dragonball', 'dbz'],
+      'transformers': ['transformers'],
+      'jurassic park': ['JurassicPark'],
+      'alien': ['LV426', 'aliensfranchise'],
+      'predator': ['PredatorMovies'],
     };
 
     const ART_SUBREDDITS = ['ImaginaryCharacterArt', 'DigitalArt', 'ImaginaryMonsters', 'conceptart'];
 
     const allTopics = [...new Set([...tags, ...niches])];
-    const searchTerms: string[] = [];
+    const lowerNiches = allTopics.map(n => n.toLowerCase());
+    const currentYear = new Date().getUTCFullYear();
 
-    if (ideaConcept) {
-      const keywords = ideaConcept
-        .split(/[\s,;.]+/)
-        .filter(w => w.length > 3 && !['with', 'from', 'that', 'this', 'what', 'where', 'when', 'wielding', 'wearing', 'standing', 'fighting'].includes(w.toLowerCase()))
-        .slice(0, 4);
-      if (keywords.length > 0) {
-        searchTerms.push(keywords.join(' '));
-      }
+    // Freshness-biased query construction. For each active niche we
+    // ask for "news YEAR", "announcement", and "new release" so the
+    // search engines are forced to surface recent content instead of
+    // the all-time-top art posts.
+    const freshTerms: string[] = [];
+    const crossoverTerms: string[] = [];
+    const ideaTerms: string[] = [];
+
+    for (const topic of allTopics.slice(0, 4)) {
+      freshTerms.push(`${topic} news ${currentYear}`);
+      freshTerms.push(`${topic} announcement`);
+      freshTerms.push(`${topic} new release upcoming`);
     }
 
-    const lowerNiches = allTopics.map(n => n.toLowerCase());
     const franchisePairs: string[][] = [];
     for (let i = 0; i < lowerNiches.length && franchisePairs.length < 3; i++) {
       for (let j = i + 1; j < lowerNiches.length && franchisePairs.length < 3; j++) {
@@ -143,15 +197,28 @@ export async function POST(req: NextRequest) {
       }
     }
     for (const [a, b] of franchisePairs) {
-      searchTerms.push(`${a} ${b} crossover art`);
+      crossoverTerms.push(`${a} ${b} crossover art`);
     }
 
-    for (const topic of allTopics.slice(0, 2)) {
-      searchTerms.push(`${topic} art trending`);
+    if (ideaConcept) {
+      const keywords = ideaConcept
+        .split(/[\s,;.]+/)
+        .filter(w => w.length > 3 && !['with', 'from', 'that', 'this', 'what', 'where', 'when', 'wielding', 'wearing', 'standing', 'fighting'].includes(w.toLowerCase()))
+        .slice(0, 4);
+      if (keywords.length > 0) {
+        ideaTerms.push(keywords.join(' '));
+      }
     }
 
-    const uniqueTerms = [...new Set(searchTerms)].slice(0, 6);
+    // Cap: freshTerms drive the freshness angle (web + reddit hot),
+    // crossoverTerms power the art-sub search (reddit hot), ideaTerms
+    // add specificity. Total fetches stay bounded.
+    const webTerms = [...new Set([...freshTerms, ...ideaTerms])].slice(0, 6);
+    const redditHotTerms = [...new Set([...freshTerms, ...crossoverTerms, ...ideaTerms])].slice(0, 6);
+    const redditNewTerms = [...new Set(freshTerms)].slice(0, 3);
 
+    // Build the targeted sub list per matched franchise, union'd with
+    // the art subs. Cap at 12 so the r/a+b+c+... path stays short.
     const targetedSubs: string[] = [...ART_SUBREDDITS];
     for (const niche of lowerNiches) {
       for (const [franchise, subs] of Object.entries(FRANCHISE_SUBREDDITS)) {
@@ -160,39 +227,48 @@ export async function POST(req: NextRequest) {
         }
       }
     }
-    const uniqueSubs = [...new Set(targetedSubs)].slice(0, 10);
+    const uniqueSubs = [...new Set(targetedSubs.map(s => s.trim()).filter(Boolean))].slice(0, 12);
 
-    // Fetch trending data in parallel
+    // Dispatch everything in parallel.
+    const fetches: Promise<TrendResult[]>[] = [
+      ...webTerms.map(t => fetchSearxng(t)),
+      ...redditHotTerms.map(t => fetchReddit(t, uniqueSubs, 'hot')),
+      ...redditNewTerms.map(t => fetchReddit(t, uniqueSubs, 'new')),
+    ];
+
     const allResults: TrendResult[] = [];
-    const fetches = uniqueTerms.flatMap(term => [
-      fetchGoogleNews(term),
-      fetchReddit(term, uniqueSubs),
-    ]);
-
-    const results = await Promise.allSettled(fetches);
-    for (const result of results) {
+    const settled = await Promise.allSettled(fetches);
+    for (const result of settled) {
       if (result.status === 'fulfilled') {
         allResults.push(...result.value);
       }
     }
 
-    // Deduplicate by headline similarity
+    // Deduplicate by headline prefix (strips Reddit score bracket so
+    // the same title doesn't land twice from hot + new).
     const seen = new Set<string>();
     const unique: TrendResult[] = [];
     for (const item of allResults) {
-      const key = item.headline.toLowerCase().slice(0, 50);
+      const key = item.headline
+        .toLowerCase()
+        .replace(/^\[\d+↑\]\s*/, '')
+        .slice(0, 60);
       if (!seen.has(key)) {
         seen.add(key);
         unique.push(item);
       }
     }
 
-    // Build trending context summary
-    const summary = unique.slice(0, 15).map(item =>
-      `- [${item.source}] ${item.headline}`
-    ).join('\n');
+    const note = unique.length < 3
+      ? 'Limited trending data — consider broader niches'
+      : undefined;
 
-    trendCache.set(cacheKey, { results: unique.slice(0, 15), timestamp: Date.now() });
+    const topResults = unique.slice(0, 15);
+    const summary = topResults
+      .map(item => `- [${item.source}] ${item.headline}`)
+      .join('\n');
+
+    trendCache.set(cacheKey, { results: topResults, timestamp: Date.now(), note });
 
     if (trendCache.size > 50) {
       const now = Date.now();
@@ -203,9 +279,14 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      results: unique.slice(0, 15),
+      results: topResults,
       summary,
-      queriesUsed: uniqueTerms,
+      queriesUsed: {
+        web: webTerms,
+        redditHot: redditHotTerms,
+        redditNew: redditNewTerms,
+      },
+      note,
     });
   } catch (e: any) {
     return NextResponse.json(
