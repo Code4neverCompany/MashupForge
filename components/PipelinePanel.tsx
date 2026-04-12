@@ -20,7 +20,6 @@ import {
   Edit3,
   Calendar,
   Send,
-  LayoutGrid,
   X,
   RefreshCw,
 } from 'lucide-react';

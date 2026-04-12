@@ -20,14 +20,12 @@ import {
   Filter, 
   Video,
   Columns,
-  Maximize,
   MinusCircle,
   Tag,
   FolderPlus,
   Plus,
   Minus,
   ChevronDown,
-  Layers,
   XCircle,
   CheckCircle2,
   Folder,
@@ -2311,7 +2309,7 @@ export function MainContent() {
                                   </div>
                                   {(anchor.postHashtags || []).length > 0 && (
                                     <div className="flex flex-wrap gap-1">
-                                      {anchor.postHashtags!.map((tag, i) => (
+                                      {(anchor.postHashtags ?? []).map((tag, i) => (
                                         <span
                                           key={`${tag}-${i}`}
                                           className="px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-[10px] text-zinc-300"
@@ -2461,7 +2459,7 @@ export function MainContent() {
                                   </label>
                                   {(img.postHashtags || []).length > 0 ? (
                                     <div className="flex flex-wrap gap-1">
-                                      {img.postHashtags!.map((tag, i) => (
+                                      {(img.postHashtags ?? []).map((tag, i) => (
                                         <span
                                           key={`${tag}-${i}`}
                                           className="inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-[10px] text-zinc-300"
@@ -3523,7 +3521,7 @@ export function MainContent() {
                                   </div>
                                   {(anchor.postHashtags || []).length > 0 && (
                                     <div className="flex flex-wrap gap-1">
-                                      {anchor.postHashtags!.map((tag, i) => (
+                                      {(anchor.postHashtags ?? []).map((tag, i) => (
                                         <span
                                           key={`${tag}-${i}`}
                                           className="px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-[10px] text-zinc-300"
@@ -3715,7 +3713,7 @@ export function MainContent() {
                                     </label>
                                     {(img.postHashtags || []).length > 0 ? (
                                       <div className="flex flex-wrap gap-1">
-                                        {img.postHashtags!.map((tag, i) => (
+                                        {(img.postHashtags ?? []).map((tag, i) => (
                                           <span
                                             key={`${tag}-${i}`}
                                             className="inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-[10px] text-zinc-300"
