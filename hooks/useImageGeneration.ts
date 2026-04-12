@@ -96,6 +96,114 @@ export async function applyWatermark(baseImageSrc: string, settings: WatermarkSe
   });
 }
 
+/**
+ * Submit-and-poll helper used by both the main generate loop and
+ * rerollImage. Returns the Leonardo success payload or throws. On
+ * FAILED the thrown Error is annotated with `moderationClassification`
+ * and `failedPrompt` so callers can detect content-moderation blocks
+ * and decide whether to rewrite + retry.
+ */
+interface LeonardoSubmitParams {
+  prompt: string;
+  negativePrompt?: string;
+  modelId: string;
+  width: number;
+  height: number;
+  styleIds?: string[];
+  apiKey?: string;
+  quality?: string;
+}
+
+interface LeonardoSuccess {
+  url: string;
+  imageId?: string;
+  seed?: number;
+}
+
+export type LeonardoGenerationError = Error & {
+  moderationClassification?: string[];
+  failedPrompt?: string;
+  moderation?: unknown;
+};
+
+async function submitLeonardoAndPoll(params: LeonardoSubmitParams): Promise<LeonardoSuccess> {
+  const res = await fetch('/api/leonardo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt: params.prompt,
+      negative_prompt: params.negativePrompt,
+      modelId: params.modelId,
+      width: params.width,
+      height: params.height,
+      styleIds: params.styleIds,
+      apiKey: params.apiKey,
+      quality: params.quality || 'HIGH',
+    }),
+  });
+  if (!res.ok) {
+    let errMessage = 'Leonardo API failed';
+    try {
+      const errData = await res.json();
+      errMessage = errData.error || errMessage;
+    } catch {
+      const text = await res.text();
+      errMessage = `Server error (${res.status}): ${text.slice(0, 100)}...`;
+    }
+    throw new Error(errMessage);
+  }
+  const data = await res.json();
+  if (!data.generationId) throw new Error('Leonardo returned no generationId');
+
+  // Initial delay: Leonardo's Hasura layer needs ~3s to commit the
+  // generation before status polls return a usable result.
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  let attempts = 0;
+  while (attempts < 150) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    attempts++;
+    const statusRes = await fetch(`/api/leonardo/${data.generationId}`);
+    if (!statusRes.ok) {
+      const errText = await statusRes.text();
+      throw new Error(`Failed to check status: ${errText.slice(0, 100)}`);
+    }
+    const statusData = await statusRes.json();
+    if (statusData.status === 'COMPLETE') {
+      return {
+        url: statusData.url,
+        imageId: statusData.imageId,
+        seed: statusData.seed,
+      };
+    }
+    if (statusData.status === 'FAILED') {
+      const classifications: string[] = Array.isArray(statusData.moderation?.moderationClassification)
+        ? statusData.moderation.moderationClassification
+        : [];
+      const err = new Error(statusData.error || 'Leonardo generation failed') as LeonardoGenerationError;
+      err.moderationClassification = classifications;
+      err.failedPrompt = statusData.failedPrompt || params.prompt;
+      err.moderation = statusData.moderation;
+      throw err;
+    }
+  }
+  throw new Error('Timeout waiting for Leonardo generation');
+}
+
+function buildModerationRewriteInstruction(reasons: string, failedPrompt: string): string {
+  return `The following image prompt was BLOCKED by content moderation for: ${reasons}. Rewrite it to avoid trademarked character names and potentially sensitive content. Use DESCRIPTIVE terms instead of proper nouns (e.g. crimson-gold armored hero instead of Iron Man, enchanted warhammer instead of Mjolnir, gothic caped crusader instead of Batman). Keep the same visual intent and quality. Return ONLY the rewritten prompt.
+
+BLOCKED PROMPT:
+${failedPrompt}`;
+}
+
+export interface LastGenerationError {
+  message: string;
+  classifications: string[];
+  failedPrompt?: string;
+  /** true when the retry also failed and the user needs to edit manually. */
+  retried: boolean;
+}
+
 interface UseImageGenerationDeps {
   settings: UserSettings;
   updateImageTags: (id: string, tags: string[]) => void;
@@ -106,8 +214,10 @@ export function useImageGeneration({ settings, updateImageTags }: UseImageGenera
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState('');
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [lastError, setLastError] = useState<LastGenerationError | null>(null);
 
   const clearGenerationError = () => setGenerationError(null);
+  const clearLastError = () => setLastError(null);
 
   const autoTagImage = async (id: string, providedImg?: GeneratedImage) => {
     const img = providedImg || [...images].find(i => i.id === id);
@@ -335,80 +445,79 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
             return match ? [match.uuid] : undefined;
           })();
 
-          const res = await fetch('/api/leonardo', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              prompt: modelPrompt,
-              negative_prompt: generatedNegativePrompt,
-              modelId: selectedModel,
-              width: dims.width,
-              height: dims.height,
-              styleIds: leonardoStyleUuids,
-              apiKey: settings.apiKeys.leonardo,
-              quality: options?.quality || 'HIGH',
-            })
-          });
+          const leonardoBaseParams = {
+            negativePrompt: generatedNegativePrompt,
+            modelId: selectedModel,
+            width: dims.width,
+            height: dims.height,
+            styleIds: leonardoStyleUuids,
+            apiKey: settings.apiKeys.leonardo,
+            quality: options?.quality || 'HIGH',
+          };
 
-          if (!res.ok) {
-            let errMessage = 'Leonardo API failed';
-            try {
-              const errData = await res.json();
-              errMessage = errData.error || errMessage;
-            } catch (e) {
-              const text = await res.text();
-              errMessage = `Server error (${res.status}): ${text.slice(0, 100)}...`;
-            }
-            throw new Error(errMessage);
+          // First attempt + automatic rewrite-and-retry on moderation.
+          // Max one retry — if the rewrite is still blocked we bail to
+          // the outer catch and surface the full reason to the user.
+          let activePrompt = modelPrompt;
+          let retried = false;
+          let success: LeonardoSuccess;
+          try {
+            success = await submitLeonardoAndPoll({ prompt: activePrompt, ...leonardoBaseParams });
+          } catch (err) {
+            const lErr = err as LeonardoGenerationError;
+            const classifications = lErr.moderationClassification || [];
+            if (classifications.length === 0) throw err;
+
+            const reasons = classifications.join(', ');
+            console.warn(`[leonardo retry] Image ${i + 1} blocked by ${reasons}. Rewriting prompt and retrying once.`);
+            setLastError({
+              message: `Generation blocked: ${reasons}. Retrying with safer prompt…`,
+              classifications,
+              failedPrompt: lErr.failedPrompt,
+              retried: false,
+            });
+            setImages(prev => prev.map(img =>
+              img.id === placeholders[i].id
+                ? { ...img, error: `Blocked: ${reasons}. Retrying with safer prompt…` }
+                : img
+            ));
+            setProgress(`Blocked by ${reasons} — rewriting prompt and retrying…`);
+
+            const rewritten = await streamAIToString(
+              buildModerationRewriteInstruction(reasons, lErr.failedPrompt || activePrompt),
+              { mode: 'enhance' }
+            );
+            activePrompt = (rewritten || '').trim() || activePrompt;
+            retried = true;
+
+            setProgress(`Retrying image ${i + 1} with rewritten prompt…`);
+            success = await submitLeonardoAndPoll({ prompt: activePrompt, ...leonardoBaseParams });
           }
 
-          const data = await res.json();
-          if (data.generationId) {
-            // Initial delay: Leonardo's Hasura layer needs ~3s to commit the
-            // generation before status polls return a usable result. Polling
-            // earlier triggers the auth-hook 500 path on the server.
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            let status = 'PENDING';
-            let attempts = 0;
-            while (status !== 'COMPLETE' && attempts < 150) {
-              await new Promise(resolve => setTimeout(resolve, 2000));
-              attempts++;
-              const statusRes = await fetch(`/api/leonardo/${data.generationId}`);
-              if (!statusRes.ok) {
-                const errText = await statusRes.text();
-                throw new Error(`Failed to check status: ${errText.slice(0, 100)}`);
-              }
-              const statusData = await statusRes.json();
-              status = statusData.status;
-              if (status === 'COMPLETE') {
-                let finalUrl = statusData.url;
-                if (settings.watermark?.enabled) {
-                  finalUrl = await applyWatermark(finalUrl, settings.watermark, settings.channelName);
-                }
-                const generatedTags = await ensureTags(item.prompt, item.tags);
-                setImages(prev => prev.map(img => img.id === placeholders[i].id ? {
-                  id: `img-${Date.now()}-${i}`,
-                  url: finalUrl,
-                  prompt: modelPrompt,
-                  tags: generatedTags,
-                  imageId: statusData.imageId,
-                  seed: statusData.seed,
-                  negativePrompt: generatedNegativePrompt,
-                  aspectRatio: currentAspectRatio,
-                  status: 'ready',
-                  modelInfo: {
-                    provider: 'leonardo',
-                    modelId: selectedModel,
-                    modelName: getModelName(selectedModel)
-                  }
-                } : img));
-              } else if (status === 'FAILED') {
-                throw new Error(statusData.error || 'Leonardo generation failed');
-              }
+          let finalUrl = success.url;
+          if (settings.watermark?.enabled) {
+            finalUrl = await applyWatermark(finalUrl, settings.watermark, settings.channelName);
+          }
+          const generatedTags = await ensureTags(activePrompt, item.tags);
+          setImages(prev => prev.map(img => img.id === placeholders[i].id ? {
+            id: `img-${Date.now()}-${i}`,
+            url: finalUrl,
+            prompt: activePrompt,
+            tags: generatedTags,
+            imageId: success.imageId,
+            seed: success.seed,
+            negativePrompt: generatedNegativePrompt,
+            aspectRatio: currentAspectRatio,
+            status: 'ready',
+            modelInfo: {
+              provider: 'leonardo',
+              modelId: selectedModel,
+              modelName: getModelName(selectedModel)
             }
-            if (status !== 'COMPLETE') {
-              throw new Error('Timeout waiting for Leonardo generation');
-            }
+          } : img));
+          if (retried) {
+            console.warn(`[leonardo retry] Image ${i + 1} recovered after prompt rewrite.`);
+            setLastError(null);
           }
         } catch (imgError: any) {
           console.error(`Error generating image ${i + 1} with ${modelName}:`, imgError);
@@ -416,16 +525,30 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
           // to 'error' with a human-readable reason so the UI can show
           // the failure instead of a forever-spinning loader.
           const rawMsg = imgError?.message || 'Generation failed';
+          const classifications: string[] = (imgError as LeonardoGenerationError)?.moderationClassification || [];
           // Content-filter detection: Leonardo returns COMPLETE with 0
           // images when GPT-Image-1.5's moderation rejects a prompt.
           // The poll route maps that to "no images found"; surface a
           // more actionable message so the user knows to rephrase.
           const isContentFilter =
+            classifications.length > 0 ||
             rawMsg.toLowerCase().includes('no images found') ||
-            rawMsg.toLowerCase().includes('complete but no images');
-          const errMsg = isContentFilter && selectedModel === 'gpt-image-1.5'
-            ? `GPT-1.5 filtered this prompt. Try rephrasing to avoid potentially sensitive content.`
-            : rawMsg;
+            rawMsg.toLowerCase().includes('complete but no images') ||
+            rawMsg.toLowerCase().includes('blocked by content moderation');
+          let errMsg: string;
+          if (classifications.length > 0) {
+            errMsg = `Still blocked after rewrite: ${classifications.join(', ')}. Edit the prompt manually to remove trademarked names or sensitive content.`;
+          } else if (isContentFilter && selectedModel === 'gpt-image-1.5') {
+            errMsg = `GPT-1.5 filtered this prompt. Try rephrasing to avoid potentially sensitive content.`;
+          } else {
+            errMsg = rawMsg;
+          }
+          setLastError({
+            message: errMsg,
+            classifications,
+            failedPrompt: (imgError as LeonardoGenerationError)?.failedPrompt,
+            retried: true,
+          });
           setImages(prev => prev.map(img =>
             img.id === placeholders[i].id
               ? { ...img, status: 'error', error: errMsg }
@@ -519,81 +642,89 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
           return match ? [match.uuid] : undefined;
         })();
 
-        const res = await fetch('/api/leonardo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: modelPrompt,
-            negative_prompt: modelNegPrompt,
-            modelId: selectedModel,
-            width: dims.width,
-            height: dims.height,
-            styleIds: leonardoStyleUuids,
-            apiKey: settings.apiKeys.leonardo,
-            quality: options?.quality || 'HIGH',
-          })
-        });
+        const leonardoBaseParams = {
+          negativePrompt: modelNegPrompt,
+          modelId: selectedModel,
+          width: dims.width,
+          height: dims.height,
+          styleIds: leonardoStyleUuids,
+          apiKey: settings.apiKeys.leonardo,
+          quality: options?.quality || 'HIGH',
+        };
 
-        if (!res.ok) {
-          let errMessage = 'Leonardo API failed';
-          try {
-            const errData = await res.json();
-            errMessage = errData.error || errMessage;
-          } catch (e) {
-            const text = await res.text();
-            errMessage = `Server error (${res.status}): ${text.slice(0, 100)}...`;
-          }
-          throw new Error(errMessage);
+        let activePrompt = modelPrompt;
+        let retried = false;
+        let success: LeonardoSuccess;
+        try {
+          success = await submitLeonardoAndPoll({ prompt: activePrompt, ...leonardoBaseParams });
+        } catch (err) {
+          const lErr = err as LeonardoGenerationError;
+          const classifications = lErr.moderationClassification || [];
+          if (classifications.length === 0) throw err;
+
+          const reasons = classifications.join(', ');
+          console.warn(`[leonardo retry] Reroll blocked by ${reasons}. Rewriting prompt and retrying once.`);
+          setLastError({
+            message: `Reroll blocked: ${reasons}. Retrying with safer prompt…`,
+            classifications,
+            failedPrompt: lErr.failedPrompt,
+            retried: false,
+          });
+          setImages(prev => prev.map(img =>
+            img.id === id
+              ? { ...img, error: `Blocked: ${reasons}. Retrying with safer prompt…` }
+              : img
+          ));
+          setProgress(`Blocked by ${reasons} — rewriting prompt and retrying…`);
+
+          const rewritten = await streamAIToString(
+            buildModerationRewriteInstruction(reasons, lErr.failedPrompt || activePrompt),
+            { mode: 'enhance' }
+          );
+          activePrompt = (rewritten || '').trim() || activePrompt;
+          retried = true;
+
+          setProgress('Retrying reroll with rewritten prompt…');
+          success = await submitLeonardoAndPoll({ prompt: activePrompt, ...leonardoBaseParams });
         }
 
-        const data = await res.json();
-        if (data.generationId) {
-          // Initial delay: see comment in main generate path.
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          let status = 'PENDING';
-          let attempts = 0;
-          while (status !== 'COMPLETE' && attempts < 150) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            attempts++;
-            const statusRes = await fetch(`/api/leonardo/${data.generationId}`);
-            if (!statusRes.ok) {
-              const errText = await statusRes.text();
-              throw new Error(`Failed to check status: ${errText.slice(0, 100)}`);
-            }
-            const statusData = await statusRes.json();
-            status = statusData.status;
-            if (status === 'COMPLETE') {
-              let finalUrl = statusData.url;
-              if (settings.watermark?.enabled) {
-                finalUrl = await applyWatermark(finalUrl, settings.watermark, settings.channelName);
-              }
-              const generatedTags = await ensureTags(enhancedPrompt, []);
-              newImg = {
-                id: `img-${Date.now()}-reroll`,
-                url: finalUrl,
-                prompt: modelPrompt,
-                tags: generatedTags,
-                imageId: statusData.imageId,
-                seed: statusData.seed,
-                negativePrompt: modelNegPrompt,
-                aspectRatio: currentAspectRatio,
-                status: 'ready',
-                modelInfo: {
-                  provider: 'leonardo',
-                  modelId: selectedModel,
-                  modelName: getModelName(selectedModel)
-                }
-              };
-            } else if (status === 'FAILED') {
-              throw new Error(statusData.error || 'Leonardo generation failed');
-            }
+        let finalUrl = success.url;
+        if (settings.watermark?.enabled) {
+          finalUrl = await applyWatermark(finalUrl, settings.watermark, settings.channelName);
+        }
+        const generatedTags = await ensureTags(activePrompt, []);
+        newImg = {
+          id: `img-${Date.now()}-reroll`,
+          url: finalUrl,
+          prompt: activePrompt,
+          tags: generatedTags,
+          imageId: success.imageId,
+          seed: success.seed,
+          negativePrompt: modelNegPrompt,
+          aspectRatio: currentAspectRatio,
+          status: 'ready',
+          modelInfo: {
+            provider: 'leonardo',
+            modelId: selectedModel,
+            modelName: getModelName(selectedModel)
           }
-          if (status !== 'COMPLETE') {
-            throw new Error('Timeout waiting for Leonardo generation');
-          }
+        };
+        if (retried) {
+          console.warn('[leonardo retry] Reroll recovered after prompt rewrite.');
+          setLastError(null);
         }
       } catch (err) {
         console.error('Leonardo reroll failed:', err);
+        const lErr = err as LeonardoGenerationError;
+        const classifications = lErr?.moderationClassification || [];
+        if (classifications.length > 0) {
+          setLastError({
+            message: `Still blocked after rewrite: ${classifications.join(', ')}. Edit the prompt manually.`,
+            classifications,
+            failedPrompt: lErr.failedPrompt,
+            retried: true,
+          });
+        }
         throw err;
       }
 
@@ -623,6 +754,8 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
     progress,
     generationError,
     clearGenerationError,
+    lastError,
+    clearLastError,
     generateImages,
     rerollImage,
     generateNegativePrompt,
