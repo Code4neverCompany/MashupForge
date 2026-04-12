@@ -5,8 +5,8 @@
   "identifier": "com.4nevercompany.mashupforge",
   "build": {
     "frontendDist": "https://mashup-studio.vercel.app",
-    "devUrl": "http://localhost:3100",
-    "beforeDevCommand": "npm run dev"
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "npx next dev"
   },
   "app": {
     "windows": [
