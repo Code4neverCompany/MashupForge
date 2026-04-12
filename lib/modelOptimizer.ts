@@ -1,26 +1,21 @@
 /**
- * Per-model prompt optimizer.
+ * Per-model metadata selector.
  *
- * Each Leonardo model has different strengths — some prefer concise
- * stylised prompts with explicit keywords, others want long natural
- * language, some render text correctly, some reject negative prompts.
- * This helper asks pi (via /api/pi/prompt) to rewrite the caller's
- * prompt for the target model AND pick the best supported
- * style/aspect ratio/negative prompt from the model's catalog.
+ * Previously this file asked pi for a second LLM pass that rewrote
+ * the caller's prompt — bolting on generic "quality booster" keywords
+ * that degraded specificity. That role has moved upstream: the
+ * masterprompt template in `lib/masterpromptTemplate.ts` is injected
+ * into the idea-generation call so the prompt arrives here already
+ * hyper-detailed with equipment fusions, proper nouns, atmosphere and
+ * inline quality signals.
  *
- * The pi call returns a JSON object that we parse with
- * extractJsonFromLLM so reasoning-model trailing prose doesn't break
- * the flow. Any failure falls back to the raw base prompt with no
- * parameter overrides so a pi glitch can't block Leonardo.
+ * All this function does now is pick MODEL METADATA — style, aspect
+ * ratio, negative prompt — from the options the caller already has.
+ * It returns the basePrompt unchanged. The async signature is kept so
+ * existing callers don't churn, even though the body is synchronous.
  */
 
-import { streamAIToString, extractJsonFromLLM } from './aiClient';
-import {
-  LEONARDO_MODELS,
-  MODEL_PROMPT_GUIDES,
-  getLeonardoModel,
-} from '../types/mashup';
-import { CONCEPT_ART_NEGATIVES, CONCEPT_ART_NEGATIVES_SHORT, isConceptArtPrompt } from './negativePrompts';
+import { getLeonardoModel } from '../types/mashup';
 
 export interface ModelEnhancement {
   prompt: string;
@@ -38,92 +33,28 @@ export interface EnhanceOptions {
   negativePrompt?: string;
 }
 
-function getModelName(id: string): string {
-  return LEONARDO_MODELS.find((m) => m.id === id)?.name || id;
-}
-
 /**
- * Rewrite a base prompt for the target Leonardo model and suggest
- * model-aware parameters. Returns the base prompt unchanged if the
- * model has no guide entry or if pi errors.
+ * Return the base prompt unchanged and forward any metadata the caller
+ * already has. gpt-image-1.5 rejects negative prompts entirely — we
+ * strip them here so callers don't have to special-case it downstream.
  */
 export async function enhancePromptForModel(
   basePrompt: string,
   modelId: string,
   options?: EnhanceOptions
 ): Promise<ModelEnhancement> {
-  const guide = MODEL_PROMPT_GUIDES[modelId];
-  if (!guide) {
-    // No model guide — still apply concept art negatives
-    if (isConceptArtPrompt(basePrompt)) {
-      const neg = basePrompt.length > 600 ? CONCEPT_ART_NEGATIVES_SHORT : CONCEPT_ART_NEGATIVES;
-      return { prompt: `${basePrompt}. Avoid: ${neg}` };
-    }
-    return { prompt: basePrompt };
-  }
-
-  const isConceptArt = isConceptArtPrompt(basePrompt);
-  const conceptArtNegBlock = isConceptArt
-    ? (basePrompt.length > 600 ? CONCEPT_ART_NEGATIVES_SHORT : CONCEPT_ART_NEGATIVES)
-    : '';
-
-  const modelConfig = getLeonardoModel(modelId);
-  const supportedRatios = modelConfig?.aspectRatios.map((r) => r.label).join(', ') || '1:1';
-  const supportedStyles = modelConfig?.styles?.map((s) => s.name).join(', ') || 'None';
-  // gpt-image-1.5 rejects negative prompts entirely (the route also
-  // strips it, but we tell pi so it doesn't waste a field).
   const supportsNegPrompt = modelId !== 'gpt-image-1.5';
+  const modelConfig = getLeonardoModel(modelId);
 
-  try {
-    const result = await streamAIToString(
-      `Analyze and enhance this image prompt for optimal results with this model:
+  const aspectRatio =
+    options?.aspectRatio ||
+    modelConfig?.aspectRatios?.[0]?.label ||
+    undefined;
 
-TARGET MODEL: ${getModelName(modelId)}
-MODEL STRENGTHS: ${guide}
-
-AVAILABLE OPTIONS:
-- Aspect ratios: ${supportedRatios}
-- Art styles: ${supportedStyles}
-- Negative prompts: ${supportsNegPrompt ? 'supported' : 'not supported'}
-
-ORIGINAL PROMPT: "${basePrompt}"
-${options?.style ? `Preferred style: ${options.style}` : ''}
-${options?.aspectRatio ? `Preferred ratio: ${options.aspectRatio}` : ''}
-${options?.negativePrompt ? `User negative prompt: ${options.negativePrompt}` : ''}
-
-Enhance the prompt with specific visual detail — lighting, atmosphere, textures, composition. Pick the best aspect ratio for the scene (wide/epic = 16:9, portrait/character = 9:16, other = 1:1). Pick the art style that fits the concept best. If negative prompts are supported, write one that prevents common quality issues (blurry, deformed, low detail).
-
-QUALITY BOOSTERS — include the ones that fit the subject. Do NOT blindly append all of them:
-- Resolution: 8K, ultra detailed, high resolution, intricate details
-- Lighting: volumetric lighting, cinematic lighting, golden hour, dramatic shadows, rim lighting, subsurface scattering
-- Rendering: ray tracing, global illumination, path tracing, ambient occlusion
-- Camera: depth of field, bokeh, lens flare, fisheye, tilt-shift
-- Texture: photorealistic textures, micro-details, material fidelity
-- Composition: rule of thirds, dynamic angle, low angle, bird's eye view${isConceptArt ? `\n\nThis is a concept art prompt. The image must be a SINGLE illustration, NOT a reference sheet or multi-panel layout. Do NOT include "concept art sheet", "character sheet", "turnaround", or "grid layout" in the prompt.` : ''}
-
-Return ONLY a JSON object:
-{ "prompt": "...", "style": "...", "aspectRatio": "...", "negativePrompt": "..." }`,
-      { mode: 'enhance' }
-    );
-
-    const data = extractJsonFromLLM(result, 'object');
-    let finalPrompt = (typeof data.prompt === 'string' && data.prompt.trim()) || basePrompt;
-
-    // Safety net: if pi forgot to bake negatives for concept art, append them
-    if (isConceptArt && !finalPrompt.toLowerCase().includes('avoid:')) {
-      finalPrompt = `${finalPrompt}. Avoid: ${conceptArtNegBlock}`;
-    }
-
-    return {
-      prompt: finalPrompt,
-      style: (typeof data.style === 'string' && data.style) || undefined,
-      aspectRatio: (typeof data.aspectRatio === 'string' && data.aspectRatio) || undefined,
-      negativePrompt:
-        supportsNegPrompt && typeof data.negativePrompt === 'string' && data.negativePrompt
-          ? data.negativePrompt
-          : undefined,
-    };
-  } catch {
-    return { prompt: basePrompt };
-  }
+  return {
+    prompt: basePrompt,
+    style: options?.style,
+    aspectRatio,
+    negativePrompt: supportsNegPrompt ? options?.negativePrompt : undefined,
+  };
 }
