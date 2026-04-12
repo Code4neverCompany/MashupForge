@@ -1,9 +1,9 @@
 {
-  "tasks": ["T-D002", "T-D003"],
-  "completed": ["T-D001"],
+  "tasks": ["T-D003"],
+  "completed": ["T-D001", "T-D002"],
   "reports": [
     {"type": "completed", "task": "T-D001", "details": "Fixed carousel cropping issues."},
-    {"type": "active", "task": "T-D002", "details": "Implement design refresh per Workstream D (Tab bar, card design system, typography)."},
+    {"type": "completed", "task": "T-D002", "details": "Implemented design refresh for Ideas, Studio, and Gallery tabs (tokens: rounded-2xl, border-zinc-800/60)."},
     {"type": "active", "task": "T-D003", "details": "Audit MainContent for responsive layout compliance per Workstream A."}
   ]
 }
