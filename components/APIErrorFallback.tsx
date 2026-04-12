@@ -18,7 +18,7 @@ export function APIErrorFallback({ error, resetErrorBoundary }: { error: Error; 
         <p className="text-xs text-zinc-400 mt-1 mb-4">{error.message}</p>
         <button
           onClick={resetErrorBoundary}
-          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-2 mx-auto transition-all"
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 mx-auto transition-all"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           Retry Request
