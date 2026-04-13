@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { 
@@ -65,7 +66,21 @@ import {
   ASPECT_RATIOS,
   IMAGE_SIZES
 } from './MashupContext';
-import { PipelinePanel } from './PipelinePanel';
+// Lazy-loaded — the Pipeline tab pulls in smart-scheduler logic +
+// its own local state tree and isn't needed on first paint. ssr:false
+// because it reads localStorage during initial render.
+const PipelinePanel = dynamic(
+  () => import('./PipelinePanel').then((m) => m.PipelinePanel),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center py-20 text-zinc-500 text-sm">
+        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+        Loading pipeline…
+      </div>
+    ),
+  }
+);
 import { streamAIToString, extractJsonFromLLM } from '@/lib/aiClient';
 import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import { findBestSlots, fetchInstagramEngagement, loadEngagementData, type SlotScore } from '@/lib/smartScheduler';
