@@ -1465,7 +1465,6 @@ export function MainContent() {
               </button>
             ))}
           </div>
-...
 
           <button
             onClick={logout}
