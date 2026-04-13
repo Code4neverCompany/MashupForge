@@ -399,7 +399,7 @@ Return ONLY the JSON array, no prose.`;
                       <p className="text-xs font-medium text-white leading-tight">{idea.context || `Idea ${j + 1}`}</p>
                       <span className="shrink-0 text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">On Board</span>
                     </div>
-                    <p className="text-[11px] text-zinc-400 mt-1 line-clamp-3 leading-relaxed">{idea.concept}</p>
+                    <p className="text-[11px] text-zinc-400 mt-1 whitespace-pre-wrap leading-relaxed">{idea.concept}</p>
                   </div>
                 ))}
               </div>

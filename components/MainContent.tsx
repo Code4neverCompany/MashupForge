@@ -195,10 +195,8 @@ export function MainContent() {
   // Comparison state
   const [comparisonModels, setComparisonModels] = useState<string[]>([]);
   const [isComparing, setIsComparing] = useState(false);
-  const [isGeneratingIdea, setIsGeneratingIdea] = useState(false);
   /** Per-model parameter preview (set by pi when prompt changes). */
   const [modelPreviews, setModelPreviews] = useState<Record<string, { prompt?: string; style?: string; aspectRatio?: string; negativePrompt?: string; lighting?: string; angle?: string }>>({});
-  const [isAutoSelecting, setIsAutoSelecting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   // Track which image is currently having its caption generated so we can
   // show a per-card spinner while the pi caption request runs. Keyed by
@@ -359,19 +357,39 @@ export function MainContent() {
     }
   };
 
-  /** Persist a new ScheduledPost in settings.scheduledPosts. */
+  /**
+   * Persist or update a ScheduledPost in settings.scheduledPosts.
+   *
+   * If an existing non-carousel scheduled post already references this
+   * image, we patch it in place instead of appending — otherwise clicking
+   * Schedule after editing the date/time/caption would create a duplicate
+   * card for the same image. Carousel-bound posts are owned by
+   * scheduleCarousel and intentionally skipped here.
+   */
   const scheduleImage = (img: GeneratedImage, platforms: PostPlatform[], date: string, time: string) => {
     if (!date || !time || platforms.length === 0) return;
-    const scheduled: ScheduledPost = {
-      id: `sched-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      imageId: img.id,
-      date,
-      time,
-      platforms,
-      caption: formatPost(img),
-      status: 'scheduled',
-    };
-    const next = [...(settings.scheduledPosts || []), scheduled];
+    const caption = formatPost(img);
+    const existingPosts = settings.scheduledPosts || [];
+    const editableIdx = existingPosts.findIndex(
+      (p) => p.imageId === img.id && !p.carouselGroupId
+    );
+    let next: ScheduledPost[];
+    if (editableIdx !== -1) {
+      next = existingPosts.map((p, i) =>
+        i === editableIdx ? { ...p, date, time, platforms, caption } : p
+      );
+    } else {
+      const scheduled: ScheduledPost = {
+        id: `sched-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        imageId: img.id,
+        date,
+        time,
+        platforms,
+        caption,
+        status: 'scheduled',
+      };
+      next = [...existingPosts, scheduled];
+    }
     updateSettings({ scheduledPosts: next });
     setPostStatus((prev) => ({
       ...prev,
@@ -565,6 +583,10 @@ export function MainContent() {
    * group at the shared date/time/platforms. The auto-post worker picks
    * these up when the time hits; Instagram carousel-mode is still handled
    * by postCarouselNow when the user clicks Post Now.
+   *
+   * If an existing carouselGroupId already covers exactly this set of
+   * images, we patch those posts in place so re-editing date/time/caption
+   * doesn't duplicate the carousel.
    */
   const scheduleCarousel = (
     item: Extract<PostItem, { kind: 'carousel' }>,
@@ -574,24 +596,54 @@ export function MainContent() {
   ) => {
     if (platforms.length === 0 || !date || !time || item.images.length === 0) return;
     const caption = item.group?.caption || formatPost(item.images[0]);
-    const nowStamp = Date.now();
-    // Every post in the carousel gets the same carouselGroupId so the
-    // auto-post worker can pick them up as a single multi-image call
-    // instead of publishing each image independently.
-    const groupId = `carousel-grp-${nowStamp}-${Math.random().toString(36).slice(2, 8)}`;
-    const newPosts: ScheduledPost[] = item.images.map((img, idx) => ({
-      id: `post-${nowStamp}-${idx}-${Math.random().toString(36).slice(2, 8)}`,
-      imageId: img.id,
-      date,
-      time,
-      platforms,
-      caption,
-      status: 'scheduled' as const,
-      carouselGroupId: groupId,
-    }));
-    updateSettings({
-      scheduledPosts: [...(settings.scheduledPosts || []), ...newPosts],
-    });
+    const imageIds = new Set(item.images.map((i) => i.id));
+    const existingPosts = settings.scheduledPosts || [];
+
+    // Find an existing carouselGroupId whose posts cover exactly this
+    // item's image set. Iterating to the end means the LAST match wins
+    // if the user somehow has stale duplicates — newest grouping is kept.
+    const byGroup = new Map<string, ScheduledPost[]>();
+    for (const p of existingPosts) {
+      if (!p.carouselGroupId || !imageIds.has(p.imageId)) continue;
+      const list = byGroup.get(p.carouselGroupId) || [];
+      list.push(p);
+      byGroup.set(p.carouselGroupId, list);
+    }
+    let matchGroupId: string | null = null;
+    for (const [gid, posts] of byGroup) {
+      const postImgIds = new Set(posts.map((p) => p.imageId));
+      if (
+        postImgIds.size === imageIds.size &&
+        [...imageIds].every((id) => postImgIds.has(id))
+      ) {
+        matchGroupId = gid;
+      }
+    }
+
+    let next: ScheduledPost[];
+    if (matchGroupId) {
+      next = existingPosts.map((p) =>
+        p.carouselGroupId === matchGroupId
+          ? { ...p, date, time, platforms, caption }
+          : p
+      );
+    } else {
+      const nowStamp = Date.now();
+      const groupId = `carousel-grp-${nowStamp}-${Math.random().toString(36).slice(2, 8)}`;
+      const newPosts: ScheduledPost[] = item.images.map((img, idx) => ({
+        id: `post-${nowStamp}-${idx}-${Math.random().toString(36).slice(2, 8)}`,
+        imageId: img.id,
+        date,
+        time,
+        platforms,
+        caption,
+        status: 'scheduled' as const,
+        carouselGroupId: groupId,
+      }));
+      next = [...existingPosts, ...newPosts];
+    }
+
+    updateSettings({ scheduledPosts: next });
     setPostStatus((prev) => ({
       ...prev,
       [`carousel-${item.id}`]: `Scheduled carousel for ${date} ${time}`,
@@ -806,61 +858,6 @@ export function MainContent() {
     "The Millennium Falcon being chased by a fleet of Borg Cubes",
     "Wonder Woman wielding a Thunder Hammer leading a charge against Chaos Daemons"
   ];
-
-  const handleGenerateIdea = async () => {
-    setIsGeneratingIdea(true);
-    try {
-      const text = await streamAIToString(
-        `Generate a highly creative, peak, up-to-date crossover mashup idea strictly limited to these franchises: Star Wars, Marvel, DC, and Warhammer 40k. Focus on "what if" scenarios, alternative universes, different timelines, and epic crossovers. Make it highly detailed, cinematic, and unique. CRITICAL DIVERSITY MANDATE: completely random and diverse. Do NOT use common or overused characters like Dr. Doom, Darth Vader, or Batman. Dig deep into franchise lore. Return ONLY the idea as a single string. Random Seed: ${Math.random()}`,
-        { mode: 'idea' }
-      );
-      const newIdea = text.trim();
-      setComparisonPrompt(newIdea);
-      if (newIdea) {
-        await autoSelectParameters(newIdea);
-      }
-    } catch (error) {
-      console.error('Error generating idea:', error);
-    } finally {
-      setIsGeneratingIdea(false);
-    }
-  };
-
-  const autoSelectParameters = async (mashupIdea: string) => {
-    setIsAutoSelecting(true);
-    try {
-      const text = await streamAIToString(
-        `Analyze this mashup idea: "${mashupIdea}".
-        First, identify the core mood (e.g., dark, whimsical, tense, romantic) and genre (e.g., cyberpunk, high fantasy, noir) implied by the idea.
-        Then, SMARTLY select the most appropriate parameters that specifically enhance this mood and genre, rather than just defaulting to generic cinematic qualities.
-        Select the best Art Style from: ${ART_STYLES.join(', ')}.
-        Select the best Lighting from: ${LIGHTING_OPTIONS.join(', ')}.
-        Select the best Camera Angle from: ${CAMERA_ANGLES.join(', ')}.
-        Select the best Aspect Ratio from: ${ASPECT_RATIOS.join(', ')}.
-
-        CRITICAL ASPECT RATIO RULES:
-        - If the prompt describes an epic scene, landscape, wide battle, or cinematic vista, you MUST select "16:9".
-        - If the prompt describes a character portrait, single character focus, or vertical subject, you MUST select "9:16".
-        - Otherwise, select "1:1" or another appropriate ratio.
-
-        Return ONLY a JSON object with keys: style, lighting, angle, aspectRatio.`,
-        { mode: 'generate' }
-      );
-      const params = extractJsonFromLLM(text, 'object');
-      setComparisonOptions(prev => ({
-        ...prev,
-        style: params.style || prev.style,
-        lighting: params.lighting || prev.lighting,
-        angle: params.angle || prev.angle,
-        aspectRatio: params.aspectRatio || prev.aspectRatio,
-        negativePrompt: params.negativePrompt || prev.negativePrompt
-      }));
-    } catch (error) {
-      console.error('Error auto-selecting parameters:', error);
-    } finally {
-      setIsAutoSelecting(false);
-    }
-  };
 
   const handlePushIdeaToCompare = async (prompt: string) => {
     setIsPushing(true);
@@ -1413,7 +1410,9 @@ export function MainContent() {
                     {v === 'captioning' && <Edit3 className="w-4 h-4 hidden sm:block" />}
                     {v === 'post-ready' && <Save className="w-4 h-4 hidden sm:block" />}
                     {v === 'pipeline' && <Zap className="w-4 h-4 hidden sm:block" />}
-                    {v.charAt(0).toUpperCase() + v.slice(1).replace('-', ' ')}
+                    {v === 'compare'
+                      ? 'Studio'
+                      : v.charAt(0).toUpperCase() + v.slice(1).replace('-', ' ')}
                 </span>
               </button>
             ))}
@@ -1830,22 +1829,6 @@ export function MainContent() {
                             <option key={i} value={p}>{p.substring(0, 30)}...</option>
                           ))}
                         </select>
-                        <button
-                          onClick={handleGenerateIdea}
-                          disabled={isGeneratingIdea}
-                          className="text-xs bg-emerald-600/10 text-emerald-400 hover:bg-emerald-600/20 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-colors border border-emerald-500/20"
-                        >
-                          {isGeneratingIdea ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                          Generate Idea
-                        </button>
-                        <button
-                          onClick={() => autoSelectParameters(comparisonPrompt)}
-                          disabled={isAutoSelecting || !comparisonPrompt.trim()}
-                          className="text-xs bg-emerald-600/10 text-emerald-400 hover:bg-emerald-600/20 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-colors border border-emerald-500/20 disabled:opacity-50"
-                        >
-                          {isAutoSelecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                          Auto-Select Params
-                        </button>
                     </div>
 
                     <div className="space-y-4">
@@ -1864,8 +1847,8 @@ export function MainContent() {
                               }}
                               className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all text-left flex items-center justify-between ${
                                 comparisonModels.includes(model.id)
-                                  ? 'bg-emerald-600/20 border-emerald-500/30 text-emerald-400'
-                                  : 'bg-zinc-900 border-zinc-800/60 text-zinc-400 hover:border-zinc-700/50'
+                                  ? 'bg-[#c5a062]/15 border-[#c5a062] text-[#c5a062]'
+                                  : 'bg-zinc-900 border-zinc-800/60 text-zinc-400 hover:border-[#c5a062]/40'
                               }`}
                             >
                               <span className="truncate mr-2">{model.name}</span>
@@ -1884,7 +1867,8 @@ export function MainContent() {
                           value={comparisonPrompt}
                           onChange={(e) => setComparisonPrompt(e.target.value)}
                           placeholder="Enter a prompt to compare across models..."
-                          className="w-full bg-zinc-950/80 border border-emerald-500/30 rounded-xl p-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 min-h-[100px] resize-none shadow-inner shadow-emerald-500/5"
+                          rows={10}
+                          className="w-full bg-zinc-950/80 border border-emerald-500/30 rounded-xl p-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 min-h-[240px] resize-y shadow-inner shadow-emerald-500/5"
                         />
                       </div>
 
@@ -2667,6 +2651,9 @@ export function MainContent() {
               {view === 'post-ready' && (() => {
                 const all = savedImages;
                 const ready = all.filter((i) => i.isPostReady === true);
+                // Carousel-aware view used by Smart Schedule so grouped
+                // posts consume one slot each instead of N individual slots.
+                const postItems = computeCarouselView(ready);
                 const available = availablePlatforms();
 
                 const copyAllPosts = () => {
@@ -2767,7 +2754,7 @@ export function MainContent() {
                               );
                               setSmartScheduleSource(eng.source === 'instagram' ? 'IG insights' : 'Research defaults');
                               const existing = settings.scheduledPosts || [];
-                              const slots = findBestSlots(existing, ready.length, eng);
+                              const slots = findBestSlots(existing, postItems.length, eng);
                               setSmartSlots(slots);
                               // Pre-fill form with best slot
                               if (slots.length > 0) {
@@ -2781,7 +2768,7 @@ export function MainContent() {
                               const eng = loadEngagementData();
                               setSmartScheduleSource('Research defaults');
                               const existing = settings.scheduledPosts || [];
-                              const slots = findBestSlots(existing, ready.length, eng);
+                              const slots = findBestSlots(existing, postItems.length, eng);
                               setSmartSlots(slots);
                               if (slots.length > 0) {
                                 setScheduleAllForm({
@@ -3902,7 +3889,7 @@ export function MainContent() {
                           <div className="flex items-center justify-between">
                             <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                               <TrendingUp className="w-5 h-5 text-amber-400" />
-                              Smart Schedule ({ready.length} posts)
+                              Smart Schedule ({postItems.length} posts)
                             </h3>
                             <button
                               onClick={() => setShowScheduleAll(false)}
@@ -3929,7 +3916,7 @@ export function MainContent() {
                                 Recommended Slots (score = engagement likelihood)
                               </label>
                               <div className="space-y-1">
-                                {smartSlots.slice(0, Math.max(ready.length, 5)).map((slot, i) => {
+                                {smartSlots.slice(0, Math.max(postItems.length, 5)).map((slot, i) => {
                                   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                                   const slotDate = new Date(slot.date);
                                   const dayLabel = dayNames[slotDate.getDay()];
@@ -4008,26 +3995,26 @@ export function MainContent() {
                                 scheduleAllForm.platforms.length === 0
                               }
                               onClick={() => {
-                                if (smartSlots.length >= ready.length) {
-                                  // Smart: distribute each post across optimal slots
-                                  for (let i = 0; i < ready.length; i++) {
+                                // Dispatch per PostItem (carousel-aware) instead of
+                                // per raw image, so grouped carousels consume one
+                                // slot and get routed to scheduleCarousel — which
+                                // assigns a shared carouselGroupId the auto-post
+                                // worker can fan out as one multi-image call.
+                                const dispatch = (item: PostItem, date: string, time: string) => {
+                                  if (item.kind === 'carousel') {
+                                    scheduleCarousel(item, scheduleAllForm.platforms, date, time);
+                                  } else {
+                                    scheduleImage(item.img, scheduleAllForm.platforms, date, time);
+                                  }
+                                };
+                                if (smartSlots.length >= postItems.length) {
+                                  for (let i = 0; i < postItems.length; i++) {
                                     const slot = smartSlots[i];
-                                    scheduleImage(
-                                      ready[i],
-                                      scheduleAllForm.platforms,
-                                      slot.date,
-                                      slot.time
-                                    );
+                                    dispatch(postItems[i], slot.date, slot.time);
                                   }
                                 } else {
-                                  // Fallback: all posts get the best slot
-                                  for (const img of ready) {
-                                    scheduleImage(
-                                      img,
-                                      scheduleAllForm.platforms,
-                                      scheduleAllForm.date,
-                                      scheduleAllForm.time
-                                    );
+                                  for (const item of postItems) {
+                                    dispatch(item, scheduleAllForm.date, scheduleAllForm.time);
                                   }
                                 }
                                 setShowScheduleAll(false);
@@ -4035,7 +4022,7 @@ export function MainContent() {
                               }}
                               className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5"
                             >
-                              <TrendingUp className="w-3.5 h-3.5" /> Smart Schedule {ready.length} Posts
+                              <TrendingUp className="w-3.5 h-3.5" /> Smart Schedule {postItems.length} Posts
                             </button>
                           </div>
                         </div>
