@@ -1,5 +1,59 @@
 @import "tailwindcss";
 
+/*
+ * 4neverCompany brand palette — applied by overriding the existing
+ * Tailwind palette scales so current `emerald-*`, `indigo-*`, and
+ * `amber-*` utility classes across the app resolve to brand colors
+ * without touching every JSX file. Accent/alpha modifiers like
+ * `bg-emerald-500/20` still work because Tailwind applies alpha to the
+ * resolved custom property.
+ *
+ *   Agency Black    #050505  — page background
+ *   Metallic Gold   #C5A062  — borders, warm accents (was amber)
+ *   Electric Blue   #00E6FF  — buttons, active states, highlights
+ *                              (was emerald + indigo)
+ *
+ * AETHER SANS and NEXUS MONO are the brand typefaces; they're named
+ * first in the stack so if the woff2 files are dropped into
+ * `public/fonts/` and registered via @font-face, they'll take over.
+ * Until then the current Inter / JetBrains Mono stack from layout.tsx
+ * renders as the fallback.
+ */
+@theme {
+  --color-brand-black: #050505;
+  --color-brand-gold: #c5a062;
+  --color-brand-gold-soft: #d4b478;
+  --color-brand-blue: #00e6ff;
+  --color-brand-blue-deep: #00b8cc;
+
+  /* Agency Black everywhere zinc-950 is used (body background, deepest surfaces). */
+  --color-zinc-950: #050505;
+
+  /* Electric Blue family — override emerald + indigo accent scales. */
+  --color-emerald-300: #66efff;
+  --color-emerald-400: #33eaff;
+  --color-emerald-500: #00e6ff;
+  --color-emerald-600: #00b8cc;
+  --color-emerald-700: #008a99;
+
+  --color-indigo-300: #66efff;
+  --color-indigo-400: #33eaff;
+  --color-indigo-500: #00e6ff;
+  --color-indigo-600: #00b8cc;
+  --color-indigo-700: #008a99;
+
+  /* Metallic Gold family — override amber scale. */
+  --color-amber-300: #e0c291;
+  --color-amber-400: #d4b478;
+  --color-amber-500: #c5a062;
+  --color-amber-600: #a68748;
+  --color-amber-700: #7a6434;
+
+  /* Typeface stack — brand fonts first, existing CSS variables as fallback. */
+  --font-sans: "AETHER SANS", var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "NEXUS MONO", var(--font-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
 @layer utilities {
   @reference "tailwindcss";
 
@@ -11,16 +65,22 @@
     display: none;
   }
 
-  /* Glassmorphism Classes */
+  /* Glassmorphism — gold-bordered surfaces on Agency Black. */
   .glass {
-    @apply backdrop-blur-xl bg-white/[0.03] border border-white/[0.08];
+    @apply backdrop-blur-xl bg-white/[0.03] border border-[#c5a062]/20;
   }
-  
+
   .glass-card {
-    @apply backdrop-blur-sm bg-zinc-900/80 border border-zinc-800/60 rounded-2xl shadow-xl;
+    @apply backdrop-blur-sm bg-zinc-900/80 border border-[#c5a062]/25 rounded-2xl shadow-xl;
   }
 
   .glass-panel {
-    @apply backdrop-blur-xl bg-zinc-950/80 border-r border-zinc-800/60 shadow-xl;
+    @apply backdrop-blur-xl bg-zinc-950/80 border-r border-[#c5a062]/25 shadow-xl;
+  }
+
+  /* Gold selection border — used by Gallery/Compare active states where a
+     gold highlight is preferred over the Electric Blue accent. */
+  .brand-selected {
+    @apply border-[#c5a062] ring-1 ring-[#c5a062]/40;
   }
 }
