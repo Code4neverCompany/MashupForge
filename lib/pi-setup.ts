@@ -4,16 +4,45 @@
  */
 
 import { spawnSync, spawn } from 'node:child_process';
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+/** Project-local install prefix used when global install isn't possible (sandboxed envs). */
+const LOCAL_PREFIX = join(process.cwd(), '.pi-install');
+const LOCAL_BIN = join(LOCAL_PREFIX, 'bin', 'pi');
+
+/**
+ * Writable HOME for spawned npm. If the process HOME doesn't exist (e.g. Vercel
+ * sandbox user `sbx_user1051` with no homedir), npm fails to create its cache
+ * before it can even fetch a package. Point HOME at a tmpdir we know exists.
+ */
+function ensureWritableHome(): string {
+  const currentHome = process.env.HOME || homedir();
+  try {
+    if (currentHome && existsSync(currentHome)) return currentHome;
+  } catch {
+    // fall through
+  }
+  const fallback = join(tmpdir(), 'mashupforge-npm-home');
+  try {
+    mkdirSync(fallback, { recursive: true });
+  } catch {
+    // ignore — tmpdir should always be writable
+  }
+  return fallback;
+}
+
 /** Candidate locations for the pi binary, searched in order. */
-const PI_CANDIDATES = [
-  process.env.PI_BIN,
-  join(homedir(), '.hermes', 'node', 'bin', 'pi'),
-  '/usr/local/bin/pi',
-].filter(Boolean) as string[];
+function piCandidates(): string[] {
+  return [
+    process.env.PI_BIN,
+    LOCAL_BIN,
+    join(homedir(), '.hermes', 'node', 'bin', 'pi'),
+    '/usr/local/bin/pi',
+    '/usr/bin/pi',
+  ].filter(Boolean) as string[];
+}
 
 /** Resolve the pi binary path, preferring PATH, then known install dirs. */
 export function getPiPath(): string | null {
@@ -23,7 +52,7 @@ export function getPiPath(): string | null {
     return which.stdout.trim();
   }
 
-  for (const candidate of PI_CANDIDATES) {
+  for (const candidate of piCandidates()) {
     try {
       if (existsSync(candidate)) {
         return candidate;
@@ -67,20 +96,76 @@ export function isPiAuthenticated(): boolean {
   }
 }
 
+export interface InstallPiResult {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  error?: string;
+  piPath?: string;
+}
+
 /**
- * Install pi globally via npm. Returns success/failure info. Long-running —
- * call this from a POST handler and let the client block on the response.
+ * Install pi via npm into a project-local prefix. We avoid `-g` because in
+ * sandboxed environments (Vercel, Docker, CI) the default global prefix isn't
+ * writable and HOME may not exist, which makes npm fail before it can even
+ * fetch the package. Installing to `<cwd>/.pi-install` with an explicit HOME
+ * sidesteps both problems and leaves the binary at a known candidate path.
  */
-export function installPi(): { success: boolean; stdout: string; stderr: string } {
+export function installPi(): InstallPiResult {
+  try {
+    mkdirSync(LOCAL_PREFIX, { recursive: true });
+  } catch (e) {
+    return {
+      success: false,
+      stdout: '',
+      stderr: '',
+      error: `Failed to create install prefix ${LOCAL_PREFIX}: ${(e as Error).message}`,
+    };
+  }
+
+  const home = ensureWritableHome();
+  const env = {
+    ...process.env,
+    HOME: home,
+    npm_config_cache: join(home, '.npm-cache'),
+    npm_config_prefix: LOCAL_PREFIX,
+    // Silence update-notifier writes into HOME.
+    NO_UPDATE_NOTIFIER: '1',
+  };
+
   const result = spawnSync(
     'npm',
-    ['install', '-g', '@mariozechner/pi-coding-agent'],
-    { encoding: 'utf8', timeout: 5 * 60 * 1000 }
+    ['install', '--prefix', LOCAL_PREFIX, '--global', '@mariozechner/pi-coding-agent'],
+    { encoding: 'utf8', timeout: 5 * 60 * 1000, env }
   );
+
+  if (result.error) {
+    return {
+      success: false,
+      stdout: result.stdout || '',
+      stderr: result.stderr || '',
+      error: result.error.message,
+    };
+  }
+
+  const success = result.status === 0;
+  const piPath = getPiPath() || undefined;
+
+  // On success, make the freshly-installed binary visible to later spawns in
+  // this same Node process (pi-client etc.) without requiring a server restart.
+  if (success && piPath) {
+    const binDir = join(LOCAL_PREFIX, 'bin');
+    if (!process.env.PATH?.split(':').includes(binDir)) {
+      process.env.PATH = `${binDir}:${process.env.PATH || ''}`;
+    }
+  }
+
   return {
-    success: result.status === 0,
+    success: success && !!piPath,
     stdout: result.stdout || '',
     stderr: result.stderr || '',
+    error: success && !piPath ? 'npm reported success but pi binary not found' : undefined,
+    piPath,
   };
 }
 
@@ -107,9 +192,11 @@ export function getPiModels(): PiModelInfo[] {
     env: process.env,
   });
 
-  if (result.status !== 0 || !result.stdout) return [];
+  // pi --list-models writes to stderr, not stdout
+  const output = result.stderr || result.stdout || '';
+  if (result.status !== 0 || !output) return [];
 
-  const lines = result.stdout.trim().split('\n');
+  const lines = output.trim().split('\n');
   // First line is the header. Sample:
   // provider  model           context  max-out  thinking  images
   if (lines.length < 2) return [];
