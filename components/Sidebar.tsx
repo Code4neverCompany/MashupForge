@@ -267,7 +267,7 @@ Return ONLY the JSON array, no prose.`;
             {images.length === 0 ? (
               <div className="text-center py-10">
                 <History className="w-8 h-8 text-zinc-800 mx-auto mb-2" />
-                <p className="text-xs text-zinc-600">No generation history yet.</p>
+                <p className="text-xs text-zinc-400">No generation history yet.</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">

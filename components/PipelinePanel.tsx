@@ -70,7 +70,7 @@ function BestTimesWidget({ settings }: { settings: any }) {
 
       {insights?.success && (
         <div className="space-y-1.5">
-          <p className="text-[10px] text-zinc-600">
+          <p className="text-[10px] text-zinc-400">
             {insights.source === 'instagram'
               ? `Based on ${insights.postCount} Instagram posts`
               : insights.source === 'default'
@@ -106,7 +106,7 @@ function BestTimesWidget({ settings }: { settings: any }) {
       )}
 
       {insights && !insights.success && (
-        <p className="text-[10px] text-zinc-600">Could not load insights. Using defaults.</p>
+        <p className="text-[10px] text-zinc-400">Could not load insights. Using defaults.</p>
       )}
     </div>
   );
@@ -580,7 +580,7 @@ export function PipelinePanel() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono text-zinc-500">{entry.step}</span>
-                      <span className="text-xs text-zinc-600">
+                      <span className="text-xs text-zinc-500">
                         {entry.timestamp.toLocaleTimeString()}
                       </span>
                     </div>
