@@ -12,6 +12,7 @@ import {
   type ScheduledPost,
 } from '../types/mashup';
 import { findBestSlot, findBestSlots, fetchInstagramEngagement, loadEngagementData, type CachedEngagement, type EngagementHour, type EngagementDay } from '@/lib/smartScheduler';
+import { getErrorMessage } from '@/lib/errors';
 
 interface UsePipelineDeps {
   ideas: Idea[];
@@ -224,8 +225,8 @@ Return ONLY the prompt text, nothing else.`;
       } else {
         addLog('trending', idea.id, 'success', 'No trending data found — proceeding without');
       }
-    } catch (e: any) {
-      addLog('trending', idea.id, 'success', `Trending research skipped: ${e.message}`);
+    } catch (e: unknown) {
+      addLog('trending', idea.id, 'success', `Trending research skipped: ${getErrorMessage(e)}`);
     }
 
     // Step c: Expand idea to prompt (with trending context)
@@ -234,8 +235,8 @@ Return ONLY the prompt text, nothing else.`;
     try {
       expandedPrompt = await expandIdeaToPrompt(idea, trendingContext);
       addLog('prompt-expand', idea.id, 'success', `Expanded prompt: "${expandedPrompt.slice(0, 80)}..."`);
-    } catch (e: any) {
-      addLog('prompt-expand', idea.id, 'error', `Failed to expand: ${e.message}`);
+    } catch (e: unknown) {
+      addLog('prompt-expand', idea.id, 'error', `Failed to expand: ${getErrorMessage(e)}`);
       throw e;
     }
 
@@ -246,8 +247,8 @@ Return ONLY the prompt text, nothing else.`;
     try {
       await generateComparison(expandedPrompt, allModelIds, { skipEnhance: false });
       addLog('image-gen', idea.id, 'success', `Image generation started with ${allModelIds.length} models`);
-    } catch (e: any) {
-      addLog('image-gen', idea.id, 'error', `Image generation failed: ${e.message}`);
+    } catch (e: unknown) {
+      addLog('image-gen', idea.id, 'error', `Image generation failed: ${getErrorMessage(e)}`);
       throw e;
     }
 
@@ -299,8 +300,8 @@ Return ONLY the prompt text, nothing else.`;
             } else {
               addLog('caption', idea.id, 'error', `[${modelLabel}] Caption returned empty`);
             }
-          } catch (e: any) {
-            addLog('caption', idea.id, 'error', `[${modelLabel}] Caption failed: ${e.message}`);
+          } catch (e: unknown) {
+            addLog('caption', idea.id, 'error', `[${modelLabel}] Caption failed: ${getErrorMessage(e)}`);
           }
         }
 
@@ -354,8 +355,8 @@ Return ONLY the prompt text, nothing else.`;
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'post failed');
             addLog('post', idea.id, 'success', `[${modelLabel}] Posted to ${pipelinePlatforms.join(', ')}`);
-          } catch (e: any) {
-            addLog('post', idea.id, 'error', `[${modelLabel}] Auto-post failed: ${e.message}`);
+          } catch (e: unknown) {
+            addLog('post', idea.id, 'error', `[${modelLabel}] Auto-post failed: ${getErrorMessage(e)}`);
           }
         }
       }
@@ -455,8 +456,8 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
           // rely on ideasRef being updated this tick because addIdea
           // dispatches through setState.
           pendingIdeas = generated;
-        } catch (e: any) {
-          addLog('auto-generate', '', 'error', `Failed to auto-generate ideas: ${e?.message || e}`);
+        } catch (e: unknown) {
+          addLog('auto-generate', '', 'error', `Failed to auto-generate ideas: ${getErrorMessage(e)}`);
           // If we couldn't generate and we're not in continuous mode,
           // there's nothing more to do this run.
           if (!pipelineContinuousRef.current) break;
@@ -487,8 +488,8 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
 
         try {
           await processIdea(idea, i, pendingIdeas.length, engagement, accumulatedPosts);
-        } catch (e: any) {
-          addLog('pipeline-error', idea.id, 'error', `Skipping idea due to error: ${e.message}`);
+        } catch (e: unknown) {
+          addLog('pipeline-error', idea.id, 'error', `Skipping idea due to error: ${getErrorMessage(e)}`);
           updateIdeaStatus(idea.id, 'idea'); // Reset on failure
         }
 

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { get, set } from 'idb-keyval';
 import { enhancePromptForModel } from '@/lib/modelOptimizer';
+import { getErrorMessage } from '@/lib/errors';
 import {
   type GeneratedImage,
   type GenerateOptions,
@@ -215,9 +216,9 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
           setComparisonResults(prev => prev.filter(img => img.id !== placeholders[i].id));
         }
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Comparison failed', e);
-      const message = e?.message || 'Comparison failed. Check your API keys.';
+      const message = getErrorMessage(e) || 'Comparison failed. Check your API keys.';
       setComparisonError(message);
       setProgress('');
     } finally {

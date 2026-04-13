@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { streamAIToString, extractJsonFromLLM } from '@/lib/aiClient';
 import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import { MASTERPROMPT_INSTRUCTIONS } from '@/lib/masterpromptTemplate';
+import { getErrorMessage } from '@/lib/errors';
 import {
   type GeneratedImage,
   type GenerateOptions,
@@ -558,12 +559,12 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
             console.warn(`[moderation-stats] Image ${i + 1} recovered after rewrite (${selectedModel}).`);
             setLastError(null);
           }
-        } catch (imgError: any) {
+        } catch (imgError: unknown) {
           console.error(`Error generating image ${i + 1} with ${modelName}:`, imgError);
           // Don't leave the placeholder stuck on 'generating'. Flip it
           // to 'error' with a human-readable reason so the UI can show
           // the failure instead of a forever-spinning loader.
-          const rawMsg = imgError?.message || 'Generation failed';
+          const rawMsg = getErrorMessage(imgError) || 'Generation failed';
           const classifications: string[] = (imgError as LeonardoGenerationError)?.moderationClassification || [];
           const isContentFilter =
             classifications.length > 0 ||
@@ -599,9 +600,9 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
         }
         setProgress('');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Generation error:', error);
-      const message = error?.message || 'An error occurred during generation.';
+      const message = getErrorMessage(error) || 'An error occurred during generation.';
       setGenerationError(message);
       setProgress('');
     } finally {
@@ -765,9 +766,9 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
       }
 
       setProgress('');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Reroll error:', error);
-      const message = error?.message || 'An error occurred during reroll.';
+      const message = getErrorMessage(error) || 'An error occurred during reroll.';
       setGenerationError(message);
       setProgress('');
     } finally {
