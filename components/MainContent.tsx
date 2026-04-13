@@ -216,6 +216,10 @@ export function MainContent() {
   const [showCarouselPicker, setShowCarouselPicker] = useState(false);
   const [pickerTargetGroupId, setPickerTargetGroupId] = useState<string | null>(null);
   const [pickerSelected, setPickerSelected] = useState<Set<string>>(new Set());
+  // Post-Ready manual carousel grouping selection (parallel to
+  // captioningSelected). Lets the user check 2+ Post-Ready single cards
+  // and promote them into a carousel group without leaving the tab.
+  const [postReadySelected, setPostReadySelected] = useState<Set<string>>(new Set());
   const [batchCaptioning, setBatchCaptioning] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   // Image id currently copied (for the brief "Copied" affordance on the
@@ -973,8 +977,12 @@ export function MainContent() {
       if (!settings.scheduledPosts || settings.scheduledPosts.length === 0) return;
 
       const now = new Date();
-      let hasUpdates = false;
-      const updatedPosts = [...settings.scheduledPosts];
+      // Snapshot the list of posts we'll consider for THIS tick. We only
+      // compute statuses against this snapshot, but persist via a
+      // functional updater that merges patches by id — so any new posts
+      // the user (or the pipeline) added during the async loop are
+      // preserved instead of being clobbered.
+      const snapshot = [...settings.scheduledPosts];
 
       // Shared credentials payload — same shape as postCarouselNow /
       // postImageNow so the /api/social/post route doesn't care whether
@@ -990,9 +998,11 @@ export function MainContent() {
       // we encounter their siblings later in the loop so each group is
       // published exactly once.
       const processedIds = new Set<string>();
+      // id → next status. Applied via functional updater at the end so
+      // we never overwrite the latest scheduledPosts list.
+      const statusPatches = new Map<string, ScheduledPost['status']>();
 
-      for (let i = 0; i < updatedPosts.length; i++) {
-        const post = updatedPosts[i];
+      for (const post of snapshot) {
         if (processedIds.has(post.id)) continue;
         if (post.status !== 'scheduled') continue;
         const postDate = new Date(`${post.date}T${post.time}:00`);
@@ -1000,7 +1010,7 @@ export function MainContent() {
 
         // ── Carousel branch ────────────────────────────────────────
         if (post.carouselGroupId) {
-          const groupPosts = updatedPosts.filter(
+          const groupPosts = snapshot.filter(
             (p) => p.carouselGroupId === post.carouselGroupId && p.status === 'scheduled'
           );
 
@@ -1021,11 +1031,9 @@ export function MainContent() {
 
           if (groupImages.length === 0) {
             groupPosts.forEach((gp) => {
-              const idx = updatedPosts.findIndex((p) => p.id === gp.id);
-              if (idx !== -1) updatedPosts[idx] = { ...gp, status: 'failed' };
+              statusPatches.set(gp.id, 'failed');
               processedIds.add(gp.id);
             });
-            hasUpdates = true;
             continue;
           }
 
@@ -1045,11 +1053,9 @@ export function MainContent() {
             if (!res.ok) throw new Error(data.error || 'Failed to post carousel');
 
             groupPosts.forEach((gp) => {
-              const idx = updatedPosts.findIndex((p) => p.id === gp.id);
-              if (idx !== -1) updatedPosts[idx] = { ...gp, status: 'posted' };
+              statusPatches.set(gp.id, 'posted');
               processedIds.add(gp.id);
             });
-            hasUpdates = true;
           } catch (e: any) {
             console.error(
               'Auto-post carousel failed for group',
@@ -1057,11 +1063,9 @@ export function MainContent() {
               e?.message || e
             );
             groupPosts.forEach((gp) => {
-              const idx = updatedPosts.findIndex((p) => p.id === gp.id);
-              if (idx !== -1) updatedPosts[idx] = { ...gp, status: 'failed' };
+              statusPatches.set(gp.id, 'failed');
               processedIds.add(gp.id);
             });
-            hasUpdates = true;
           }
           continue;
         }
@@ -1069,8 +1073,7 @@ export function MainContent() {
         // ── Single-image branch (existing behaviour) ─────────────
         const image = savedImages.find((img) => img.id === post.imageId);
         if (!image) {
-          updatedPosts[i] = { ...post, status: 'failed' };
-          hasUpdates = true;
+          statusPatches.set(post.id, 'failed');
           continue;
         }
 
@@ -1090,17 +1093,19 @@ export function MainContent() {
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Failed to post');
 
-          updatedPosts[i] = { ...post, status: 'posted' };
-          hasUpdates = true;
+          statusPatches.set(post.id, 'posted');
         } catch (e: any) {
           console.error('Auto-post failed for', post.id, e?.message || e);
-          updatedPosts[i] = { ...post, status: 'failed' };
-          hasUpdates = true;
+          statusPatches.set(post.id, 'failed');
         }
       }
 
-      if (hasUpdates) {
-        updateSettings({ scheduledPosts: updatedPosts });
+      if (statusPatches.size > 0) {
+        updateSettings((prev) => ({
+          scheduledPosts: (prev.scheduledPosts || []).map((p) =>
+            statusPatches.has(p.id) ? { ...p, status: statusPatches.get(p.id)! } : p
+          ),
+        }));
       }
     }, 60000); // Check every minute
 
@@ -2525,129 +2530,6 @@ export function MainContent() {
                       </div>
                     )}
 
-                    {/* Carousel multi-source picker modal */}
-                    {showCarouselPicker && (
-                      <div
-                        className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4"
-                        onClick={() => setShowCarouselPicker(false)}
-                      >
-                        <div
-                          className="bg-zinc-900/90 backdrop-blur-xl border-0 sm:border border-zinc-800/60 rounded-none sm:rounded-2xl w-full sm:max-w-4xl h-full sm:h-auto max-h-[100dvh] sm:max-h-[85vh] flex flex-col"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-between p-5 border-b border-zinc-800/60">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center">
-                                <LayoutGrid className="w-5 h-5 text-indigo-400" />
-                              </div>
-                              <div>
-                                <h3 className="text-lg font-semibold text-white">
-                                  {pickerTargetGroupId ? 'Edit Carousel' : 'Create Carousel'}
-                                </h3>
-                                <p className="text-xs text-zinc-500">
-                                  Pick 2 or more images to group them into a single multi-image post.
-                                </p>
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => setShowCarouselPicker(false)}
-                              className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-
-                          <div className="flex-1 overflow-y-auto p-5">
-                            {all.length === 0 ? (
-                              <p className="text-sm text-zinc-500 text-center py-8">
-                                No saved images yet.
-                              </p>
-                            ) : (
-                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                                {all.map((img) => {
-                                  // When editing, already-in-group images are
-                                  // pre-selected. Images that belong to a
-                                  // DIFFERENT explicit group are greyed out
-                                  // so you can't pull them out accidentally.
-                                  const inAnotherGroup = (settings.carouselGroups || []).some(
-                                    (g) => g.id !== pickerTargetGroupId && g.imageIds.includes(img.id)
-                                  );
-                                  const selected = pickerSelected.has(img.id);
-                                  return (
-                                    <motion.button
-                                      key={img.id}
-                                      whileHover={inAnotherGroup ? undefined : { scale: 1.03, transition: { type: "spring", stiffness: 300, damping: 25 } }}
-                                      whileTap={inAnotherGroup ? undefined : { scale: 0.9 }}
-                                      onClick={() => {
-                                        if (inAnotherGroup) return;
-                                        const next = new Set(pickerSelected);
-                                        if (next.has(img.id)) next.delete(img.id);
-                                        else next.add(img.id);
-                                        setPickerSelected(next);
-                                      }}
-                                      disabled={inAnotherGroup}
-                                      className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
-                                        inAnotherGroup
-                                          ? 'border-zinc-800/40 opacity-30 cursor-not-allowed'
-                                          : selected
-                                            ? 'border-emerald-500 ring-2 ring-emerald-500/30'
-                                            : 'border-zinc-800/60 hover:border-zinc-600'
-                                      }`}
-                                      title={inAnotherGroup ? 'Already in another carousel' : img.prompt}
-                                    >
-                                      {img.url ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img
-                                          src={img.url}
-                                          alt={img.prompt}
-                                          className="w-full h-full object-cover"
-                                        />
-                                      ) : (
-                                        <div className="w-full h-full flex items-center justify-center bg-zinc-950">
-                                          <ImageIcon className="w-6 h-6 text-zinc-700" />
-                                        </div>
-                                      )}
-                                      {selected && (
-                                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center">
-                                          <Check className="w-3 h-3" />
-                                        </div>
-                                      )}
-                                    </motion.button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex items-center justify-between p-4 border-t border-zinc-800/60">
-                            <span className="text-xs text-zinc-500">
-                              {pickerSelected.size} selected
-                              {pickerSelected.size < 2 && (
-                                <span className="text-amber-400 ml-2">
-                                  Pick at least 2 images to form a carousel.
-                                </span>
-                              )}
-                            </span>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => setShowCarouselPicker(false)}
-                                className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={confirmCarouselPicker}
-                                disabled={pickerSelected.size < 2}
-                                className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center gap-1.5"
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                                {pickerTargetGroupId ? 'Update Carousel' : 'Create Carousel'}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })()}
@@ -2745,6 +2627,34 @@ export function MainContent() {
                         >
                           <FileJson className="w-3.5 h-3.5" /> Export JSON
                         </button>
+                        {/* Create Carousel — opens the lifted multi-source
+                            picker. Source pool is every approved saved
+                            image so users can mix Post-Ready and
+                            Captioning-stage images into one carousel. */}
+                        <button
+                          onClick={() => openCarouselPicker(null)}
+                          className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                          title="Group images into a single multi-image carousel post"
+                        >
+                          <LayoutGrid className="w-3.5 h-3.5" /> Create Carousel
+                        </button>
+                        {/* Group Selected — quick-promote the checkboxed
+                            single Post-Ready cards into a carousel group
+                            without opening the picker. Mirrors the
+                            captioning-tab manual flow. */}
+                        {postReadySelected.size >= 2 && (
+                          <button
+                            onClick={() => {
+                              const ids = Array.from(postReadySelected);
+                              persistCarouselGroup(`manual-${ids[0]}`, ids);
+                              setPostReadySelected(new Set());
+                            }}
+                            className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                          >
+                            <LayoutGrid className="w-3.5 h-3.5" />
+                            Group Selected ({postReadySelected.size})
+                          </button>
+                        )}
                         <button
                           onClick={async () => {
                             // Fetch engagement data and compute optimal slots
@@ -2877,18 +2787,18 @@ export function MainContent() {
                                 const next = editing.platforms.includes(plat)
                                   ? editing.platforms.filter((x) => x !== plat)
                                   : [...editing.platforms, plat];
-                                updateSettings({
-                                  scheduledPosts: (settings.scheduledPosts || []).map((sp) =>
+                                updateSettings((prev) => ({
+                                  scheduledPosts: (prev.scheduledPosts || []).map((sp) =>
                                     sp.id === editing.id ? { ...sp, platforms: next } : sp
                                   ),
-                                });
+                                }));
                               };
                               const patchField = (patch: Partial<ScheduledPost>) => {
-                                updateSettings({
-                                  scheduledPosts: (settings.scheduledPosts || []).map((sp) =>
+                                updateSettings((prev) => ({
+                                  scheduledPosts: (prev.scheduledPosts || []).map((sp) =>
                                     sp.id === editing.id ? { ...sp, ...patch } : sp
                                   ),
-                                });
+                                }));
                               };
                               return (
                                 <div className="m-4 bg-zinc-950/90 backdrop-blur border border-emerald-500/30 rounded-2xl p-4 space-y-3">
@@ -2968,9 +2878,9 @@ export function MainContent() {
                                     </button>
                                     <button
                                       onClick={() => {
-                                        updateSettings({
-                                          scheduledPosts: (settings.scheduledPosts || []).filter((sp) => sp.id !== editing.id),
-                                        });
+                                        updateSettings((prev) => ({
+                                          scheduledPosts: (prev.scheduledPosts || []).filter((sp) => sp.id !== editing.id),
+                                        }));
                                         setEditingPostId(null);
                                       }}
                                       className="px-3 py-1.5 text-xs bg-red-600/80 hover:bg-red-500 text-white rounded-xl flex items-center gap-1.5"
@@ -3054,11 +2964,11 @@ export function MainContent() {
                                           // pinned to HH:00 — finer resolution
                                           // needs the edit popover.
                                           const newTime = `${String(hour).padStart(2, '0')}:00`;
-                                          updateSettings({
-                                            scheduledPosts: (settings.scheduledPosts || []).map((sp) =>
+                                          updateSettings((prev) => ({
+                                            scheduledPosts: (prev.scheduledPosts || []).map((sp) =>
                                               sp.id === postId ? { ...sp, date: dateStr, time: newTime } : sp
                                             ),
-                                          });
+                                          }));
                                         }}
                                         className={`border-l border-zinc-800/60 min-h-[40px] p-1 space-y-1 transition-colors ${
                                           isDragOver
@@ -3260,9 +3170,9 @@ export function MainContent() {
                           caption: formatPost(selectedImage),
                           status: 'scheduled',
                         };
-                        updateSettings({
-                          scheduledPosts: [...(settings.scheduledPosts || []), newPost],
-                        });
+                        updateSettings((prev) => ({
+                          scheduledPosts: [...(prev.scheduledPosts || []), newPost],
+                        }));
                         setCalendarSlotClick(null);
                       };
 
@@ -3694,6 +3604,27 @@ export function MainContent() {
                                 <span className={`absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 ${badge.color}/90 text-[10px] font-medium text-white rounded-full`}>
                                   <Check className="w-3 h-3" /> {badge.text}
                                 </span>
+                                {/* Carousel-grouping checkbox — top-right.
+                                    Lets users multi-select single cards
+                                    and bulk-group them via the header
+                                    "Group Selected" button. */}
+                                <label
+                                  className="absolute top-2 right-2 z-10 flex items-center justify-center w-6 h-6 bg-black/60 backdrop-blur-sm rounded cursor-pointer hover:bg-black/80 transition-colors"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title="Select for grouping"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={postReadySelected.has(img.id)}
+                                    onChange={(e) => {
+                                      const next = new Set(postReadySelected);
+                                      if (e.target.checked) next.add(img.id);
+                                      else next.delete(img.id);
+                                      setPostReadySelected(next);
+                                    }}
+                                    className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                                  />
+                                </label>
                               </div>
 
                               {/* Right column */}
@@ -4035,6 +3966,137 @@ export function MainContent() {
                 );
               })()}
               {view === 'pipeline' && <PipelinePanel />}
+
+              {/* Carousel multi-source picker modal — lifted out of the
+                  Captioning view so Post-Ready (and any other tab) can
+                  trigger it. Source pool is every approved saved image
+                  regardless of post-ready status. */}
+              {showCarouselPicker && (() => {
+                const pickerSource = savedImages.filter((i) => i.approved);
+                return (
+                  <div
+                    className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4"
+                    onClick={() => setShowCarouselPicker(false)}
+                  >
+                    <div
+                      className="bg-zinc-900/90 backdrop-blur-xl border-0 sm:border border-zinc-800/60 rounded-none sm:rounded-2xl w-full sm:max-w-4xl h-full sm:h-auto max-h-[100dvh] sm:max-h-[85vh] flex flex-col"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between p-5 border-b border-zinc-800/60">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center">
+                            <LayoutGrid className="w-5 h-5 text-indigo-400" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-white">
+                              {pickerTargetGroupId ? 'Edit Carousel' : 'Create Carousel'}
+                            </h3>
+                            <p className="text-xs text-zinc-500">
+                              Pick 2 or more images to group them into a single multi-image post.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setShowCarouselPicker(false)}
+                          className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto p-5">
+                        {pickerSource.length === 0 ? (
+                          <p className="text-sm text-zinc-500 text-center py-8">
+                            No approved saved images yet.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                            {pickerSource.map((img) => {
+                              const inAnotherGroup = (settings.carouselGroups || []).some(
+                                (g) => g.id !== pickerTargetGroupId && g.imageIds.includes(img.id)
+                              );
+                              const selected = pickerSelected.has(img.id);
+                              return (
+                                <motion.button
+                                  key={img.id}
+                                  whileHover={inAnotherGroup ? undefined : { scale: 1.03, transition: { type: "spring", stiffness: 300, damping: 25 } }}
+                                  whileTap={inAnotherGroup ? undefined : { scale: 0.9 }}
+                                  onClick={() => {
+                                    if (inAnotherGroup) return;
+                                    const next = new Set(pickerSelected);
+                                    if (next.has(img.id)) next.delete(img.id);
+                                    else next.add(img.id);
+                                    setPickerSelected(next);
+                                  }}
+                                  disabled={inAnotherGroup}
+                                  className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
+                                    inAnotherGroup
+                                      ? 'border-zinc-800/40 opacity-30 cursor-not-allowed'
+                                      : selected
+                                        ? 'border-emerald-500 ring-2 ring-emerald-500/30'
+                                        : 'border-zinc-800/60 hover:border-zinc-600'
+                                  }`}
+                                  title={inAnotherGroup ? 'Already in another carousel' : img.prompt}
+                                >
+                                  {img.url ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={img.url}
+                                      alt={img.prompt}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center bg-zinc-950">
+                                      <ImageIcon className="w-6 h-6 text-zinc-700" />
+                                    </div>
+                                  )}
+                                  {img.isPostReady && (
+                                    <span className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-emerald-600/90 text-[8px] font-medium text-white rounded">
+                                      Post Ready
+                                    </span>
+                                  )}
+                                  {selected && (
+                                    <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center">
+                                      <Check className="w-3 h-3" />
+                                    </div>
+                                  )}
+                                </motion.button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between p-4 border-t border-zinc-800/60">
+                        <span className="text-xs text-zinc-500">
+                          {pickerSelected.size} selected
+                          {pickerSelected.size < 2 && (
+                            <span className="text-amber-400 ml-2">
+                              Pick at least 2 images to form a carousel.
+                            </span>
+                          )}
+                        </span>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setShowCarouselPicker(false)}
+                            className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={confirmCarouselPicker}
+                            disabled={pickerSelected.size < 2}
+                            className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center gap-1.5"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            {pickerTargetGroupId ? 'Update Carousel' : 'Create Carousel'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {(view === 'studio' || view === 'gallery') && (
                 displayedImages.length === 0 && !isGenerating ? (

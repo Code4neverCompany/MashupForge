@@ -17,7 +17,7 @@ import { getErrorMessage } from '@/lib/errors';
 interface UsePipelineDeps {
   ideas: Idea[];
   settings: UserSettings;
-  updateSettings: (newSettings: Partial<UserSettings>) => void;
+  updateSettings: (newSettings: Partial<UserSettings> | ((prev: UserSettings) => Partial<UserSettings>)) => void;
   updateIdeaStatus: (id: string, status: 'idea' | 'in-work' | 'done') => void;
   addIdea: (concept: string, context?: string) => void;
   generateImages: (customPrompts?: string[], append?: boolean) => Promise<void>;
@@ -311,8 +311,11 @@ Return ONLY the prompt text, nothing else.`;
           if (pipelinePlatforms.length === 0) {
             addLog('schedule', idea.id, 'error', 'No platforms configured — skipped');
           } else {
-            // Merge existing settings posts + posts accumulated during this pipeline run
-            const allPosts = [...(settings.scheduledPosts || []), ...accumulatedPosts];
+            // Slot computation reads the freshest scheduledPosts via
+            // settingsRef so a manual edit / auto-post mid-pipeline doesn't
+            // make us pick a slot that just got filled. Local
+            // accumulatedPosts adds the in-flight pipeline posts on top.
+            const allPosts = [...(settingsRef.current.scheduledPosts || []), ...accumulatedPosts];
             const slot = findNextAvailableSlot(allPosts, engagement);
             const newPost: ScheduledPost = {
               id: `post-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -327,7 +330,12 @@ Return ONLY the prompt text, nothing else.`;
               status: 'pending_approval',
             };
             accumulatedPosts.push(newPost);
-            updateSettings({ scheduledPosts: [...allPosts, newPost] });
+            // Functional updater so we append to the LATEST list — protects
+            // against a long async pipeline run clobbering manual edits or
+            // newly-posted statuses.
+            updateSettings((prev) => ({
+              scheduledPosts: [...(prev.scheduledPosts || []), newPost],
+            }));
             addLog('schedule', idea.id, 'success', `[${modelLabel}] ${slot.reason}`);
           }
         }

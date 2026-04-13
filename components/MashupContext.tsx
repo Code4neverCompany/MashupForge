@@ -155,20 +155,21 @@ export function MashupProvider({ children }: { children: ReactNode }) {
   // Approval flow for pending_approval scheduled posts. Pipeline-
   // produced posts land in that status and need explicit action before
   // the auto-poster will pick them up.
+  // Functional updater so rapid bulk-approve/reject (e.g. clicking
+  // through a dozen pending_approval cards in quick succession) chains
+  // off the latest state instead of all reading the same closure snapshot.
   const approveScheduledPost = (postId: string) => {
-    const posts = settings.scheduledPosts || [];
-    updateSettings({
-      scheduledPosts: posts.map((p) =>
+    updateSettings((prev) => ({
+      scheduledPosts: (prev.scheduledPosts || []).map((p) =>
         p.id === postId ? { ...p, status: 'scheduled' as const } : p
       ),
-    });
+    }));
   };
 
   const rejectScheduledPost = (postId: string) => {
-    const posts = settings.scheduledPosts || [];
-    updateSettings({
-      scheduledPosts: posts.filter((p) => p.id !== postId),
-    });
+    updateSettings((prev) => ({
+      scheduledPosts: (prev.scheduledPosts || []).filter((p) => p.id !== postId),
+    }));
   };
 
   // Compose loading state

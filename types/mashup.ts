@@ -500,7 +500,7 @@ export interface MashupContextType {
   isGenerating: boolean;
   progress: string;
   settings: UserSettings;
-  updateSettings: (newSettings: Partial<UserSettings>) => void;
+  updateSettings: (newSettings: Partial<UserSettings> | ((prev: UserSettings) => Partial<UserSettings>)) => void;
   generateImages: (customPrompts?: string[], append?: boolean, options?: GenerateOptions) => Promise<void>;
   generatePostContent: (image: GeneratedImage) => Promise<GeneratedImage | undefined>;
   rerollImage: (id: string, prompt: string, options?: GenerateOptions) => Promise<void>;
