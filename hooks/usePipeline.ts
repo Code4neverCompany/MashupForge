@@ -502,9 +502,33 @@ Return ONLY the prompt text, nothing else.`;
    */
   const autoGenerateIdeas = useCallback(async (count: number): Promise<Idea[]> => {
     const s = settingsRef.current;
-    const systemContext = `${s.agentPrompt || 'You are an elite AI art director.'}
+    const themed = s.pipelineThemedBatches ?? false;
+    const base = `${s.agentPrompt || 'You are an elite AI art director.'}
 Active Niches: ${s.agentNiches?.join(', ') || 'All'}
-Active Genres: ${s.agentGenres?.join(', ') || 'All'}
+Active Genres: ${s.agentGenres?.join(', ') || 'All'}`;
+
+    // Themed-batch mode: ask pi to pick ONE umbrella theme and produce
+    // N variations riffing on it, so the feed reads as a coherent drop
+    // instead of disconnected one-offs. Shared context string ties them
+    // together in the UI + feedback loop.
+    const systemContext = themed
+      ? `${base}
+
+Pick ONE specific, unifying theme that fits the active niches/genres — a single crossover universe pairing, era mashup, visual motif, or narrative angle. Then generate ${count} variations that all riff on that same theme from different angles (different characters, scenes, moods, or compositions within the theme).
+
+The theme should be concrete, not generic — e.g. "Retro Saturday Morning Cartoons × Cosmic Horror" is good, "cool mashups" is not.
+
+Return ONLY a JSON object with:
+- "theme": the one-line shared theme (used as the shared context for every variation)
+- "variations": array of ${count} objects, each with a "concept" field (the specific image idea within the theme)
+
+Example:
+{"theme":"Retro Saturday Morning Cartoons × Cosmic Horror","variations":[
+  {"concept":"Scooby-Doo gang investigating a non-euclidean haunted mansion, Lovecraftian tentacles seeping through the walls"},
+  {"concept":"The Muppets performing a ritual in a candlelit theatre, Kermit chanting from a Necronomicon"},
+  {"concept":"Looney Tunes characters as cultists worshipping a cosmic Acme entity, Bugs Bunny in dark robes"}
+]}`
+      : `${base}
 
 Generate ${count} unique, creative content ideas for social media posts.
 Each idea should be visually striking, shareable, and aligned with the niches/genres.
@@ -512,19 +536,46 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
 [{"concept": "Darth Vader as a grimdark Warhammer inquisitor...", "context": "Star Wars × WH40k crossover"}]`;
 
     const text = await streamAIToString(systemContext, { mode: 'idea' });
-    const parsed = extractJsonFromLLM(text, 'array');
-    if (!Array.isArray(parsed)) return [];
 
     const nowStamp = Date.now();
+    const buildIdea = (concept: string, context: string, i: number): Idea => ({
+      id: `idea-auto-${nowStamp}-${i}-${Math.random().toString(36).slice(2, 8)}`,
+      concept: concept.trim(),
+      context: context.trim(),
+      status: 'idea' as const,
+      createdAt: nowStamp,
+    });
+
+    if (themed) {
+      const parsed = extractJsonFromLLM(text, 'object');
+      const theme = typeof parsed?.theme === 'string' ? parsed.theme.trim() : '';
+      const variations = Array.isArray(parsed?.variations) ? parsed.variations : [];
+      const ideasOut = variations
+        .filter((v: any) => v && typeof v.concept === 'string' && v.concept.trim())
+        .map((v: any, i: number) =>
+          buildIdea(
+            String(v.concept),
+            theme ? `Theme: ${theme}${v.context ? ` — ${v.context}` : ''}` : (typeof v.context === 'string' ? v.context : ''),
+            i,
+          ),
+        );
+      // Fallback: if pi returned something we couldn't parse as a themed
+      // object, try the legacy array shape so a bad response degrades
+      // gracefully instead of stalling the daemon.
+      if (ideasOut.length > 0) return ideasOut;
+    }
+
+    const parsed = extractJsonFromLLM(text, 'array');
+    if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((idea: any) => idea && typeof idea.concept === 'string' && idea.concept.trim())
-      .map((idea: any, i: number): Idea => ({
-        id: `idea-auto-${nowStamp}-${i}-${Math.random().toString(36).slice(2, 8)}`,
-        concept: String(idea.concept).trim(),
-        context: typeof idea.context === 'string' ? idea.context.trim() : '',
-        status: 'idea' as const,
-        createdAt: nowStamp,
-      }));
+      .map((idea: any, i: number) =>
+        buildIdea(
+          String(idea.concept),
+          typeof idea.context === 'string' ? idea.context : '',
+          i,
+        ),
+      );
   }, []);
 
   const startPipeline = useCallback(async () => {
@@ -572,7 +623,20 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
           for (const g of generated) {
             addIdea(g.concept, g.context || undefined);
           }
-          addLog('auto-generate', '', 'success', `Queue empty → generated ${generated.length} ideas via pi`);
+          // Themed runs share the same "Theme: ..." prefix across every
+          // idea's context — surface it in the log so the user can see
+          // at a glance what the cycle is about.
+          const sharedTheme = generated[0]?.context?.startsWith('Theme: ')
+            ? generated[0].context.replace(/^Theme:\s*/, '').split(' — ')[0]
+            : '';
+          addLog(
+            'auto-generate',
+            '',
+            'success',
+            sharedTheme
+              ? `Queue empty → generated ${generated.length} themed ideas via pi — theme: "${sharedTheme}"`
+              : `Queue empty → generated ${generated.length} ideas via pi`,
+          );
           // Use the generated ideas directly for this cycle — we can't
           // rely on ideasRef being updated this tick because addIdea
           // dispatches through setState.

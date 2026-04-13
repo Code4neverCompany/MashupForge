@@ -199,6 +199,14 @@ export interface UserSettings {
    * manual flow — ready comparison results auto-group into a carousel.
    */
   pipelineCarouselMode?: boolean;
+  /**
+   * When on, the continuous-mode daemon's auto-idea generator asks pi
+   * for ONE shared theme plus N variations on it, instead of N random
+   * unrelated ideas. Produces a more cohesive feed (e.g. "Retro Saturday
+   * Morning Cartoons × Horror" → Scooby-Doo/Texas Chainsaw, Looney
+   * Tunes/Scream, Muppets/Suspiria). Off = legacy random-ideas mode.
+   */
+  pipelineThemedBatches?: boolean;
 }
 
 export type ViewType = 'studio' | 'gallery' | 'compare' | 'captioning' | 'post-ready' | 'ideas' | 'pipeline';

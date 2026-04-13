@@ -976,6 +976,23 @@ export function PipelinePanel() {
               </p>
             </div>
           </label>
+
+          <label className="flex items-start gap-2 px-3 py-2 bg-zinc-800/40 border border-[#c5a062]/15 rounded-xl cursor-pointer hover:border-[#c5a062]/35 hover:bg-zinc-800/60 transition-all duration-200">
+            <input
+              type="checkbox"
+              checked={settings.pipelineThemedBatches ?? false}
+              onChange={() =>
+                updateSettings({ pipelineThemedBatches: !(settings.pipelineThemedBatches ?? false) })
+              }
+              className="mt-0.5 w-4 h-4 accent-emerald-500"
+            />
+            <div className="flex-1">
+              <p className="text-sm text-zinc-200">Themed idea batches</p>
+              <p className="text-[11px] text-zinc-500 leading-snug">
+                Auto-generate ideas as one shared theme + N variations instead of random unrelated ideas.
+              </p>
+            </div>
+          </label>
         </div>
 
         {/* Platform picker */}
