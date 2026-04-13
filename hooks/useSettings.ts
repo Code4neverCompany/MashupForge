@@ -31,10 +31,13 @@ export function useSettings() {
   }, []);
 
   const updateSettings = async (newSettings: Partial<UserSettings>) => {
-    const updated = { ...settings, ...newSettings };
-    setSettings(updated);
+    let latest: UserSettings;
+    setSettings((prev) => {
+      latest = { ...prev, ...newSettings };
+      return latest;
+    });
     try {
-      await set('mashup_settings', updated);
+      await set('mashup_settings', latest!);
     } catch (e) {
       console.error('Failed to save settings to IndexedDB', e);
     }
