@@ -369,16 +369,18 @@ export function MainContent() {
   const scheduleImage = (img: GeneratedImage, platforms: PostPlatform[], date: string, time: string) => {
     if (!date || !time || platforms.length === 0) return;
     const caption = formatPost(img);
-    const existingPosts = settings.scheduledPosts || [];
-    const editableIdx = existingPosts.findIndex(
-      (p) => p.imageId === img.id && !p.carouselGroupId
-    );
-    let next: ScheduledPost[];
-    if (editableIdx !== -1) {
-      next = existingPosts.map((p, i) =>
-        i === editableIdx ? { ...p, date, time, platforms, caption } : p
+    updateSettings((prev) => {
+      const existingPosts = prev.scheduledPosts || [];
+      const editableIdx = existingPosts.findIndex(
+        (p) => p.imageId === img.id && !p.carouselGroupId
       );
-    } else {
+      if (editableIdx !== -1) {
+        return {
+          scheduledPosts: existingPosts.map((p, i) =>
+            i === editableIdx ? { ...p, date, time, platforms, caption } : p
+          ),
+        };
+      }
       const scheduled: ScheduledPost = {
         id: `sched-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         imageId: img.id,
@@ -388,9 +390,8 @@ export function MainContent() {
         caption,
         status: 'scheduled',
       };
-      next = [...existingPosts, scheduled];
-    }
-    updateSettings({ scheduledPosts: next });
+      return { scheduledPosts: [...existingPosts, scheduled] };
+    });
     setPostStatus((prev) => ({
       ...prev,
       [img.id]: `Scheduled for ${date} ${time}`,
@@ -597,37 +598,41 @@ export function MainContent() {
     if (platforms.length === 0 || !date || !time || item.images.length === 0) return;
     const caption = item.group?.caption || formatPost(item.images[0]);
     const imageIds = new Set(item.images.map((i) => i.id));
-    const existingPosts = settings.scheduledPosts || [];
 
-    // Find an existing carouselGroupId whose posts cover exactly this
-    // item's image set. Iterating to the end means the LAST match wins
-    // if the user somehow has stale duplicates — newest grouping is kept.
-    const byGroup = new Map<string, ScheduledPost[]>();
-    for (const p of existingPosts) {
-      if (!p.carouselGroupId || !imageIds.has(p.imageId)) continue;
-      const list = byGroup.get(p.carouselGroupId) || [];
-      list.push(p);
-      byGroup.set(p.carouselGroupId, list);
-    }
-    let matchGroupId: string | null = null;
-    for (const [gid, posts] of byGroup) {
-      const postImgIds = new Set(posts.map((p) => p.imageId));
-      if (
-        postImgIds.size === imageIds.size &&
-        [...imageIds].every((id) => postImgIds.has(id))
-      ) {
-        matchGroupId = gid;
+    updateSettings((prev) => {
+      const existingPosts = prev.scheduledPosts || [];
+
+      // Find an existing carouselGroupId whose posts cover exactly this
+      // item's image set. Iterating to the end means the LAST match wins
+      // if the user somehow has stale duplicates — newest grouping is kept.
+      const byGroup = new Map<string, ScheduledPost[]>();
+      for (const p of existingPosts) {
+        if (!p.carouselGroupId || !imageIds.has(p.imageId)) continue;
+        const list = byGroup.get(p.carouselGroupId) || [];
+        list.push(p);
+        byGroup.set(p.carouselGroupId, list);
       }
-    }
+      let matchGroupId: string | null = null;
+      for (const [gid, posts] of byGroup) {
+        const postImgIds = new Set(posts.map((p) => p.imageId));
+        if (
+          postImgIds.size === imageIds.size &&
+          [...imageIds].every((id) => postImgIds.has(id))
+        ) {
+          matchGroupId = gid;
+        }
+      }
 
-    let next: ScheduledPost[];
-    if (matchGroupId) {
-      next = existingPosts.map((p) =>
-        p.carouselGroupId === matchGroupId
-          ? { ...p, date, time, platforms, caption }
-          : p
-      );
-    } else {
+      if (matchGroupId) {
+        return {
+          scheduledPosts: existingPosts.map((p) =>
+            p.carouselGroupId === matchGroupId
+              ? { ...p, date, time, platforms, caption }
+              : p
+          ),
+        };
+      }
+
       const nowStamp = Date.now();
       const groupId = `carousel-grp-${nowStamp}-${Math.random().toString(36).slice(2, 8)}`;
       const newPosts: ScheduledPost[] = item.images.map((img, idx) => ({
@@ -640,10 +645,8 @@ export function MainContent() {
         status: 'scheduled' as const,
         carouselGroupId: groupId,
       }));
-      next = [...existingPosts, ...newPosts];
-    }
-
-    updateSettings({ scheduledPosts: next });
+      return { scheduledPosts: [...existingPosts, ...newPosts] };
+    });
     setPostStatus((prev) => ({
       ...prev,
       [`carousel-${item.id}`]: `Scheduled carousel for ${date} ${time}`,
@@ -2804,7 +2807,7 @@ export function MainContent() {
                     </div>
 
                     {available.length === 0 && (
-                      <div className="px-4 py-3 bg-amber-900/20 border border-amber-800/40 rounded-lg text-xs text-amber-300">
+                      <div className="px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-300">
                         No social platform credentials configured. Add Instagram or Pinterest keys in Settings to enable posting.
                       </div>
                     )}
@@ -3901,7 +3904,7 @@ export function MainContent() {
 
                           {/* Engagement source badge */}
                           {smartScheduleSource && (
-                            <div className="flex items-center gap-2 px-3 py-2 bg-indigo-900/20 border border-indigo-800/30 rounded-lg">
+                            <div className="flex items-center gap-2 px-3 py-2 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
                               <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
                               <span className="text-[11px] text-indigo-300">
                                 Data source: <strong>{smartScheduleSource}</strong>

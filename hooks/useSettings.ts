@@ -30,10 +30,11 @@ export function useSettings() {
     loadSettings();
   }, []);
 
-  const updateSettings = async (newSettings: Partial<UserSettings>) => {
+  const updateSettings = async (newSettings: Partial<UserSettings> | ((prev: UserSettings) => Partial<UserSettings>)) => {
     let latest: UserSettings;
     setSettings((prev) => {
-      latest = { ...prev, ...newSettings };
+      const patch = typeof newSettings === 'function' ? newSettings(prev) : newSettings;
+      latest = { ...prev, ...patch };
       return latest;
     });
     try {
