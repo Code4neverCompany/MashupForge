@@ -220,11 +220,13 @@ Return ONLY the JSON array, no prose.`;
       )}
       
       <aside aria-label="Sidebar" className={`fixed md:static inset-y-0 left-0 z-50 w-[85vw] sm:w-80 glass-panel flex flex-col h-full shrink-0 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="flex p-2 gap-2 border-b border-zinc-800/60">
+        <div className="flex p-2 gap-1.5 border-b border-[#c5a062]/15">
           <button
             onClick={() => setActiveTab('content')}
-            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold transition-colors ${
-              activeTab === 'content' ? 'bg-zinc-800/80 text-white' : 'text-zinc-500 hover:text-zinc-300'
+            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 ${
+              activeTab === 'content'
+                ? 'bg-[#00e6ff]/10 text-[#00e6ff] border border-[#00e6ff]/20'
+                : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border border-transparent'
             }`}
           >
             <Search className="w-3.5 h-3.5" />
@@ -232,8 +234,10 @@ Return ONLY the JSON array, no prose.`;
           </button>
           <button
             onClick={() => setActiveTab('chat')}
-            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold transition-colors ${
-              activeTab === 'chat' ? 'bg-zinc-800/80 text-white' : 'text-zinc-500 hover:text-zinc-300'
+            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 ${
+              activeTab === 'chat'
+                ? 'bg-[#00e6ff]/10 text-[#00e6ff] border border-[#00e6ff]/20'
+                : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border border-transparent'
             }`}
           >
             <MessageSquare className="w-3.5 h-3.5" />
@@ -241,8 +245,10 @@ Return ONLY the JSON array, no prose.`;
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold transition-colors ${
-              activeTab === 'history' ? 'bg-zinc-800/80 text-white' : 'text-zinc-500 hover:text-zinc-300'
+            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 ${
+              activeTab === 'history'
+                ? 'bg-[#00e6ff]/10 text-[#00e6ff] border border-[#00e6ff]/20'
+                : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border border-transparent'
             }`}
           >
             <History className="w-3.5 h-3.5" />
@@ -274,7 +280,7 @@ Return ONLY the JSON array, no prose.`;
                 {images.filter(img => img.status === 'ready').map((img) => (
                   <button
                     key={img.id}
-                    className="group relative aspect-square bg-zinc-950 rounded-lg overflow-hidden border border-zinc-800 hover:border-indigo-500/50 transition-all cursor-pointer text-left"
+                    className="group relative aspect-square bg-zinc-900/60 rounded-lg overflow-hidden border border-[#c5a062]/15 hover:border-[#c5a062]/50 transition-all duration-200 cursor-pointer text-left"
                     onClick={() => {
                       setComparisonPrompt(img.prompt);
                       setView('compare');
@@ -309,9 +315,9 @@ Return ONLY the JSON array, no prose.`;
                   onClick={() => {
                     handleSend(`Autonomous Content Generation: Research current trends and generate a viral concept with 3 image prompts based on my personality settings.`);
                   }}
-                  className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors font-medium"
+                  className="flex items-center gap-2 px-4 py-2 bg-[#00e6ff]/10 hover:bg-[#00e6ff]/20 border border-[#00e6ff]/25 hover:border-[#00e6ff]/50 text-[#00e6ff] rounded-xl transition-all duration-200 font-semibold text-sm"
                 >
-                  <Sparkles className="w-4 h-4 text-indigo-400" />
+                  <Sparkles className="w-4 h-4" />
                   Automate Content Gen
                 </button>
               </>
@@ -358,7 +364,7 @@ Return ONLY the JSON array, no prose.`;
               </div>
             )}
             {msg.trendingSources && msg.trendingSources.length > 0 && (
-              <div className="mt-2 space-y-1 w-full pl-2 border-l-2 border-indigo-500/40">
+              <div className="mt-2 space-y-1 w-full pl-2 border-l-2 border-[#00e6ff]/30">
                 <p className="text-xs text-zinc-500 font-medium">Trending sources:</p>
                 {msg.trendingSources.map((src, j) =>
                   src.url ? (
@@ -432,7 +438,7 @@ Return ONLY the JSON array, no prose.`;
       </div>
 
       {activeTab !== 'history' && (
-      <div className="p-4 border-t border-zinc-800 bg-zinc-900/80">
+      <div className="p-4 border-t border-[#c5a062]/15 bg-[#050505]/90">
         <form
           suppressHydrationWarning
           onSubmit={(e) => {
@@ -447,7 +453,7 @@ Return ONLY the JSON array, no prose.`;
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={activeTab === 'chat' ? 'Message AI...' : 'Generate content...'}
-            className="w-full bg-zinc-950 border border-zinc-700 rounded-xl pl-4 pr-10 py-3 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            className="w-full bg-zinc-900/80 border border-zinc-700/60 rounded-xl pl-4 pr-10 py-3 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#00e6ff]/25 focus:border-[#00e6ff]/40 transition-all duration-200"
             disabled={isLoading}
           />
           <button

@@ -52,7 +52,7 @@ export function useMashup() {
 export function MashupProvider({ children }: { children: ReactNode }) {
   // UI state
   const [view, setView] = useState<ViewType>('studio');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Core hooks — order matters for dependencies
   const { settings, updateSettings, isSettingsLoaded } = useSettings();
@@ -172,6 +172,28 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  // Bulk variants — single functional-updater pass so N approvals applied
+  // in a single click don't race against each other or the auto-poster.
+  const bulkApproveScheduledPosts = (postIds: string[]) => {
+    if (postIds.length === 0) return;
+    const idSet = new Set(postIds);
+    updateSettings((prev) => ({
+      scheduledPosts: (prev.scheduledPosts || []).map((p) =>
+        idSet.has(p.id) && p.status === 'pending_approval'
+          ? { ...p, status: 'scheduled' as const }
+          : p
+      ),
+    }));
+  };
+
+  const bulkRejectScheduledPosts = (postIds: string[]) => {
+    if (postIds.length === 0) return;
+    const idSet = new Set(postIds);
+    updateSettings((prev) => ({
+      scheduledPosts: (prev.scheduledPosts || []).filter((p) => !idSet.has(p.id)),
+    }));
+  };
+
   // Compose loading state
   const isLoaded = isSettingsLoaded && isImagesLoaded && isCollectionsLoaded && ideasHook.isIdeasLoaded;
 
@@ -256,6 +278,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     togglePipeline: pipelineHook.togglePipeline,
     startPipeline: pipelineHook.startPipeline,
     stopPipeline: pipelineHook.stopPipeline,
+    skipCurrentIdea: pipelineHook.skipCurrentIdea,
     pipelineContinuous: pipelineHook.pipelineContinuous,
     toggleContinuous: pipelineHook.toggleContinuous,
     pipelineInterval: pipelineHook.pipelineInterval,
@@ -265,6 +288,8 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     clearPipelineLog: pipelineHook.clearPipelineLog,
     approveScheduledPost,
     rejectScheduledPost,
+    bulkApproveScheduledPosts,
+    bulkRejectScheduledPosts,
   };
 
   return (

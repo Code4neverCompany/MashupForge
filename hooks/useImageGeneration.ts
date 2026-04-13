@@ -235,11 +235,6 @@ async function submitWithOneRetry(
     const classifications = lErr.moderationClassification || [];
     if (classifications.length === 0) throw err;
 
-    console.warn('[moderation-stats] first-try blocked:', {
-      model: baseParams.modelId,
-      classifications,
-      failedPrompt: (lErr.failedPrompt || initialPrompt).slice(0, 120),
-    });
     callbacks.onRetry(classifications);
 
     const rewritten = await streamAIToString(
@@ -556,7 +551,6 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
             }
           } : img));
           if (retried) {
-            console.warn(`[moderation-stats] Image ${i + 1} recovered after rewrite (${selectedModel}).`);
             setLastError(null);
           }
         } catch (imgError: unknown) {
@@ -571,12 +565,6 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
             rawMsg.toLowerCase().includes('no images found') ||
             rawMsg.toLowerCase().includes('complete but no images') ||
             rawMsg.toLowerCase().includes('blocked by content moderation');
-
-          console.warn('[moderation-stats] final failure:', {
-            model: selectedModel,
-            classifications,
-            message: rawMsg.slice(0, 160),
-          });
 
           let errMsg: string;
           if (selectedModel === 'gpt-image-1.5' && isContentFilter) {
@@ -739,7 +727,6 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
           }
         };
         if (retried) {
-          console.warn(`[moderation-stats] Reroll recovered after rewrite (${selectedModel}).`);
           setLastError(null);
         }
       } catch (err) {

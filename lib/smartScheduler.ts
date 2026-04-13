@@ -187,17 +187,74 @@ function scoreSlot(
   return (dayMult * hourWeight) + eveningBonus;
 }
 
+/** Richer post shape used for cap-aware scheduling. All fields optional
+ *  so legacy callers passing `{ date, time }` still type-check. */
+export interface ExistingPost {
+  date: string;
+  time: string;
+  platforms?: string[];
+  status?: 'pending_approval' | 'scheduled' | 'posted' | 'failed';
+}
+
+/** Per-platform daily caps. Missing entry = no cap for that platform. */
+export type DailyCaps = Partial<Record<string, number>>;
+
+/**
+ * Build a `${date}|${platform}` → count map of posts that count
+ * toward today's cap. Per user spec, `posted` and `failed` are
+ * excluded — only future inventory (scheduled / pending_approval /
+ * undefined-status) counts, so historical successful posts can't
+ * permanently lock a day out.
+ */
+function buildPerDayPlatformCounts(posts: ExistingPost[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const p of posts) {
+    if (p.status === 'posted' || p.status === 'failed') continue;
+    const platforms = p.platforms || [];
+    for (const plat of platforms) {
+      const key = `${p.date}|${plat}`;
+      counts[key] = (counts[key] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
 /**
  * Find the N best upcoming slots.
  * Skips already-taken slots, picks optimal times based on engagement.
+ *
+ * If `caps` and `platforms` are supplied, also skips any day where any
+ * of the requested platforms has already hit its cap.
  */
 export function findBestSlots(
-  existingPosts: { date: string; time: string }[],
+  existingPosts: ExistingPost[],
   count: number = 1,
   engagement?: CachedEngagement,
+  options?: {
+    /** Platforms the new post is going to publish to. */
+    platforms?: string[];
+    /** Per-platform daily caps. Missing entry = no cap. */
+    caps?: DailyCaps;
+  },
 ): SlotScore[] {
   const eng = engagement || loadEngagementData();
   const taken = new Set(existingPosts.map(p => `${p.date}T${p.time}`));
+  const platforms = options?.platforms || [];
+  const caps = options?.caps || {};
+  const dayCounts = buildPerDayPlatformCounts(existingPosts);
+
+  // Helper — would adding one more post to `dateStr` for any of the
+  // target platforms blow past that platform's cap?
+  const dayWouldExceedCap = (dateStr: string): boolean => {
+    if (platforms.length === 0) return false;
+    for (const plat of platforms) {
+      const cap = caps[plat];
+      if (cap == null) continue; // no cap → fine
+      const current = dayCounts[`${dateStr}|${plat}`] || 0;
+      if (current >= cap) return true;
+    }
+    return false;
+  };
 
   const candidates: SlotScore[] = [];
   const now = new Date();
@@ -209,6 +266,9 @@ export function findBestSlots(
     const checkDate = new Date(startDate);
     checkDate.setDate(checkDate.getDate() + dayOffset);
     const dateStr = checkDate.toISOString().split('T')[0];
+
+    // Skip whole day if any target platform is at cap.
+    if (dayWouldExceedCap(dateStr)) continue;
 
     // Only consider hours with significant engagement weight
     for (const { hour } of eng.hours) {
@@ -233,12 +293,18 @@ export function findBestSlots(
 
 /**
  * Single best slot — drop-in replacement for old findNextAvailableSlot.
+ *
+ * `options.platforms` + `options.caps` enable per-platform daily caps.
  */
 export function findBestSlot(
-  existingPosts: { date: string; time: string }[],
+  existingPosts: ExistingPost[],
   engagement?: CachedEngagement,
+  options?: {
+    platforms?: string[];
+    caps?: DailyCaps;
+  },
 ): { date: string; time: string } {
-  const slots = findBestSlots(existingPosts, 1, engagement);
+  const slots = findBestSlots(existingPosts, 1, engagement, options);
   if (slots.length > 0) return { date: slots[0].date, time: slots[0].time };
   // Absolute fallback
   const tomorrow = new Date();

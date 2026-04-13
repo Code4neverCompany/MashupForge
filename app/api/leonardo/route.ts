@@ -86,13 +86,6 @@ export async function POST(req: Request) {
     };
     const body = JSON.stringify(requestPayload);
 
-    // Log everything needed to diagnose 400 VALIDATION_ERROR responses from
-    // the v2 API: the internal modelId the client sent, the apiModelId we
-    // mapped it to, and the exact JSON body we're about to POST.
-    console.log('[Leonardo] modelId (internal):', modelId);
-    console.log('[Leonardo] apiModelId (sent):', apiModelId);
-    console.log('[Leonardo] POST request body:', body);
-
     // ── Call Leonardo v2 API ─────────────────────────────────────────────
     const createRes = await fetch('https://cloud.leonardo.ai/api/rest/v2/generations', {
       method: 'POST',

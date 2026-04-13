@@ -50,7 +50,6 @@ import {
   Wand2,
   Clock,
   Send,
-  Instagram,
   TrendingUp
 } from 'lucide-react';
 import {
@@ -866,9 +865,22 @@ export function MainContent() {
     "Wonder Woman wielding a Thunder Hammer leading a charge against Chaos Daemons"
   ];
 
+  /**
+   * Set when the user pushes an Idea Board concept into Compare — tells
+   * the comparisonResults watcher below to auto-collapse the resulting
+   * images into a single CarouselGroup once they're all ready, but only
+   * when pipelineCarouselMode is on. Ref (not state) so flipping it
+   * doesn't cause a re-render and the watcher reads the freshest value.
+   */
+  const pendingIdeaCarouselRef = useRef(false);
+
   const handlePushIdeaToCompare = async (prompt: string) => {
     setIsPushing(true);
     setView('compare');
+    // Arm the carousel watcher — if the user has carousel mode on, the
+    // Compare results from this run will auto-group. Harmless if mode
+    // is off; the watcher just clears the flag.
+    pendingIdeaCarouselRef.current = true;
     try {
       const text = await streamAIToString(
         `Analyze and enhance this generation prompt: "${prompt}".
@@ -915,6 +927,35 @@ export function MainContent() {
       setIsPushing(false);
     }
   };
+
+  /**
+   * Auto-collapse Ideas Board comparison runs into a single carousel.
+   * Fires when: (1) the user just pushed an idea into Compare (ref armed),
+   * (2) pipelineCarouselMode is on, and (3) all comparisonResults are in
+   * the 'ready' state with usable media. Creates one CarouselGroup in
+   * settings.carouselGroups and disarms the ref so a subsequent manual
+   * Compare run isn't also grouped.
+   */
+  useEffect(() => {
+    if (!pendingIdeaCarouselRef.current) return;
+    if (!settings.pipelineCarouselMode) {
+      pendingIdeaCarouselRef.current = false;
+      return;
+    }
+    if (comparisonResults.length < 2) return;
+    const allReady = comparisonResults.every(
+      (img) => img.status === 'ready' && (img.base64 || img.url),
+    );
+    if (!allReady) return;
+    pendingIdeaCarouselRef.current = false;
+    const nowStamp = Date.now();
+    const groupId = `carousel-idea-${nowStamp}-${Math.random().toString(36).slice(2, 8)}`;
+    persistCarouselGroup(
+      groupId,
+      comparisonResults.map((i) => i.id),
+      { status: 'draft' },
+    );
+  }, [comparisonResults, settings.pipelineCarouselMode]);
 
   useEffect(() => {
     const storedModels = localStorage.getItem('mashup_comparison_models');
@@ -1381,7 +1422,7 @@ export function MainContent() {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden relative">
       {/* Header */}
-      <header className="h-16 glass-panel relative flex items-center justify-between px-4 md:px-6 shrink-0 z-10 after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-emerald-500/20 after:to-transparent">
+      <header className="h-16 glass-panel header-line relative flex items-center justify-between px-4 md:px-6 shrink-0 z-10">
         <div className="flex items-center gap-2 md:gap-3">
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -1389,26 +1430,25 @@ export function MainContent() {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 hidden sm:flex items-center justify-center">
-            <Sparkles className="w-4 h-4 text-white" />
+          <div className="w-8 h-8 rounded-lg bg-[#00e6ff]/15 border border-[#00e6ff]/25 hidden sm:flex items-center justify-center">
+            <Sparkles className="w-4 h-4 text-[#00e6ff]" />
           </div>
           <h1 className="text-base md:text-lg font-semibold tracking-tight text-white truncate max-w-[120px] sm:max-w-none">Mashup Studio</h1>
         </div>
         
         <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
-          <div className="relative hidden md:flex bg-zinc-900/50 rounded-lg p-1 border border-zinc-800/60 overflow-x-auto hide-scrollbar snap-x group">
-            {/* Active Tab Indicator - Animated via motion layoutId */}
+          <div className="relative hidden md:flex bg-zinc-900/60 rounded-xl p-1 border border-[#c5a062]/15 overflow-x-auto hide-scrollbar snap-x group">
             {['ideas', 'compare', 'gallery', 'captioning', 'post-ready', 'pipeline'].map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v as any)}
-                className={`relative px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 shrink-0 snap-start z-10 ${view === v ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                className={`relative px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2 shrink-0 snap-start z-10 ${view === v ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
               >
                 {view === v && (
                   <motion.div
                     layoutId="activeTab"
-                    className="absolute inset-0 bg-zinc-800 rounded-md shadow-sm"
-                    transition={{ type: 'spring', duration: 0.5, bounce: 0.2 }}
+                    className="absolute inset-0 bg-[#00e6ff]/10 border border-[#00e6ff]/20 rounded-lg"
+                    transition={{ type: 'spring', duration: 0.4, bounce: 0.15 }}
                   />
                 )}
                 <span className="relative z-10 flex items-center gap-2">
@@ -1457,7 +1497,7 @@ export function MainContent() {
             <button
               onClick={handleCompare}
               disabled={isComparing || comparisonModels.length < 2 || !comparisonPrompt.trim()}
-              className="hidden md:flex items-center gap-2 px-4 py-2 bg-white text-black hover:bg-zinc-200 disabled:opacity-50 disabled:hover:bg-white rounded-lg font-medium text-sm transition-colors shrink-0"
+              className="hidden md:flex items-center gap-2 px-4 py-2 bg-[#00e6ff] hover:bg-[#33eaff] text-[#050505] disabled:opacity-50 disabled:hover:bg-[#00e6ff] rounded-xl font-semibold text-sm transition-all duration-200 shadow-[0_0_16px_rgba(0,230,255,0.2)] hover:shadow-[0_0_24px_rgba(0,230,255,0.35)] shrink-0"
             >
               {isComparing ? (
                 <>
@@ -1477,7 +1517,7 @@ export function MainContent() {
 
       {/* Mobile bottom nav — replaces the header tab bar below md */}
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-900/90 backdrop-blur-xl border-t border-zinc-800/60 pb-[env(safe-area-inset-bottom)]"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#050505]/95 backdrop-blur-xl border-t border-[#c5a062]/20 pb-[env(safe-area-inset-bottom)]"
         aria-label="Primary"
       >
         <div className="flex justify-around items-stretch px-1 py-1">
@@ -1495,8 +1535,8 @@ export function MainContent() {
                 key={key}
                 onClick={() => setView(key)}
                 aria-current={active ? 'page' : undefined}
-                className={`flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[44px] rounded-lg transition-colors ${
-                  active ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[44px] rounded-lg transition-all duration-200 ${
+                  active ? 'text-[#00e6ff] bg-[#00e6ff]/8' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
                 <Icon className="w-5 h-5" />
@@ -1523,12 +1563,12 @@ export function MainContent() {
                   {/* Section header */}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center">
-                        <Bookmark className="w-5 h-5 text-emerald-400" />
+                      <div className="icon-box-blue">
+                        <Bookmark className="w-5 h-5 text-[#00e6ff]" />
                       </div>
                       <div>
-                        <h2 className="text-xl font-semibold text-white">Gallery</h2>
-                        <p className="text-sm text-zinc-400">{savedImages.length} saved images</p>
+                        <h2 className="type-title">Gallery</h2>
+                        <p className="type-muted">{savedImages.length} saved images</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4 text-xs text-zinc-500">
@@ -1543,7 +1583,7 @@ export function MainContent() {
                   </div>
 
                   {/* Filter card */}
-                  <div className="flex flex-col gap-4 bg-zinc-900/80 backdrop-blur-sm p-4 md:p-5 rounded-2xl border border-zinc-800/60">
+                  <div className="flex flex-col gap-4 card p-4 md:p-5">
                     <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
                       <div className="relative w-full sm:w-96">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
@@ -1552,7 +1592,7 @@ export function MainContent() {
                           placeholder="Search by prompt or tags..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/40 transition-colors"
+                          className="w-full bg-zinc-900/60 border border-zinc-700/50 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-[#00e6ff]/20 focus:border-[#00e6ff]/35 transition-all duration-200"
                         />
                       </div>
                       <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -1563,7 +1603,7 @@ export function MainContent() {
                             </span>
                             <button
                               onClick={handleBatchAnimate}
-                              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-medium transition-colors flex items-center gap-2"
+                              className="btn-blue-sm py-2"
                             >
                               <Video className="w-3.5 h-3.5" />
                               Batch Animate
@@ -1683,12 +1723,12 @@ export function MainContent() {
                   {/* Section header */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-amber-600/20 border border-amber-500/30 flex items-center justify-center">
-                        <Lightbulb className="w-5 h-5 text-amber-400" />
+                      <div className="icon-box-gold">
+                        <Lightbulb className="w-5 h-5 text-[#c5a062]" />
                       </div>
                       <div>
-                        <h2 className="text-xl font-semibold text-white">Ideas Board</h2>
-                        <p className="text-sm text-zinc-400">Review, approve, and push brainstormed ideas to the Studio</p>
+                        <h2 className="type-title">Ideas Board</h2>
+                        <p className="type-muted">Review, approve, and push brainstormed ideas to the Studio</p>
                       </div>
                     </div>
                     <button
@@ -1730,7 +1770,7 @@ export function MainContent() {
                       return (
                         <div
                           key={status}
-                          className="flex-1 bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl p-4 flex flex-col gap-4"
+                          className="flex-1 card p-4 flex flex-col gap-4"
                           onDragOver={(e) => e.preventDefault()}
                           onDrop={(e) => {
                             e.preventDefault();
@@ -1755,11 +1795,11 @@ export function MainContent() {
                                 key={idea.id}
                                 draggable
                                 onDragStart={(e) => e.dataTransfer.setData('ideaId', idea.id)}
-                                className={`bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl p-4 flex flex-col gap-3 cursor-grab active:cursor-grabbing transition-colors ${statusCfg.hoverBorder}`}
+                                className={`card p-4 flex flex-col gap-3 cursor-grab active:cursor-grabbing transition-all duration-200 ${statusCfg.hoverBorder}`}
                               >
                                 {idea.context && <h4 className="text-sm font-bold text-amber-400">{idea.context}</h4>}
                                 <p className="text-xs text-zinc-300 line-clamp-4">{idea.concept}</p>
-                                <div className="flex items-center justify-between mt-auto pt-3 border-t border-zinc-800/60">
+                                <div className="flex items-center justify-between mt-auto pt-3 border-t border-[#c5a062]/15">
                                   <span className="text-[10px] text-zinc-500">
                                     {new Date(idea.createdAt).toLocaleDateString()}
                                   </span>
@@ -1767,7 +1807,7 @@ export function MainContent() {
                                     {status === 'idea' && (
                                       <button
                                         onClick={() => updateIdeaStatus(idea.id, 'in-work')}
-                                        className="text-[10px] bg-emerald-600/80 hover:bg-emerald-500 text-white px-2 py-1 rounded-lg"
+                                        className="btn-blue-sm text-[10px] py-1 px-2 rounded-lg"
                                       >
                                         Approve
                                       </button>
@@ -1777,14 +1817,14 @@ export function MainContent() {
                                         <button
                                           onClick={() => handlePushIdeaToCompare(idea.concept)}
                                           disabled={isPushing}
-                                          className="text-[10px] bg-emerald-600/80 hover:bg-emerald-500 disabled:opacity-50 text-white px-2 py-1 rounded-lg flex items-center gap-1"
+                                          className="btn-blue-sm text-[10px] py-1 px-2 rounded-lg gap-1"
                                         >
                                           {isPushing ? <Loader2 className="w-2 h-2 animate-spin" /> : <Zap className="w-2 h-2" />}
                                           To Studio
                                         </button>
                                         <button
                                           onClick={() => updateIdeaStatus(idea.id, 'done')}
-                                          className="text-[10px] bg-emerald-600/80 hover:bg-emerald-500 text-white px-2 py-1 rounded-lg"
+                                          className="btn-blue-sm text-[10px] py-1 px-2 rounded-lg"
                                         >
                                           Done
                                         </button>
@@ -1812,16 +1852,16 @@ export function MainContent() {
                 <div className="space-y-8">
                   {/* Section header */}
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center">
-                      <Sparkles className="w-5 h-5 text-emerald-400" />
+                    <div className="icon-box-blue">
+                      <Sparkles className="w-5 h-5 text-[#00e6ff]" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-semibold text-white">Mashup Studio</h2>
-                      <p className="text-sm text-zinc-400">Generate images with different AI models and artistic styles</p>
+                      <h2 className="type-title">Mashup Studio</h2>
+                      <p className="type-muted">Generate images with different AI models and artistic styles</p>
                     </div>
                   </div>
 
-                  <div className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl p-6 space-y-6">
+                  <div className="card p-6 space-y-6">
                     <div className="flex flex-wrap justify-end gap-2">
                         <select
                           className="text-xs bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1 text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 max-w-[150px]"
@@ -1867,7 +1907,7 @@ export function MainContent() {
                       </div>
 
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-emerald-400 flex items-center gap-2">
+                        <label className="text-sm font-semibold text-[#00e6ff] flex items-center gap-2">
                           <Sparkles className="w-4 h-4" />
                           Image Prompt
                         </label>
@@ -1876,7 +1916,7 @@ export function MainContent() {
                           onChange={(e) => setComparisonPrompt(e.target.value)}
                           placeholder="Enter a prompt to compare across models..."
                           rows={10}
-                          className="w-full bg-zinc-950/80 border border-emerald-500/30 rounded-xl p-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 min-h-[240px] resize-y shadow-inner shadow-emerald-500/5"
+                          className="w-full bg-zinc-900/60 border border-[#00e6ff]/20 rounded-xl p-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#00e6ff]/20 focus:border-[#00e6ff]/35 min-h-[240px] resize-y shadow-inner shadow-[rgba(0,230,255,0.04)] transition-all duration-200"
                         />
                       </div>
 
@@ -1885,7 +1925,7 @@ export function MainContent() {
                           lib/modelOptimizer whenever the prompt changes.
                           During generation the same optimizer runs again
                           so these pills accurately preview what will be sent. */}
-                      <div className="bg-zinc-900/50 border border-zinc-800/40 rounded-xl p-4 space-y-3">
+                      <div className="bg-zinc-900/50 border border-[#c5a062]/15 rounded-xl p-4 space-y-3">
                         <div className="flex items-center gap-2 text-xs text-zinc-500">
                           <Sparkles className="w-3 h-3" />
                           <span className="uppercase tracking-wider font-medium">AI-Optimized Parameters</span>
@@ -1961,7 +2001,7 @@ export function MainContent() {
                       <button
                         onClick={handleCompare}
                         disabled={isComparing || comparisonModels.length < 2 || !comparisonPrompt.trim()}
-                        className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+                        className="btn-cta shadow-[0_0_28px_rgba(0,230,255,0.22)]"
                       >
                         {isComparing ? (
                           <>
@@ -2118,11 +2158,11 @@ export function MainContent() {
                     {/* Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center">
-                          <Edit3 className="w-5 h-5 text-indigo-400" />
+                        <div className="icon-box-blue">
+                          <Edit3 className="w-5 h-5 text-[#00e6ff]" />
                         </div>
                         <div>
-                        <h2 className="text-xl font-semibold text-white">Captioning Studio</h2>
+                        <h2 className="type-title">Captioning Studio</h2>
                         <p className="text-xs text-zinc-500 mt-1">
                           {captioned.length} / {all.length} captioned
                           {batchProgress && (
@@ -2175,7 +2215,7 @@ export function MainContent() {
                         {captioningGrouped && (
                           <button
                             onClick={() => openCarouselPicker(null)}
-                            className="px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white rounded-full flex items-center gap-1.5 transition-colors"
+                            className="btn-blue-sm rounded-full"
                           >
                             <LayoutGrid className="w-3.5 h-3.5" />
                             Create Carousel
@@ -2192,7 +2232,7 @@ export function MainContent() {
                               setCaptioningSelected(new Set());
                               setCaptioningGrouped(true);
                             }}
-                            className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-full flex items-center gap-1.5 transition-colors"
+                            className="btn-blue-sm rounded-full"
                           >
                             <LayoutGrid className="w-3.5 h-3.5" />
                             Group Selected ({captioningSelected.size})
@@ -2202,7 +2242,7 @@ export function MainContent() {
                         <button
                           onClick={() => batchCaptionImages(visible)}
                           disabled={batchCaptioning || uncaptioned.length === 0}
-                          className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-full flex items-center gap-1.5 transition-colors"
+                          className="btn-blue-sm rounded-full"
                         >
                           {batchCaptioning ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -2243,7 +2283,7 @@ export function MainContent() {
                             return (
                               <div
                                 key={`c-${entry.id}`}
-                                className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl overflow-hidden flex flex-col"
+                                className="card overflow-hidden flex flex-col"
                               >
                                 {/* Image strip */}
                                 <div className="relative bg-zinc-950 overflow-x-auto">
@@ -2351,7 +2391,7 @@ export function MainContent() {
                                         setPreparingPostId(null);
                                       }
                                     }}
-                                    className="flex-1 px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                    className="btn-blue-sm flex-1 justify-center"
                                   >
                                     <Sparkles className="w-3.5 h-3.5" />
                                     {anchor.postCaption ? 'Regenerate' : 'Generate'}
@@ -2364,7 +2404,7 @@ export function MainContent() {
                                         patchImage(ci, { isPostReady: true });
                                       }
                                     }}
-                                    className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                    className="btn-blue-sm justify-center"
                                     title="Mark all as ready to post"
                                   >
                                     <Check className="w-3.5 h-3.5" />
@@ -2380,7 +2420,7 @@ export function MainContent() {
                                   ) : (
                                     <button
                                       onClick={() => persistCarouselGroup(`manual-${anchor.id}`, entry.images.map((i) => i.id))}
-                                      className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                      className="btn-blue-sm justify-center"
                                       title="Lock this auto-detected grouping"
                                     >
                                       <LayoutGrid className="w-3.5 h-3.5" />
@@ -2398,8 +2438,8 @@ export function MainContent() {
                           return (
                             <div
                               key={img.id}
-                              className={`bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden flex flex-col transition-colors ${
-                                isSelected ? 'border-emerald-500/60' : 'border-zinc-800/60 hover:border-zinc-700/50'
+                              className={`bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden flex flex-col transition-all duration-200 ${
+                                isSelected ? 'border-[#00e6ff]/50 shadow-[0_0_16px_rgba(0,230,255,0.08)]' : 'border-[#c5a062]/20 hover:border-[#c5a062]/40'
                               }`}
                             >
                               {/* Thumbnail */}
@@ -2499,7 +2539,7 @@ export function MainContent() {
                                       setPreparingPostId(null);
                                     }
                                   }}
-                                  className="flex-1 px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                  className="btn-blue-sm flex-1 justify-center"
                                 >
                                   <Sparkles className="w-3.5 h-3.5" />
                                   {img.postCaption ? 'Regenerate' : 'Generate'}
@@ -2507,7 +2547,7 @@ export function MainContent() {
                                 <button
                                   disabled={!img.postCaption}
                                   onClick={() => patchImage(img, { isPostReady: true })}
-                                  className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                  className="btn-blue-sm justify-center"
                                   title="Mark as ready to post"
                                 >
                                   <Check className="w-3.5 h-3.5" />
@@ -2570,11 +2610,11 @@ export function MainContent() {
                     {/* Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center">
-                          <Save className="w-5 h-5 text-emerald-400" />
+                        <div className="icon-box-blue">
+                          <Save className="w-5 h-5 text-[#00e6ff]" />
                         </div>
                         <div>
-                          <h2 className="text-xl font-semibold text-white">Post Ready</h2>
+                          <h2 className="type-title">Post Ready</h2>
                           <p className="text-xs text-zinc-500 mt-1">
                             {ready.length} posts ready / {all.length} total saved images
                           </p>
@@ -2633,7 +2673,7 @@ export function MainContent() {
                             Captioning-stage images into one carousel. */}
                         <button
                           onClick={() => openCarouselPicker(null)}
-                          className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                          className="btn-blue-sm rounded-lg"
                           title="Group images into a single multi-image carousel post"
                         >
                           <LayoutGrid className="w-3.5 h-3.5" /> Create Carousel
@@ -2649,7 +2689,7 @@ export function MainContent() {
                               persistCarouselGroup(`manual-${ids[0]}`, ids);
                               setPostReadySelected(new Set());
                             }}
-                            className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                            className="btn-blue-sm rounded-lg"
                           >
                             <LayoutGrid className="w-3.5 h-3.5" />
                             Group Selected ({postReadySelected.size})
@@ -2695,7 +2735,7 @@ export function MainContent() {
                             setShowScheduleAll(true);
                           }}
                           disabled={ready.length === 0 || available.length === 0}
-                          className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                          className="btn-gold-sm rounded-lg"
                           title="Schedule with optimal posting times"
                         >
                           {smartScheduleLoading ? (
@@ -2708,7 +2748,7 @@ export function MainContent() {
                         <button
                           onClick={postAllNow}
                           disabled={ready.length === 0 || available.length === 0}
-                          className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                          className="btn-blue-sm rounded-lg"
                           title="Post every image to its selected platforms"
                         >
                           <Send className="w-3.5 h-3.5" /> Post All Now
@@ -2735,9 +2775,9 @@ export function MainContent() {
                         const rangeLabel = `${toYMD(weekStart)} → ${toYMD(addDays(weekStart, 6))}`;
 
                         return (
-                          <div className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl overflow-hidden">
+                          <div className="card overflow-hidden">
                             {/* Calendar header */}
-                            <div className="flex items-center justify-between p-4 border-b border-zinc-800/60">
+                            <div className="flex items-center justify-between p-4 border-b border-[#c5a062]/15">
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => setCalendarDate(addDays(calendarDate, -7))}
@@ -2890,7 +2930,7 @@ export function MainContent() {
                                     <div className="flex-1" />
                                     <button
                                       onClick={() => setEditingPostId(null)}
-                                      className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex items-center gap-1.5"
+                                      className="btn-blue-sm"
                                     >
                                       <Check className="w-3.5 h-3.5" /> Done
                                     </button>
@@ -3026,8 +3066,8 @@ export function MainContent() {
                       const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
                       return (
-                        <div className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl overflow-hidden">
-                          <div className="flex items-center justify-between p-4 border-b border-zinc-800/60">
+                        <div className="card overflow-hidden">
+                          <div className="flex items-center justify-between p-4 border-b border-[#c5a062]/15">
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={() =>
@@ -3193,11 +3233,11 @@ export function MainContent() {
                           >
                             <div className="flex items-center justify-between p-5 border-b border-zinc-800/60">
                               <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center">
-                                  <Clock className="w-5 h-5 text-emerald-400" />
+                                <div className="icon-box-blue">
+                                  <Clock className="w-5 h-5 text-[#00e6ff]" />
                                 </div>
                                 <div>
-                                  <h3 className="text-lg font-semibold text-white">Schedule Post</h3>
+                                  <h3 className="type-title">Schedule Post</h3>
                                   <p className="text-xs text-zinc-500">{dayLabel}</p>
                                 </div>
                               </div>
@@ -3332,14 +3372,14 @@ export function MainContent() {
                               <button
                                 onClick={postImmediately}
                                 disabled={!selectedImage || selectedPlatforms.length === 0}
-                                className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center gap-1.5"
+                                className="btn-blue-sm"
                               >
                                 <Send className="w-3.5 h-3.5" /> Post Now
                               </button>
                               <button
                                 onClick={createScheduledPost}
                                 disabled={!selectedImage || selectedPlatforms.length === 0}
-                                className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-xl flex items-center gap-1.5"
+                                className="btn-gold-sm"
                               >
                                 <Clock className="w-3.5 h-3.5" /> Schedule
                               </button>
@@ -3368,7 +3408,7 @@ export function MainContent() {
                           </button>
                           <button
                             onClick={() => setView('captioning')}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm"
+                            className="btn-blue-sm px-4 py-2 text-sm rounded-lg"
                           >
                             Captioning Studio
                           </button>
@@ -3388,7 +3428,7 @@ export function MainContent() {
                             return (
                               <div
                                 key={item.id}
-                                className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl overflow-hidden hover:border-zinc-700/50 transition-all duration-300 flex flex-col"
+                                className="bg-zinc-900/80 backdrop-blur-sm border border-[#c5a062]/20 rounded-2xl overflow-hidden hover:border-[#c5a062]/40 transition-all duration-300 flex flex-col"
                               >
                                 {/* Horizontal image strip */}
                                 <div className="relative bg-zinc-950 overflow-x-auto">
@@ -3516,14 +3556,14 @@ export function MainContent() {
                                         const sch = getSchedule(key);
                                         scheduleCarousel(item, selPlatforms, sch.date, sch.time);
                                       }}
-                                      className="px-2 py-1.5 text-[11px] bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                      className="btn-gold-sm text-[11px] px-2 justify-center"
                                     >
                                       <Clock className="w-3.5 h-3.5" /> Schedule
                                     </button>
                                     <button
                                       disabled={!!busy || selPlatforms.length === 0}
                                       onClick={() => postCarouselNow(item, selPlatforms)}
-                                      className="px-2 py-1.5 text-[11px] bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                      className="btn-blue-sm text-[11px] px-2 justify-center"
                                     >
                                       {busy === 'posting' ? (
                                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -3735,14 +3775,14 @@ export function MainContent() {
                                     <button
                                       disabled={!!busy || selPlatforms.length === 0 || !schedule.date || !schedule.time}
                                       onClick={() => scheduleImage(img, selPlatforms, schedule.date, schedule.time)}
-                                      className="px-2 py-1.5 text-[11px] bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                      className="btn-gold-sm text-[11px] px-2 justify-center"
                                     >
                                       <Clock className="w-3.5 h-3.5" /> Schedule
                                     </button>
                                     <button
                                       disabled={!!busy || selPlatforms.length === 0}
                                       onClick={() => postImageNow(img, selPlatforms)}
-                                      className="px-2 py-1.5 text-[11px] bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                      className="btn-blue-sm text-[11px] px-2 justify-center"
                                     >
                                       {busy === 'posting' ? (
                                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -3821,7 +3861,7 @@ export function MainContent() {
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex items-center justify-between">
-                            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                            <h3 className="type-title flex items-center gap-2">
                               <TrendingUp className="w-5 h-5 text-amber-400" />
                               Smart Schedule ({postItems.length} posts)
                             </h3>
@@ -3979,16 +4019,16 @@ export function MainContent() {
                     onClick={() => setShowCarouselPicker(false)}
                   >
                     <div
-                      className="bg-zinc-900/90 backdrop-blur-xl border-0 sm:border border-zinc-800/60 rounded-none sm:rounded-2xl w-full sm:max-w-4xl h-full sm:h-auto max-h-[100dvh] sm:max-h-[85vh] flex flex-col"
+                      className="bg-zinc-900/95 backdrop-blur-xl border-0 sm:border border-[#c5a062]/25 rounded-none sm:rounded-2xl w-full sm:max-w-4xl h-full sm:h-auto max-h-[100dvh] sm:max-h-[85vh] flex flex-col"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex items-center justify-between p-5 border-b border-zinc-800/60">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center">
-                            <LayoutGrid className="w-5 h-5 text-indigo-400" />
+                          <div className="icon-box-blue">
+                            <LayoutGrid className="w-5 h-5 text-[#00e6ff]" />
                           </div>
                           <div>
-                            <h3 className="text-lg font-semibold text-white">
+                            <h3 className="type-title">
                               {pickerTargetGroupId ? 'Edit Carousel' : 'Create Carousel'}
                             </h3>
                             <p className="text-xs text-zinc-500">
@@ -4086,7 +4126,7 @@ export function MainContent() {
                           <button
                             onClick={confirmCarouselPicker}
                             disabled={pickerSelected.size < 2}
-                            className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center gap-1.5"
+                            className="btn-blue-sm"
                           >
                             <Check className="w-3.5 h-3.5" />
                             {pickerTargetGroupId ? 'Update Carousel' : 'Create Carousel'}
@@ -4130,8 +4170,8 @@ export function MainContent() {
                     transition={{ duration: 0.4, delay: idx * 0.1, ease: "easeOut" }}
                     whileHover={{ scale: 1.02, y: -4, transition: { type: "spring", stiffness: 300, damping: 25 } }}
                     onClick={() => setSelectedImage(img)}
-                    className={`group relative bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer hover:border-emerald-500/30 ${
-                      dragOverCollection ? 'ring-2 ring-emerald-500 border-emerald-500/60' : 'border-zinc-800/60 hover:border-zinc-700/50'
+                    className={`group relative bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer ${
+                      dragOverCollection ? 'ring-2 ring-[#00e6ff] border-[#00e6ff]/50' : 'border-[#c5a062]/20 hover:border-[#c5a062]/50 hover:shadow-[0_0_20px_rgba(197,160,98,0.08)]'
                     }`}
                     draggable={view === 'gallery'}
                     onDragStart={(e) => {
@@ -4781,11 +4821,11 @@ export function MainContent() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className="bg-zinc-900/90 backdrop-blur-xl border-0 sm:border border-zinc-800/60 rounded-none sm:rounded-2xl w-full sm:max-w-2xl overflow-hidden shadow-2xl flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[90vh]"
+            className="bg-[#0d0d0d]/99 backdrop-blur-xl border-0 sm:border border-[#c5a062]/30 rounded-none sm:rounded-2xl w-full sm:max-w-2xl overflow-hidden shadow-[0_8px_48px_rgba(0,0,0,0.8),0_0_60px_rgba(197,160,98,0.08),0_0_0_1px_rgba(197,160,98,0.06)] flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[90vh]"
           >
-            <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-zinc-950/50 shrink-0">
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Settings className="w-5 h-5 text-indigo-400" />
+            <div className="flex items-center justify-between p-6 border-b border-[#c5a062]/20 bg-[#050505]/60 shrink-0">
+              <h3 className="type-title flex items-center gap-2">
+                <Settings className="w-5 h-5 text-[#c5a062]" />
                 Settings
               </h3>
               <button
@@ -4894,16 +4934,18 @@ export function MainContent() {
                   {(() => {
                     const s = piStatus;
                     let label = 'Checking…';
-                    let color = 'bg-zinc-700';
+                    let bgColor = 'bg-zinc-700';
+                    let textColor = 'text-white';
+                    let dotColor = 'bg-white/70';
                     if (s) {
-                      if (!s.installed) { label = 'Not Installed'; color = 'bg-red-600'; }
-                      else if (!s.authenticated) { label = 'Not Authenticated'; color = 'bg-amber-600'; }
-                      else if (s.running) { label = 'Running'; color = 'bg-emerald-600'; }
-                      else { label = 'Ready'; color = 'bg-indigo-600'; }
+                      if (!s.installed) { label = 'Not Installed'; bgColor = 'bg-red-600'; }
+                      else if (!s.authenticated) { label = 'Not Authenticated'; bgColor = 'bg-[#c5a062]'; textColor = 'text-[#050505]'; dotColor = 'bg-[#050505]/40'; }
+                      else if (s.running) { label = 'Running'; bgColor = 'bg-[#00e6ff]'; textColor = 'text-[#050505]'; dotColor = 'bg-[#050505]/40'; }
+                      else { label = 'Ready'; bgColor = 'bg-[#00e6ff]/20 border border-[#00e6ff]/30'; textColor = 'text-[#00e6ff]'; dotColor = 'bg-[#00e6ff]'; }
                     }
                     return (
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium text-white ${color}`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${bgColor} ${textColor}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
                         {label}
                       </span>
                     );
@@ -4926,7 +4968,7 @@ export function MainContent() {
                     <button
                       onClick={handlePiInstall}
                       disabled={piBusy !== null}
-                      className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+                      className="btn-blue-sm rounded-lg"
                     >
                       {piBusy === 'install' ? 'Installing…' : 'Install Pi'}
                     </button>
@@ -4935,7 +4977,7 @@ export function MainContent() {
                     <button
                       onClick={handlePiStart}
                       disabled={piBusy !== null}
-                      className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+                      className="btn-blue-sm rounded-lg"
                     >
                       {piBusy === 'start' ? 'Starting…' : 'Start Pi'}
                     </button>
@@ -4962,7 +5004,7 @@ export function MainContent() {
                   <button
                     onClick={handlePiSetup}
                     disabled={piBusy !== null}
-                    className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+                    className="btn-gold-sm rounded-lg"
                   >
                     {piBusy === 'setup' ? 'Opening…' : 'Setup Pi.dev'}
                   </button>
@@ -5096,7 +5138,7 @@ export function MainContent() {
                         </div>
                         <button 
                           onClick={() => setShowCollectionModal(true)}
-                          className="flex items-center gap-2 px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold transition-all"
+                          className="btn-blue-sm px-3 py-1 text-[10px] rounded-lg gap-2"
                         >
                           <Plus className="w-3 h-3" />
                           New
@@ -5477,7 +5519,7 @@ export function MainContent() {
             <div className="p-6 border-t border-zinc-800 bg-zinc-950/50 flex justify-end">
               <button
                 onClick={() => setShowSettings(false)}
-                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors"
+                className="btn-blue-sm px-6 py-2 rounded-lg"
               >
                 Done
               </button>
@@ -5536,7 +5578,7 @@ export function MainContent() {
                   setShowCollectionModal(false);
                   if (imageIds) setSelectedForBatch(new Set());
                 }}
-                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors text-sm"
+                className="btn-blue-sm px-6 py-2 text-sm rounded-lg"
               >
                 Create Collection
               </button>

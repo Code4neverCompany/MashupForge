@@ -1,15 +1,23 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import { Space_Grotesk, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
-const inter = Inter({
+// AETHER SANS → Space Grotesk: geometric tech sans, distinctive letterforms,
+// futuristic feel that matches the 4neverCompany dark studio aesthetic.
+const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
   variable: '--font-sans',
+  weight: ['300', '400', '500', '600', '700'],
+  display: 'swap',
 });
 
+// NEXUS MONO → JetBrains Mono: designed for developer interfaces,
+// high legibility at small sizes for stats, timestamps, and code.
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-mono',
+  weight: ['400', '500', '600'],
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
@@ -38,7 +46,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${spaceGrotesk.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <body className="font-sans antialiased bg-zinc-950 text-zinc-50 selection:bg-emerald-500/30" suppressHydrationWarning>
         {children}
       </body>

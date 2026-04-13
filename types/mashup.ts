@@ -131,6 +131,13 @@ export interface ScheduledPost {
    * fan-out) instead of N separate single-image calls.
    */
   carouselGroupId?: string;
+  /**
+   * For pipeline-produced posts, the id of the source Idea that
+   * generated this post. Lets the bulk-approval queue group/filter by
+   * topic and lets the feedback loop attribute approvals back to the
+   * idea concept.
+   */
+  sourceIdeaId?: string;
 }
 
 export interface UserSettings {
@@ -174,6 +181,24 @@ export interface UserSettings {
   pipelineAutoPost?: boolean;
   /** Platforms the pipeline should publish to when pipelineAutoPost is on. */
   pipelinePlatforms?: string[];
+  /**
+   * Per-platform daily post caps for the smart scheduler. When set,
+   * the scheduler refuses to place a new post on a day where the
+   * count of same-platform `scheduled` / `pending_approval` posts
+   * already meets the cap. `posted` and `failed` posts are not
+   * counted (they're done — the user explicitly opted in to "only
+   * scheduled posts count" so the cap doesn't leak through history).
+   * Missing entry = no cap for that platform.
+   */
+  pipelineDailyCaps?: Partial<Record<'instagram' | 'pinterest' | 'twitter' | 'discord', number>>;
+  /**
+   * When on, pipeline runs collapse all ready images from a single idea
+   * into ONE carousel post: one shared caption, one scheduled slot, and
+   * N ScheduledPosts that share a carouselGroupId (the auto-poster then
+   * fans them out as a multi-image post). Also drives the Ideas Board
+   * manual flow — ready comparison results auto-group into a carousel.
+   */
+  pipelineCarouselMode?: boolean;
 }
 
 export type ViewType = 'studio' | 'gallery' | 'compare' | 'captioning' | 'post-ready' | 'ideas' | 'pipeline';
@@ -191,6 +216,14 @@ export interface PipelineProgress {
   total: number;
   currentStep: string;
   currentIdea: string;
+  /**
+   * Id of the in-flight idea. Lets the UI look up the full Idea record
+   * (and any state attached to it) instead of doing a fragile concept-
+   * text match. Optional for backwards compatibility with the existing
+   * "Auto-generating ideas" intermediate progress state, which has no
+   * single owning idea.
+   */
+  currentIdeaId?: string;
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -547,6 +580,8 @@ export interface MashupContextType {
   togglePipeline: () => void;
   startPipeline: () => void;
   stopPipeline: () => void;
+  /** Bail out of the in-flight idea without stopping the whole pipeline. */
+  skipCurrentIdea: () => void;
   /** Continuous / daemon mode — keep regenerating ideas and posting on an interval. */
   pipelineContinuous: boolean;
   toggleContinuous: () => void;
@@ -562,4 +597,8 @@ export interface MashupContextType {
   approveScheduledPost: (postId: string) => void;
   /** Reject a pending_approval post — removes it from scheduledPosts. */
   rejectScheduledPost: (postId: string) => void;
+  /** Bulk-approve N pending_approval posts in a single state pass. */
+  bulkApproveScheduledPosts: (postIds: string[]) => void;
+  /** Bulk-reject N pending_approval posts in a single state pass. */
+  bulkRejectScheduledPosts: (postIds: string[]) => void;
 }

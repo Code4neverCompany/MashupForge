@@ -109,6 +109,13 @@ export function usePipeline(deps: UsePipelineDeps) {
   const [pipelineTargetDays, setPipelineTargetDaysState] = useState(() => loadPersistedState().targetDays);
 
   const stopRequestedRef = useRef(false);
+  /**
+   * Set by the user via skipCurrentIdea(). Checked at the major
+   * checkpoints inside processIdea so the in-flight idea bails out
+   * promptly without aborting the whole pipeline run. The outer queue
+   * loop resets this between ideas so a stray skip can't carry over.
+   */
+  const skipCurrentIdeaRef = useRef(false);
   const imagesRef = useRef(images);
   const savedImagesRef = useRef(savedImages);
   // Refs for continuous-mode config so the running loop reads live
@@ -170,19 +177,35 @@ Return ONLY the prompt text, nothing else.`;
     return text.trim() || idea.concept;
   }, [settings]);
 
-  /** Smart slot picker — uses engagement data (Instagram insights or research-backed defaults). */
-  const findNextAvailableSlot = useCallback((existingPosts: ScheduledPost[], engagement?: CachedEngagement): { date: string; time: string; reason: string } => {
+  /** Smart slot picker — uses engagement data (Instagram insights or research-backed defaults).
+   *  When `platforms` + `caps` are supplied, the picker also enforces per-platform daily caps
+   *  by skipping any day where one of the target platforms is already at its limit. */
+  const findNextAvailableSlot = useCallback((
+    existingPosts: ScheduledPost[],
+    engagement?: CachedEngagement,
+    platforms?: string[],
+    caps?: UserSettings['pipelineDailyCaps'],
+  ): { date: string; time: string; reason: string } => {
     const eng = engagement || loadEngagementData();
-    const slot = findBestSlot(existingPosts, eng);
+    const slot = findBestSlot(existingPosts, eng, { platforms, caps });
     const topHour = eng.hours.reduce((a: EngagementHour, b: EngagementHour) => a.weight > b.weight ? a : b);
     const topDay = eng.days.reduce((a: EngagementDay, b: EngagementDay) => a.multiplier > b.multiplier ? a : b);
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const slotDate = new Date(slot.date);
-    const reason = `${slot.time} on ${dayNames[slotDate.getDay()]} (${eng.source === 'instagram' ? 'IG insights' : 'research'} — best hour ${topHour.hour}:00, best day ${dayNames[topDay.day]})`;
+    const capsActive = caps && Object.values(caps).some((v) => typeof v === 'number');
+    const reason = `${slot.time} on ${dayNames[slotDate.getDay()]} (${eng.source === 'instagram' ? 'IG insights' : 'research'} — best hour ${topHour.hour}:00, best day ${dayNames[topDay.day]}${capsActive ? ', caps applied' : ''})`;
     return { ...slot, reason };
   }, []);
 
   const processIdea = useCallback(async (idea: Idea, index: number, total: number, engagement: CachedEngagement, accumulatedPosts: ScheduledPost[]) => {
+    // Reset skip-flag at the start of each idea so a stale request from
+    // a previous idea can't make us bail out before doing any work.
+    skipCurrentIdeaRef.current = false;
+    // Tiny inline helper — throws a sentinel string that the outer
+    // try/catch in startPipeline turns into a "skipped" log entry.
+    const checkSkip = () => {
+      if (skipCurrentIdeaRef.current) throw new Error('__SKIP_IDEA__');
+    };
     // Respect the new pipeline stage toggles (defaults: tag/caption/schedule on, post off).
     const autoCaption = settings.pipelineAutoCaption ?? true;
     const autoSchedule = settings.pipelineAutoSchedule ?? true;
@@ -198,13 +221,13 @@ Return ONLY the prompt text, nothing else.`;
     const pipelinePlatforms = explicitPlatforms || inferredPlatforms;
 
     // Step a: Mark in-work
-    setPipelineProgress({ current: index + 1, total, currentStep: 'Updating status', currentIdea: idea.concept });
+    setPipelineProgress({ current: index + 1, total, currentStep: 'Updating status', currentIdea: idea.concept, currentIdeaId: idea.id });
     updateIdeaStatus(idea.id, 'in-work');
     addLog('status-update', idea.id, 'success', `Marked "${idea.concept}" as in-work`);
 
     // Step b: Research trending topics for tags/niches
     let trendingContext = '';
-    setPipelineProgress({ current: index + 1, total, currentStep: 'Researching trending topics', currentIdea: idea.concept });
+    setPipelineProgress({ current: index + 1, total, currentStep: 'Researching trending topics', currentIdea: idea.concept, currentIdeaId: idea.id });
     try {
       const res = await fetch('/api/trending', {
         method: 'POST',
@@ -230,7 +253,7 @@ Return ONLY the prompt text, nothing else.`;
     }
 
     // Step c: Expand idea to prompt (with trending context)
-    setPipelineProgress({ current: index + 1, total, currentStep: 'Expanding idea to prompt', currentIdea: idea.concept });
+    setPipelineProgress({ current: index + 1, total, currentStep: 'Expanding idea to prompt', currentIdea: idea.concept, currentIdeaId: idea.id });
     let expandedPrompt: string;
     try {
       expandedPrompt = await expandIdeaToPrompt(idea, trendingContext);
@@ -243,7 +266,7 @@ Return ONLY the prompt text, nothing else.`;
     // Step d: Generate with ALL models (same as Studio compare).
     // Each model gets its own pi-optimized prompt via modelOptimizer.
     const allModelIds = LEONARDO_MODELS.filter(m => m.id !== 'nano-banana').map(m => m.id);
-    setPipelineProgress({ current: index + 1, total, currentStep: `Generating with ${allModelIds.length} models`, currentIdea: idea.concept });
+    setPipelineProgress({ current: index + 1, total, currentStep: `Generating with ${allModelIds.length} models`, currentIdea: idea.concept, currentIdeaId: idea.id });
     try {
       await generateComparison(expandedPrompt, allModelIds, { skipEnhance: false });
       addLog('image-gen', idea.id, 'success', `Image generation started with ${allModelIds.length} models`);
@@ -261,6 +284,7 @@ Return ONLY the prompt text, nothing else.`;
     let attempts = 0;
     let readyImages: GeneratedImage[] = [];
     while (attempts < 90) {
+      checkSkip();
       const currentImages = imagesRef.current;
       // Find images that were created by this generation pass.
       readyImages = currentImages.filter(img =>
@@ -273,14 +297,97 @@ Return ONLY the prompt text, nothing else.`;
       await delay(3000);
     }
 
+    const carouselMode = settings.pipelineCarouselMode ?? false;
+
     if (readyImages.length === 0) {
       addLog('image-ready', idea.id, 'error', 'Timed out waiting for any image');
+    } else if (carouselMode && readyImages.length > 1) {
+      addLog('image-ready', idea.id, 'success', `${readyImages.length} image(s) ready — carousel mode`);
+
+      // Save all images to gallery so they show up in Gallery + Captioning
+      for (const img of readyImages) saveImage(img);
+
+      // Caption only the first image; the rest share it
+      let sharedCaption = '';
+      let sharedHashtags: string[] | undefined;
+      const firstImage = readyImages[0];
+      if (autoCaption) {
+        setPipelineProgress({ current: index + 1, total, currentStep: `Captioning carousel (${readyImages.length} images)`, currentIdea: idea.concept, currentIdeaId: idea.id });
+        try {
+          checkSkip();
+          const withCaption = await generatePostContent(firstImage);
+          if (withCaption) {
+            sharedCaption = withCaption.postCaption || '';
+            sharedHashtags = withCaption.postHashtags;
+            saveImage(withCaption);
+            addLog('caption', idea.id, 'success', `[carousel] Caption: "${sharedCaption.slice(0, 60)}..."`);
+          } else {
+            addLog('caption', idea.id, 'error', `[carousel] Caption returned empty`);
+          }
+        } catch (e: unknown) {
+          if (getErrorMessage(e) === '__SKIP_IDEA__') throw e;
+          addLog('caption', idea.id, 'error', `[carousel] Caption failed: ${getErrorMessage(e)}`);
+        }
+      }
+
+      checkSkip();
+
+      if (autoSchedule) {
+        setPipelineProgress({ current: index + 1, total, currentStep: `Scheduling carousel`, currentIdea: idea.concept, currentIdeaId: idea.id });
+        if (pipelinePlatforms.length === 0) {
+          addLog('schedule', idea.id, 'error', 'No platforms configured — skipped');
+        } else {
+          const allPosts = [...(settingsRef.current.scheduledPosts || []), ...accumulatedPosts];
+          const slot = findNextAvailableSlot(
+            allPosts,
+            engagement,
+            pipelinePlatforms,
+            settingsRef.current.pipelineDailyCaps,
+          );
+          const nowStamp = Date.now();
+          const groupId = `carousel-${nowStamp}-${Math.random().toString(36).slice(2, 9)}`;
+          const newPosts: ScheduledPost[] = readyImages.map((img, idx) => ({
+            id: `post-${nowStamp}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+            imageId: img.id,
+            date: slot.date,
+            time: slot.time,
+            platforms: pipelinePlatforms,
+            caption: sharedCaption,
+            status: 'pending_approval' as const,
+            carouselGroupId: groupId,
+            sourceIdeaId: idea.id,
+          }));
+          accumulatedPosts.push(...newPosts);
+          updateSettings((prev) => ({
+            scheduledPosts: [...(prev.scheduledPosts || []), ...newPosts],
+            carouselGroups: [
+              ...(prev.carouselGroups || []),
+              {
+                id: groupId,
+                imageIds: readyImages.map((i) => i.id),
+                caption: sharedCaption,
+                hashtags: sharedHashtags,
+                scheduledDate: slot.date,
+                scheduledTime: slot.time,
+                platforms: pipelinePlatforms,
+                status: 'scheduled' as const,
+              },
+            ],
+          }));
+          addLog('schedule', idea.id, 'success', `[carousel ${readyImages.length}× images] ${slot.reason}`);
+        }
+      }
+      // Note: auto-post is intentionally skipped in carousel mode —
+      // carousels publish through the pending_approval → scheduled →
+      // auto-poster path, which is the only path that knows how to
+      // fan a carouselGroupId out into a multi-image post.
     } else {
       addLog('image-ready', idea.id, 'success', `${readyImages.length} image(s) ready from ${allModelIds.length} models`);
 
       // Process ALL generated images through caption + schedule.
       // Each model's output gets its own caption and scheduled post.
       for (let imgIdx = 0; imgIdx < readyImages.length; imgIdx++) {
+        checkSkip();
         const latestImage = readyImages[imgIdx];
         const modelLabel = latestImage.modelInfo?.modelName || `model-${imgIdx + 1}`;
 
@@ -290,7 +397,7 @@ Return ONLY the prompt text, nothing else.`;
         // Step e: Generate caption
         let captionedImg = latestImage;
         if (autoCaption) {
-          setPipelineProgress({ current: index + 1, total, currentStep: `Captioning ${modelLabel}`, currentIdea: idea.concept });
+          setPipelineProgress({ current: index + 1, total, currentStep: `Captioning ${modelLabel}`, currentIdea: idea.concept, currentIdeaId: idea.id });
           try {
             const withCaption = await generatePostContent(latestImage);
             if (withCaption) {
@@ -307,7 +414,7 @@ Return ONLY the prompt text, nothing else.`;
 
         // Step f: Schedule post (smart — uses engagement data)
         if (autoSchedule) {
-          setPipelineProgress({ current: index + 1, total, currentStep: `Scheduling ${modelLabel}`, currentIdea: idea.concept });
+          setPipelineProgress({ current: index + 1, total, currentStep: `Scheduling ${modelLabel}`, currentIdea: idea.concept, currentIdeaId: idea.id });
           if (pipelinePlatforms.length === 0) {
             addLog('schedule', idea.id, 'error', 'No platforms configured — skipped');
           } else {
@@ -316,7 +423,12 @@ Return ONLY the prompt text, nothing else.`;
             // make us pick a slot that just got filled. Local
             // accumulatedPosts adds the in-flight pipeline posts on top.
             const allPosts = [...(settingsRef.current.scheduledPosts || []), ...accumulatedPosts];
-            const slot = findNextAvailableSlot(allPosts, engagement);
+            const slot = findNextAvailableSlot(
+              allPosts,
+              engagement,
+              pipelinePlatforms,
+              settingsRef.current.pipelineDailyCaps,
+            );
             const newPost: ScheduledPost = {
               id: `post-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               imageId: latestImage.id,
@@ -328,6 +440,7 @@ Return ONLY the prompt text, nothing else.`;
               // straight to 'scheduled'. User approves via Pipeline panel
               // / Calendar / Post Ready before the auto-poster picks it up.
               status: 'pending_approval',
+              sourceIdeaId: idea.id,
             };
             accumulatedPosts.push(newPost);
             // Functional updater so we append to the LATEST list — protects
@@ -342,7 +455,7 @@ Return ONLY the prompt text, nothing else.`;
 
         // Step g: Auto-post immediately
         if (autoPost && pipelinePlatforms.length > 0) {
-          setPipelineProgress({ current: index + 1, total, currentStep: `Posting ${modelLabel}`, currentIdea: idea.concept });
+          setPipelineProgress({ current: index + 1, total, currentStep: `Posting ${modelLabel}`, currentIdea: idea.concept, currentIdeaId: idea.id });
           try {
             const res = await fetch('/api/social/post', {
               method: 'POST',
@@ -497,9 +610,18 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
         try {
           await processIdea(idea, i, pendingIdeas.length, engagement, accumulatedPosts);
         } catch (e: unknown) {
-          addLog('pipeline-error', idea.id, 'error', `Skipping idea due to error: ${getErrorMessage(e)}`);
-          updateIdeaStatus(idea.id, 'idea'); // Reset on failure
+          if (getErrorMessage(e) === '__SKIP_IDEA__') {
+            addLog('pipeline-skip', idea.id, 'success', `Skipped "${idea.concept}" by user request`);
+            updateIdeaStatus(idea.id, 'idea'); // Put it back in the queue
+          } else {
+            addLog('pipeline-error', idea.id, 'error', `Skipping idea due to error: ${getErrorMessage(e)}`);
+            updateIdeaStatus(idea.id, 'idea'); // Reset on failure
+          }
         }
+        // Defensive — also clear the flag here so a skip request that
+        // arrived during the inter-idea delay doesn't carry into the
+        // next idea before processIdea's own reset runs.
+        skipCurrentIdeaRef.current = false;
 
         // Delay between ideas (unless last or stopped)
         if (i < pendingIdeas.length - 1 && !stopRequestedRef.current) {
@@ -546,6 +668,10 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
     stopRequestedRef.current = true;
   }, []);
 
+  const skipCurrentIdea = useCallback(() => {
+    skipCurrentIdeaRef.current = true;
+  }, []);
+
   const togglePipeline = useCallback(() => {
     setPipelineEnabled(prev => !prev);
   }, []);
@@ -582,6 +708,7 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
     togglePipeline,
     startPipeline,
     stopPipeline,
+    skipCurrentIdea,
     pipelineContinuous,
     toggleContinuous,
     pipelineInterval,

@@ -39,7 +39,7 @@ export default function LoginPage() {
           y: [0, 100, 0] 
         }}
         transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-600/10 rounded-full blur-[120px] -z-10" 
+        className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#00e6ff]/6 rounded-full blur-[120px] -z-10" 
       />
       <motion.div 
         animate={{ 
@@ -47,7 +47,7 @@ export default function LoginPage() {
           y: [0, -100, 0] 
         }}
         transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-emerald-600/10 rounded-full blur-[120px] -z-10" 
+        className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#c5a062]/5 rounded-full blur-[120px] -z-10" 
       />
 
       <motion.div 
@@ -57,14 +57,14 @@ export default function LoginPage() {
         className="w-full max-w-md"
       >
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-600 mb-4 shadow-lg shadow-emerald-600/20">
-            <Sparkles className="w-8 h-8 text-white" />
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#00e6ff]/12 border border-[#00e6ff]/30 mb-4 shadow-[0_0_32px_rgba(0,230,255,0.15)]">
+            <Sparkles className="w-8 h-8 text-[#00e6ff]" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Welcome Back</h1>
-          <p className="text-zinc-500 mt-2 text-sm">Log in to Multiverse Mashup Studio</p>
+          <h1 className="type-display text-3xl tracking-tight">Welcome Back</h1>
+          <p className="type-muted mt-2">Log in to Multiverse Mashup Studio</p>
         </div>
 
-        <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-2xl p-8 shadow-2xl backdrop-blur-sm">
+        <div className="card p-8 shadow-2xl">
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest ml-1">Username</label>
@@ -75,7 +75,7 @@ export default function LoginPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="admin"
-                  className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all shadow-[0_0_0_1px_rgba(255,255,255,0.05)] focus:shadow-[0_0_20px_rgba(16,185,129,0.15)]"
+                  className="input-brand w-full pl-10 pr-4 py-3"
                   required
                 />
               </div>
@@ -90,7 +90,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all shadow-[0_0_0_1px_rgba(255,255,255,0.05)] focus:shadow-[0_0_20px_rgba(16,185,129,0.15)]"
+                  className="input-brand w-full pl-10 pr-4 py-3"
                   required
                 />
               </div>
@@ -111,7 +111,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 uppercase tracking-widest text-xs"
+              className="btn-cta uppercase tracking-widest py-4"
             >
               {isLoading ? (
                 <>
@@ -127,9 +127,9 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-zinc-800 text-center">
-            <p className="text-xs text-zinc-600">
-              Demo access only. Default: <span className="text-emerald-400 font-mono">admin / admin</span>
+          <div className="mt-8 pt-6 border-t border-[#c5a062]/15 text-center">
+            <p className="type-caption text-zinc-600">
+              Demo access only. Default: <span className="text-[#00e6ff]/70 font-mono">admin / admin</span>
             </p>
           </div>
         </div>
