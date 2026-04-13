@@ -6,7 +6,7 @@ export async function POST(req: Request) {
     const apiKey = customApiKey || process.env.LEONARDO_API_KEY;
 
     if (!apiKey || apiKey === 'MY_LEONARDO_API_KEY') {
-      return NextResponse.json({ error: 'Leonardo API key not configured. Please add a valid LEONARDO_API_KEY to your environment variables or settings.' }, { status: 500 });
+      return NextResponse.json({ error: 'Leonardo API key is missing. Open Settings (gear icon, top-right) → paste your key from https://app.leonardo.ai/api-access → Save.' }, { status: 400 });
     }
 
     const isKling = model === 'kling-3.0' || model === 'kling-video-o-3';

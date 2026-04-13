@@ -47,8 +47,8 @@ export async function POST(req: Request) {
 
     if (!apiKey || apiKey === 'MY_LEONARDO_API_KEY') {
       return NextResponse.json({
-        error: 'Leonardo API key not configured.'
-      }, { status: 500 });
+        error: 'Leonardo API key is missing. Open Settings (gear icon, top-right) → paste your key from https://app.leonardo.ai/api-access → Save.',
+      }, { status: 400 });
     }
 
     // Map internal model id to Leonardo API model id

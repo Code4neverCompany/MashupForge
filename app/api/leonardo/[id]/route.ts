@@ -8,7 +8,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const apiKey = customApiKey || process.env.LEONARDO_API_KEY;
 
     if (!apiKey || apiKey === 'MY_LEONARDO_API_KEY') {
-      return NextResponse.json({ error: 'Leonardo API key not configured.' }, { status: 500 });
+      return NextResponse.json({ error: 'Leonardo API key is missing. Open Settings → paste your key → Save.' }, { status: 400 });
     }
 
     const headers = {
