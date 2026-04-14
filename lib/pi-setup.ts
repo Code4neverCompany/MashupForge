@@ -128,6 +128,7 @@ export function installPi(): InstallPiResult {
     ...process.env,
     HOME: home,
     npm_config_cache: join(home, '.npm-cache'),
+    npm_config_logs_dir: join(home, '.npm-logs'),
     npm_config_prefix: LOCAL_PREFIX,
     // Silence update-notifier writes into HOME.
     NO_UPDATE_NOTIFIER: '1',
