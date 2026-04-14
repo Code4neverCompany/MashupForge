@@ -74,9 +74,26 @@ if (result.loaded) {
   console.log(`[tauri-wrapper] no config at ${result.path} — starting with inherited env only`);
 }
 
-// Default bind: 127.0.0.1 on whatever PORT the Rust launcher passed in.
-// Next standalone reads HOSTNAME + PORT from env.
-if (!process.env.HOSTNAME) process.env.HOSTNAME = '127.0.0.1';
+// Hard-pin loopback binding.
+//
+// Windows Defender Firewall prompts "Allow this app through the firewall"
+// the first time an unsigned .exe binds to a non-loopback interface
+// (0.0.0.0 or a real NIC). Binding only to 127.0.0.1 / ::1 is exempt from
+// the prompt. We therefore force HOSTNAME to loopback AFTER config
+// hydration so a stray `"HOSTNAME": "0.0.0.0"` entry in the user's
+// config.json cannot accidentally escape the loopback cage and trigger
+// the Defender dialog on first launch. Same for HOST, which some Node
+// web frameworks prefer.
+const LOOPBACK = '127.0.0.1';
+for (const key of ['HOSTNAME', 'HOST']) {
+  if (process.env[key] && process.env[key] !== LOOPBACK) {
+    console.warn(
+      `[tauri-wrapper] overriding ${key}=${process.env[key]} -> ${LOOPBACK} ` +
+      '(desktop mode pins loopback to avoid Windows Firewall prompts)'
+    );
+  }
+  process.env[key] = LOOPBACK;
+}
 if (!process.env.PORT) process.env.PORT = '0';
 
 console.log(`[tauri-wrapper] booting Next on ${process.env.HOSTNAME}:${process.env.PORT}`);
