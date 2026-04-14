@@ -5094,7 +5094,7 @@ export function MainContent() {
                   <span className="text-sm text-zinc-300">Enable Watermark</span>
                   <button
                     onClick={() => updateSettings({ watermark: { ...settings.watermark, enabled: !settings.watermark?.enabled } as any })}
-                    className={`w-12 h-6 rounded-full transition-colors ${settings.watermark?.enabled ? 'bg-indigo-500' : 'bg-zinc-700'} relative`}
+                    className={`w-12 h-6 rounded-full transition-colors ${settings.watermark?.enabled ? 'bg-[#00e6ff]' : 'bg-zinc-700'} relative`}
                   >
                     <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${settings.watermark?.enabled ? 'translate-x-6' : ''}`} />
                   </button>
@@ -5122,10 +5122,10 @@ export function MainContent() {
                       />
                       <label 
                         htmlFor="watermark-upload"
-                        className="flex items-center justify-center w-full py-3 px-4 rounded-xl border-2 border-dashed border-zinc-800 hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-all cursor-pointer group"
+                        className="flex items-center justify-center w-full py-3 px-4 rounded-xl border-2 border-dashed border-zinc-800 hover:border-[#00e6ff]/40 hover:bg-[#00e6ff]/5 transition-all cursor-pointer group"
                       >
                         <div className="flex flex-col items-center gap-1">
-                          <ImageIcon className="w-5 h-5 text-zinc-500 group-hover:text-indigo-400" />
+                          <ImageIcon className="w-5 h-5 text-zinc-500 group-hover:text-[#00e6ff]" />
                           <span className="text-xs text-zinc-500 group-hover:text-zinc-400 font-medium">
                             {settings.watermark.image ? 'Change Logo' : 'Choose File'}
                           </span>
@@ -5181,8 +5181,8 @@ export function MainContent() {
                     <div className="space-y-4 pt-4 border-t border-zinc-800/50">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <div className="p-1.5 bg-indigo-500/10 rounded-lg">
-                            <Folder className="w-4 h-4 text-indigo-400" />
+                          <div className="p-1.5 bg-[#c5a062]/10 rounded-lg">
+                            <Folder className="w-4 h-4 text-[#c5a062]" />
                           </div>
                           <h4 className="text-sm font-bold text-white uppercase tracking-wider">Manage Collections</h4>
                         </div>
@@ -5222,8 +5222,8 @@ export function MainContent() {
 
                     <div className="space-y-4 pt-4 border-t border-zinc-800/50">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="p-1.5 bg-indigo-500/10 rounded-lg">
-                          <Tag className="w-4 h-4 text-indigo-400" />
+                        <div className="p-1.5 bg-[#c5a062]/10 rounded-lg">
+                          <Tag className="w-4 h-4 text-[#c5a062]" />
                         </div>
                         <h4 className="text-sm font-bold text-white uppercase tracking-wider">Social Media Settings</h4>
                       </div>
@@ -5353,12 +5353,12 @@ export function MainContent() {
                           {settings.agentNiches?.map(n => (
                             <span 
                               key={n} 
-                              className="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-[10px] rounded-lg border border-emerald-500/20 flex items-center gap-1 group"
+                              className="px-2 py-1 bg-[#00e6ff]/10 text-[#00e6ff] text-[10px] rounded-lg border border-[#00e6ff]/20 flex items-center gap-1 group"
                             >
                               {n}
-                              <button 
+                              <button
                                 onClick={() => updateSettings({ agentNiches: settings.agentNiches?.filter(t => t !== n) })}
-                                className="text-emerald-500 hover:text-red-400 transition-all"
+                                className="text-[#00e6ff] hover:text-red-400 transition-all"
                               >
                                 <Minus className="w-3 h-3" />
                               </button>
@@ -5377,7 +5377,7 @@ export function MainContent() {
                               }
                             }
                           }}
-                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#00e6ff]/30"
                         />
                         <div className="pt-2">
                           <p className="text-[10px] text-zinc-500 mb-2 uppercase tracking-tight font-semibold">Recommended Niches</p>
@@ -5386,7 +5386,7 @@ export function MainContent() {
                               <button
                                 key={n}
                                 onClick={() => updateSettings({ agentNiches: [...(settings.agentNiches || []), n] })}
-                                className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-emerald-400 text-[9px] rounded-xl border border-zinc-800/60 transition-all flex items-center gap-1"
+                                className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-[#00e6ff] text-[9px] rounded-xl border border-zinc-800/60 transition-all flex items-center gap-1"
                               >
                                 <Plus className="w-2 h-2" />
                                 {n}
@@ -5404,12 +5404,12 @@ export function MainContent() {
                           {settings.agentGenres?.map(g => (
                             <span 
                               key={g} 
-                              className="px-2 py-1 bg-indigo-500/20 text-indigo-400 text-[10px] rounded-lg border border-indigo-500/20 flex items-center gap-1 group"
+                              className="px-2 py-1 bg-[#00e6ff]/10 text-[#00e6ff] text-[10px] rounded-lg border border-[#00e6ff]/20 flex items-center gap-1 group"
                             >
                               {g}
-                              <button 
+                              <button
                                 onClick={() => updateSettings({ agentGenres: settings.agentGenres?.filter(t => t !== g) })}
-                                className="text-indigo-500 hover:text-red-400 transition-all"
+                                className="text-[#00e6ff] hover:text-red-400 transition-all"
                               >
                                 <Minus className="w-3 h-3" />
                               </button>
@@ -5437,7 +5437,7 @@ export function MainContent() {
                               <button
                                 key={g}
                                 onClick={() => updateSettings({ agentGenres: [...(settings.agentGenres || []), g] })}
-                                className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-indigo-400 text-[9px] rounded-xl border border-zinc-800/60 transition-all flex items-center gap-1"
+                                className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-[#00e6ff] text-[9px] rounded-xl border border-zinc-800/60 transition-all flex items-center gap-1"
                               >
                                 <Plus className="w-2 h-2" />
                                 {g}
@@ -5469,7 +5469,7 @@ export function MainContent() {
                             });
                           }
                         }}
-                        className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors"
+                        className="text-[10px] text-[#00e6ff] hover:text-[#33eaff] flex items-center gap-1 transition-colors"
                       >
                         <Save className="w-3 h-3" />
                         Save Current
@@ -5490,7 +5490,7 @@ export function MainContent() {
                                 agentNiches: p.niches,
                                 agentGenres: p.genres
                               })}
-                              className="p-2 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 rounded-lg transition-all"
+                              className="p-2 bg-[#00e6ff]/10 text-[#00e6ff] hover:bg-[#00e6ff]/20 rounded-lg transition-all"
                               title="Load Personality"
                             >
                               <FolderOpen className="w-4 h-4" />
