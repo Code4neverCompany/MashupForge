@@ -8,3 +8,11 @@ coverage/
 .vercel
 .pi-install/
 tsconfig.tsbuildinfo
+
+# Tauri desktop build output + generated resources
+.cache/
+src-tauri/target/
+src-tauri/gen/schemas/
+src-tauri/resources/node/
+src-tauri/resources/app/
+src-tauri/resources/pi/

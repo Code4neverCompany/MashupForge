@@ -4,14 +4,16 @@
   "version": "0.1.0",
   "identifier": "com.4nevercompany.mashupforge",
   "build": {
-    "frontendDist": "https://mashup-studio.vercel.app",
-    "devUrl": "http://localhost:3000",
-    "beforeDevCommand": "npx next dev"
+    "frontendDist": "../src-tauri/frontend-stub",
+    "devUrl": "http://localhost:3100",
+    "beforeDevCommand": "npm run dev"
   },
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "MashupForge",
+        "url": "index.html",
         "width": 1400,
         "height": 900,
         "minWidth": 800,
@@ -19,7 +21,8 @@
         "resizable": true,
         "fullscreen": false,
         "decorations": true,
-        "center": true
+        "center": true,
+        "visible": true
       }
     ],
     "security": {
@@ -29,6 +32,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "resources/**/*"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
