@@ -341,6 +341,9 @@ Return ONLY the JSON array, no prose.`;
                 </div>
               )}
             </div>
+            <span className="text-[10px] text-zinc-600 mt-0.5 select-none">
+              {new Date(parseInt(msg.id)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
             {msg.groundingChunks && msg.groundingChunks.length > 0 && (
               <div className="mt-2 space-y-1 w-full pl-2 border-l-2 border-zinc-700">
                 <p className="text-xs text-zinc-500 font-medium">Sources:</p>
