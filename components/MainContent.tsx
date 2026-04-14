@@ -87,6 +87,7 @@ import { findBestSlots, fetchInstagramEngagement, loadEngagementData, type SlotS
 import type { CarouselGroup } from './MashupContext';
 import TimePicker24 from './TimePicker24';
 import { formatTime24, formatTimeShort } from './TimePicker24';
+import { DesktopSettingsPanel } from './DesktopSettingsPanel';
 
 /**
  * Auto-sizing textarea that grows with its content. Resets to
@@ -5569,6 +5570,9 @@ export function MainContent() {
                   </button>
                 </div>
               </div>
+
+              {/* Desktop configuration — only renders in Tauri desktop build */}
+              <DesktopSettingsPanel />
             </div>
 
             <div className="p-6 border-t border-zinc-800 bg-zinc-950/50 flex justify-end">
