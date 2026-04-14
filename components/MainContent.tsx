@@ -2042,23 +2042,23 @@ export function MainContent() {
                         }, {} as Record<string, GeneratedImage[]>)
                       ).map(([compId, group]) => (
                         <div key={compId} className="space-y-4">
-                          <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
-                            <div className="flex items-center gap-4">
-                              <h3 className="text-sm font-medium text-zinc-400 flex items-center gap-2">
-                                <Columns className="w-4 h-4" />
-                                Comparison: {group[0]?.prompt.slice(0, 50)}...
+                          <div className="flex items-center justify-between gap-2 border-b border-zinc-800 pb-2">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <h3 className="text-sm font-medium text-zinc-400 flex items-center gap-2 min-w-0">
+                                <Columns className="w-4 h-4 shrink-0" />
+                                <span className="truncate">Comparison: {group[0]?.prompt.slice(0, 50)}...</span>
                               </h3>
                               <button
                                 onClick={() => {
                                   group.forEach(img => deleteComparisonResult(img.id));
                                 }}
-                                className="text-[10px] text-zinc-600 hover:text-red-400 transition-colors flex items-center gap-1"
+                                className="shrink-0 text-[10px] text-zinc-600 hover:text-red-400 transition-colors flex items-center gap-1"
                               >
                                 <Trash2 className="w-3 h-3" />
                                 Delete Group
                               </button>
                             </div>
-                            <span className="text-[10px] text-zinc-500 uppercase tracking-widest">
+                            <span className="shrink-0 text-[10px] text-zinc-500 uppercase tracking-widest">
                               {new Date(parseInt(compId.split('-')[2]) || Date.now()).toLocaleDateString()}
                             </span>
                           </div>
@@ -2178,7 +2178,7 @@ export function MainContent() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {/* Filter tabs */}
                         <div className="flex bg-zinc-900 border border-zinc-800/60 rounded-full p-0.5">
                           {(['all', 'captioned', 'uncaptioned'] as const).map((f) => (
@@ -2781,7 +2781,7 @@ export function MainContent() {
                         return (
                           <div className="card overflow-hidden">
                             {/* Calendar header */}
-                            <div className="flex items-center justify-between p-4 border-b border-[#c5a062]/15">
+                            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-4 border-b border-[#c5a062]/15">
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => setCalendarDate(addDays(calendarDate, -7))}
@@ -3071,7 +3071,7 @@ export function MainContent() {
 
                       return (
                         <div className="card overflow-hidden">
-                          <div className="flex items-center justify-between p-4 border-b border-[#c5a062]/15">
+                          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-4 border-b border-[#c5a062]/15">
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={() =>
