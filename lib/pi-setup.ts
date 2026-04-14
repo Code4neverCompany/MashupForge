@@ -224,9 +224,16 @@ export function installPi(): InstallPiResult {
     PATH: process.env.PATH ?? null,
   };
 
-  // On Windows, `npm` is a `.cmd` shim — spawnSync without `shell: true`
-  // won't resolve it. Use explicit name + shell flag on Windows.
+  // On Windows, `npm` is a `.cmd` shim. Since Node's CVE-2024-27980 fix,
+  // spawning .cmd/.bat files requires `shell: true`; without it Node throws
+  // EINVAL. With `shell: true`, Node joins argv with spaces and hands it
+  // to cmd.exe without quoting — so any arg containing a space (like
+  // `C:\Users\Firstname Lastname\AppData\Roaming\MashupForge\pi`) gets
+  // re-split by cmd.exe and npm sees a mangled `--prefix`. Pre-quote every
+  // arg that can contain a Windows path or spaces.
   const npmCmd = isWindows ? 'npm.cmd' : 'npm';
+  const quoteWinArg = (a: string) =>
+    isWindows && /[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a;
   const spawnOpts = {
     encoding: 'utf8' as const,
     timeout: 5 * 60 * 1000,
@@ -246,7 +253,13 @@ export function installPi(): InstallPiResult {
 
   const result = spawnSync(
     npmCmd,
-    ['install', '--prefix', localPrefix, '--global', '@mariozechner/pi-coding-agent'],
+    [
+      'install',
+      '--prefix',
+      quoteWinArg(localPrefix),
+      '--global',
+      '@mariozechner/pi-coding-agent',
+    ],
     spawnOpts,
   );
 
