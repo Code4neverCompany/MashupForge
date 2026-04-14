@@ -13,7 +13,7 @@ import { join } from 'node:path';
  * stale lib code — a fresh build will return the new value in the install
  * diagnostics payload, an old cached one won't.
  */
-const BUILD_MARKER = 'pi-install-debug-2026-04-14T09:40';
+export const BUILD_MARKER = 'pi-install-debug-2026-04-14T09:55-v2';
 
 /** Project-local install prefix used when global install isn't possible (sandboxed envs). */
 const LOCAL_PREFIX = join(process.cwd(), '.pi-install');
