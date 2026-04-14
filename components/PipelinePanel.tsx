@@ -140,8 +140,8 @@ export function PipelinePanel() {
       </div>
 
       {/* Stage flow visualization */}
-      <div className="card p-5 overflow-x-auto">
-        <div className="space-y-4">
+      <div className="card p-4 sm:p-5 overflow-x-auto">
+        <div className="space-y-3 sm:space-y-4">
           {STAGES.map((stage, idx) => {
             const isActive = activeStageKey === stage.key;
             const isCompleted = idx < STAGES.findIndex(s => s.key === activeStageKey);
@@ -151,7 +151,7 @@ export function PipelinePanel() {
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: idx * 0.05 }}
-                className={`relative p-4 rounded-xl border transition-all duration-300 ${
+                className={`relative p-3 sm:p-4 rounded-xl border transition-all duration-300 ${
                   isActive ? 'bg-[#00e6ff]/8 border-[#00e6ff]/30 shadow-[0_0_16px_rgba(0,230,255,0.08)]' :
                   isCompleted ? 'bg-zinc-900/60 border-[#c5a062]/25' : 'bg-[#050505]/80 border-[#c5a062]/12'
                 }`}

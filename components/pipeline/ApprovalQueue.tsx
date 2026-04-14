@@ -109,7 +109,7 @@ export function ApprovalQueue({
   if (posts.length === 0) return null;
 
   return (
-    <div className="bg-amber-500/10 rounded-2xl border border-amber-500/30 p-5 space-y-4">
+    <div className="bg-amber-500/10 rounded-2xl border border-amber-500/30 p-4 sm:p-5 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-amber-400" />

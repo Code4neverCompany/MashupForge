@@ -28,7 +28,7 @@ export function ActiveIdeaCard({
   const pct = Math.round((progress.current / total) * 100);
 
   return (
-    <div className="card p-5 space-y-4 border-[#00e6ff]/25 shadow-[0_0_24px_rgba(0,230,255,0.06)]">
+    <div className="card p-4 sm:p-5 space-y-4 border-[#00e6ff]/25 shadow-[0_0_24px_rgba(0,230,255,0.06)]">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
