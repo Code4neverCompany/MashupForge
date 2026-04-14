@@ -60,10 +60,6 @@ npm run dev
    can pick a provider and authenticate. Once pi reports as installed +
    authenticated, click **Start Pi** to bring the RPC subprocess up.
 
-> **Note:** pi.dev is a local-only dependency — it spawns subprocesses and
-> generation and other Leonardo features, but all pi-powered text features
-> (ideas, prompts, captions, chat) require running locally.
-
 Pi stores its own credentials in `~/.pi/agent/auth.json`. No API keys needed in the app for text features.
 
 ### Leonardo.ai (Image Generation)
