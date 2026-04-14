@@ -61,8 +61,6 @@ npm run dev
    authenticated, click **Start Pi** to bring the RPC subprocess up.
 
 > **Note:** pi.dev is a local-only dependency — it spawns subprocesses and
-> uses `tmux` for its login flow, neither of which work on Vercel or any
-> other serverless platform. The deployed Vercel build will surface image
 > generation and other Leonardo features, but all pi-powered text features
 > (ideas, prompts, captions, chat) require running locally.
 
