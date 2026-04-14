@@ -23,9 +23,6 @@ const nextConfig: NextConfig = {
     ],
   },
   transpilePackages: ['motion'],
-  turbopack: {
-    root: '/home/maurice/projects/Multiverse-Mashup-Studio_09_04_26_13-14',
-  },
 };
 
 export default nextConfig;
