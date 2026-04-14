@@ -4339,7 +4339,7 @@ export function MainContent() {
                       )}
                       
                       {/* Hover glow overlay — warm-gold from below, cool-blue at top edge */}
-                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none z-[6] bg-gradient-to-t from-[#c5a062]/12 via-transparent to-[#00e6ff]/6" />
+                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-[6] bg-gradient-to-t from-[#c5a062]/12 via-transparent to-[#00e6ff]/6" />
 
                       {/* Permanent approved indicator — bottom-left so
                           it avoids the top-right action row AND the
