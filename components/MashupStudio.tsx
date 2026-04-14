@@ -4,7 +4,8 @@ import { Sidebar } from './Sidebar';
 import { MainContent } from './MainContent';
 import { MashupProvider, useMashup } from './MashupContext';
 import { ErrorBoundary } from './ErrorBoundary';
-import { Loader2, ShieldAlert } from 'lucide-react';
+import { DesktopLoadingScreen } from './DesktopLoadingScreen';
+import { ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 function MashupApp() {
@@ -12,19 +13,7 @@ function MashupApp() {
   const { isAuthenticated } = useAuth();
 
   if (isAuthenticated === null || !isLoaded) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-[#050505]">
-        <div className="flex flex-col items-center gap-5">
-          {/* Animated ring */}
-          <div className="relative w-12 h-12">
-            <div className="absolute inset-0 rounded-full border-2 border-[#00e6ff]/20" />
-            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[#00e6ff] animate-spin" />
-            <div className="absolute inset-[5px] rounded-full border border-[#c5a062]/20" />
-          </div>
-          <p className="text-zinc-600 text-[11px] font-semibold uppercase tracking-[0.2em]">Initializing Studio</p>
-        </div>
-      </div>
-    );
+    return <DesktopLoadingScreen />;
   }
 
   if (isAuthenticated === false) {
