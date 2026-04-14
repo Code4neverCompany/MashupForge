@@ -973,6 +973,7 @@ export function PipelinePanel() {
               <p className="text-sm text-zinc-200">Carousel mode</p>
               <p className="text-[11px] text-zinc-500 leading-snug">
                 Group all ready images from an idea into one carousel post (shared caption + slot).
+                Always schedules first — auto-post fires when the slot hits, never immediately after generation.
               </p>
             </div>
           </label>
