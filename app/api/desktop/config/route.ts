@@ -40,7 +40,7 @@ export async function GET() {
           if (typeof v === 'string') keys[k] = v;
         }
       }
-    } catch (e) {
+    } catch (e: unknown) {
       return NextResponse.json(
         { isDesktop: true, configPath, keys: {}, error: getErrorMessage(e) },
         { status: 500 }
@@ -108,7 +108,7 @@ export async function PATCH(req: NextRequest) {
   try {
     mkdirSync(dirname(configPath), { recursive: true });
     writeFileSync(configPath, JSON.stringify(existing, null, 2) + '\n', 'utf8');
-  } catch (e) {
+  } catch (e: unknown) {
     return NextResponse.json(
       { success: false, error: getErrorMessage(e) },
       { status: 500 }
