@@ -116,6 +116,16 @@ set HOST=127.0.0.1
 set PORT=${PORT}
 set NODE_ENV=production
 
+REM Persistent pi.dev install location. Without this, pi-setup.ts
+REM falls back to %TEMP%\mashupforge-pi-install which Windows
+REM disk cleanup can wipe between sessions — user would have to
+REM reinstall pi every launch. %APPDATA%\MashupForge is the same
+REM root the Tauri desktop wrapper uses for config.json.
+if not defined APPDATA set "APPDATA=%USERPROFILE%\\AppData\\Roaming"
+set "MASHUPFORGE_PI_DIR=%APPDATA%\\MashupForge\\pi"
+set MASHUPFORGE_DESKTOP=1
+if not exist "%MASHUPFORGE_PI_DIR%" mkdir "%MASHUPFORGE_PI_DIR%" 2> nul
+
 echo Starting Next.js server on http://127.0.0.1:${PORT} ...
 start /B "" "%NODE_EXE%" standalone\\server.js > logs\\server.log 2>&1
 

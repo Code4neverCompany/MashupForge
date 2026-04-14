@@ -112,6 +112,13 @@ set HOST=127.0.0.1
 set PORT=$Port
 set NODE_ENV=production
 
+REM Persistent pi.dev install location. Without this, pi-setup.ts
+REM falls back to %TEMP% which Windows may clean between sessions.
+if not defined APPDATA set "APPDATA=%USERPROFILE%\AppData\Roaming"
+set "MASHUPFORGE_PI_DIR=%APPDATA%\MashupForge\pi"
+set MASHUPFORGE_DESKTOP=1
+if not exist "%MASHUPFORGE_PI_DIR%" mkdir "%MASHUPFORGE_PI_DIR%" 2> nul
+
 echo Starting Next.js server on http://127.0.0.1:$Port ...
 start /B "" "%NODE_EXE%" standalone\server.js > logs\server.log 2>&1
 
