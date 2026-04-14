@@ -2,6 +2,35 @@ import { NextResponse } from 'next/server';
 import { getErrorMessage } from '@/lib/errors';
 
 /**
+ * Pull a human-readable message out of a parsed Leonardo error body.
+ * v2 returns several shapes depending on the failure mode:
+ *   { error: "string" }                           (legacy / simple)
+ *   { error: { message, code } }                  (validation errors)
+ *   { errors: [{ message, ... }] }                (GraphQL wrap)
+ *   { message: "string" }                         (top-level fallback)
+ * Plain `${parsedErr.error}` stringification would render the object
+ * form as "[object Object]" and hide the real reason from the user.
+ */
+function extractLeonardoError(parsed: unknown): string | null {
+  if (!parsed || typeof parsed !== 'object') return null;
+  const p = parsed as Record<string, unknown>;
+  if (typeof p.error === 'string' && p.error.trim()) return p.error;
+  if (p.error && typeof p.error === 'object') {
+    const e = p.error as Record<string, unknown>;
+    if (typeof e.message === 'string' && e.message.trim()) return e.message;
+    if (typeof e.code === 'string' && e.code.trim()) return e.code;
+  }
+  if (Array.isArray(p.errors) && p.errors.length > 0) {
+    const first = p.errors[0] as Record<string, unknown> | undefined;
+    if (first && typeof first.message === 'string' && first.message.trim()) {
+      return first.message;
+    }
+  }
+  if (typeof p.message === 'string' && p.message.trim()) return p.message;
+  return null;
+}
+
+/**
  * Leonardo AI Image Generation API Route
  * 
  * Supports 4 API-documented models:
@@ -103,9 +132,10 @@ export async function POST(req: Request) {
       console.error('Leonardo create error:', err);
       try {
         const parsedErr = JSON.parse(err);
-        if (parsedErr.error) {
-          return NextResponse.json({ 
-            error: `Leonardo API Error: ${parsedErr.error}` 
+        const leoMsg = extractLeonardoError(parsedErr);
+        if (leoMsg) {
+          return NextResponse.json({
+            error: `Leonardo API Error: ${leoMsg}`
           }, { status: createRes.status });
         }
       } catch (_) {}
