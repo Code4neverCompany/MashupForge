@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Space_Grotesk, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import { Toast } from '@/components/Toast';
 
 // AETHER SANS → Space Grotesk: geometric tech sans, distinctive letterforms,
 // futuristic feel that matches the 4neverCompany dark studio aesthetic.
@@ -49,6 +50,7 @@ export default function RootLayout({
     <html lang="en" className={`${spaceGrotesk.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <body className="font-sans antialiased bg-zinc-950 text-zinc-50 selection:bg-emerald-500/30" suppressHydrationWarning>
         {children}
+        <Toast />
       </body>
     </html>
   );

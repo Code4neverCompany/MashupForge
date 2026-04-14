@@ -384,3 +384,17 @@
   0%   { background-position: 100% center; }
   100% { background-position: -100% center; }
 }
+
+/* ── Toast animations ──────────────────────────────────────────────── */
+@keyframes toast-enter {
+  from { opacity: 0; transform: translateX(110%) scale(0.96); }
+  to   { opacity: 1; transform: translateX(0)   scale(1); }
+}
+@keyframes toast-exit {
+  from { opacity: 1; transform: translateX(0)    scale(1); }
+  to   { opacity: 0; transform: translateX(110%) scale(0.96); }
+}
+@keyframes toast-bar {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
