@@ -155,7 +155,7 @@ export function DesktopSettingsPanel() {
       <div className="flex items-center gap-2">
         <Monitor className="w-4 h-4 text-[#c5a062] shrink-0" />
         <h4 className="text-sm font-semibold text-white">Desktop Configuration</h4>
-        <span className="ml-auto text-[10px] text-zinc-600 font-mono truncate max-w-[220px]" title={config.configPath}>
+        <span className="ml-auto text-[10px] text-zinc-600 font-mono truncate max-w-[120px] sm:max-w-[220px]" title={config.configPath}>
           {config.configPath}
         </span>
       </div>

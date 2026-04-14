@@ -142,7 +142,7 @@ function InlineError({
 }) {
   return (
     <div
-      className="flex flex-col items-center justify-center p-8 min-h-[200px] rounded-xl bg-[#050505] border border-[#c5a062]/20 shadow-[0_4px_24px_rgba(0,0,0,0.5)]"
+      className="flex flex-col items-center justify-center p-4 sm:p-8 min-h-[150px] sm:min-h-[200px] rounded-xl bg-[#050505] border border-[#c5a062]/20 shadow-[0_4px_24px_rgba(0,0,0,0.5)]"
       role="alert"
     >
       {/* Icon */}

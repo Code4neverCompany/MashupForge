@@ -2752,7 +2752,7 @@ export function MainContent() {
                             setSmartScheduleLoading(false);
                             setShowScheduleAll(true);
                           }}
-                          disabled={ready.length === 0 || available.length === 0}
+                          disabled={ready.length === 0 || available.length === 0 || smartScheduleLoading}
                           className="btn-gold-sm rounded-lg"
                           title="Schedule with optimal posting times"
                         >
@@ -3279,7 +3279,7 @@ export function MainContent() {
                                     &quot;Prepare for Post&quot; on an image first.
                                   </p>
                                 ) : (
-                                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto">
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-48 overflow-y-auto">
                                     {postReady.map((img) => {
                                       const isSel = img.id === selectedImageId;
                                       return (
@@ -3587,7 +3587,7 @@ export function MainContent() {
                                   </div>
 
                                   {/* Secondary row: copy caption, regen, unready all */}
-                                  <div className="grid grid-cols-3 gap-2">
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                     <button
                                       onClick={() => copyWithFeedback(formatPost(anchor), `all-${key}`)}
                                       disabled={!anchor.postCaption}
@@ -3858,7 +3858,7 @@ export function MainContent() {
                                   </div>
 
                                   {/* Secondary row: copy, regen, unready */}
-                                  <div className="grid grid-cols-3 gap-2">
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                     <button
                                       onClick={() => copyWithFeedback(formatPost(img), `all-${img.id}`)}
                                       disabled={!img.postCaption}
@@ -4641,8 +4641,8 @@ export function MainContent() {
 
             {/* Sidebar Area */}
             <div className="w-full md:w-96 bg-zinc-900 border-l border-zinc-800 flex flex-col h-full overflow-y-auto">
-              <div className="p-8 space-y-8">
-                <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 sm:p-8 space-y-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Model</h4>
                     <p className="text-xs text-white">{selectedImage.modelInfo?.modelName || 'Unknown'}</p>
@@ -4745,7 +4745,7 @@ export function MainContent() {
                           }
                         }
                       }}
-                      className="bg-transparent border border-dashed border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-400 focus:outline-none focus:border-indigo-500 w-24"
+                      className="bg-transparent border border-dashed border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-400 focus:outline-none focus:border-[#c5a062]/60 w-24"
                     />
                   </div>
                 </div>
@@ -4781,14 +4781,14 @@ export function MainContent() {
                       type="text" 
                       placeholder="New collection name..." 
                       id="new-col-name"
-                      className="w-full bg-transparent border-b border-zinc-800 text-xs text-zinc-400 py-1 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-transparent border-b border-zinc-800 text-xs text-zinc-400 py-1 focus:outline-none focus:border-[#c5a062]/60"
                     />
                     <div className="flex items-center gap-2">
                       <input 
                         type="text" 
                         placeholder="Description (optional)..." 
                         id="new-col-desc"
-                        className="flex-1 bg-transparent border-b border-zinc-800 text-[10px] text-zinc-500 py-1 focus:outline-none focus:border-indigo-500"
+                        className="flex-1 bg-transparent border-b border-zinc-800 text-[10px] text-zinc-500 py-1 focus:outline-none focus:border-[#c5a062]/60"
                       />
                       <button 
                         onClick={async () => {
