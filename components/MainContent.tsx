@@ -1640,7 +1640,7 @@ export function MainContent() {
                           <select
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value as 'newest' | 'oldest')}
-                            className="bg-zinc-950 border border-zinc-800/60 rounded-xl px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                            className="bg-zinc-950 border border-zinc-800/60 rounded-xl px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 cursor-pointer"
                           >
                             <option value="newest">Newest First</option>
                             <option value="oldest">Oldest First</option>
@@ -1686,7 +1686,7 @@ export function MainContent() {
                         <select
                           value={filterUniverse}
                           onChange={(e) => setFilterUniverse(e.target.value)}
-                          className="bg-zinc-950 border border-zinc-800/60 rounded-xl px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                          className="bg-zinc-950 border border-zinc-800/60 rounded-xl px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 cursor-pointer"
                         >
                           <option value="all">All Universes</option>
                           <option value="Marvel">Marvel</option>
@@ -1701,7 +1701,7 @@ export function MainContent() {
                         <select
                           value={selectedCollectionId}
                           onChange={(e) => setSelectedCollectionId(e.target.value)}
-                          className="bg-zinc-950 border border-zinc-800/60 rounded-xl px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                          className="bg-zinc-950 border border-zinc-800/60 rounded-xl px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 cursor-pointer"
                         >
                           <option value="all">All Collections</option>
                           {collections.map((c) => (
@@ -1719,7 +1719,7 @@ export function MainContent() {
                             placeholder="e.g. Marvel OR DC; NOT Grimdark"
                             value={tagQuery}
                             onChange={(e) => setTagQuery(e.target.value)}
-                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-colors"
+                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 transition-colors"
                           />
                         </div>
                         {tagQuery && (
@@ -1882,7 +1882,7 @@ export function MainContent() {
                   <div className="card p-6 space-y-6">
                     <div className="flex flex-wrap justify-end gap-2">
                         <select
-                          className="text-xs bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1 text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 max-w-[150px]"
+                          className="text-xs bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1 text-zinc-300 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 max-w-[150px]"
                           onChange={(e) => {
                             if (e.target.value) {
                               setComparisonPrompt(e.target.value);
@@ -2369,7 +2369,7 @@ export function MainContent() {
                                       }}
                                       placeholder="No caption yet…"
                                       minRows={2}
-                                      className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500/50 focus:outline-none transition-colors"
+                                      className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-[#c5a062]/50 focus:outline-none transition-colors"
                                     />
                                   </div>
                                   {(anchor.postHashtags || []).length > 0 && (
@@ -2493,7 +2493,7 @@ export function MainContent() {
                                         else next.delete(img.id);
                                         setCaptioningSelected(next);
                                       }}
-                                      className="w-5 h-5 rounded border-zinc-600 bg-zinc-900/80 backdrop-blur-sm text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-500"
+                                      className="w-5 h-5 rounded border-zinc-600 bg-zinc-900/80 backdrop-blur-sm text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#c5a062]"
                                     />
                                   </div>
                                 )}
@@ -2514,7 +2514,7 @@ export function MainContent() {
                                     onChange={(e) => patchImage(img, { postCaption: e.target.value })}
                                     placeholder="No caption yet…"
                                     minRows={2}
-                                    className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500/50 focus:outline-none transition-colors"
+                                    className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-[#c5a062]/50 focus:outline-none transition-colors"
                                   />
                                 </div>
 
@@ -2880,7 +2880,7 @@ export function MainContent() {
                                         type="date"
                                         value={editing.date}
                                         onChange={(e) => patchField({ date: e.target.value })}
-                                        className="w-full bg-zinc-900 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        className="w-full bg-zinc-900 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                                       />
                                     </div>
                                     <div className="space-y-1">
@@ -2888,7 +2888,7 @@ export function MainContent() {
                                       <TimePicker24
                                         value={editing.time}
                                         onChange={(v) => patchField({ time: v })}
-                                        className="w-full bg-zinc-900 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        className="w-full bg-zinc-900 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                                       />
                                     </div>
                                   </div>
@@ -3366,7 +3366,7 @@ export function MainContent() {
                                     type="date"
                                     value={slot.date}
                                     onChange={(e) => setCalendarSlotClick({ ...slot, date: e.target.value })}
-                                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                                   />
                                 </div>
                                 <div className="space-y-1">
@@ -3374,7 +3374,7 @@ export function MainContent() {
                                   <TimePicker24
                                     value={slot.time}
                                     onChange={(v) => setCalendarSlotClick({ ...slot, time: v })}
-                                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                                   />
                                 </div>
                               </div>
@@ -3491,7 +3491,7 @@ export function MainContent() {
                                       }}
                                       placeholder="No caption yet…"
                                       minRows={2}
-                                      className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500/50 focus:outline-none transition-colors"
+                                      className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-[#c5a062]/50 focus:outline-none transition-colors"
                                     />
                                   </div>
                                   {(anchor.postHashtags || []).length > 0 && (
@@ -3551,7 +3551,7 @@ export function MainContent() {
                                         type="date"
                                         value={carouselSchedule.date}
                                         onChange={(e) => setScheduleFor(key, { date: e.target.value })}
-                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                                       />
                                     </div>
                                     <div className="space-y-1">
@@ -3559,7 +3559,7 @@ export function MainContent() {
                                       <TimePicker24
                                         value={carouselSchedule.time}
                                         onChange={(v) => setScheduleFor(key, { time: v })}
-                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                                       />
                                     </div>
                                   </div>
@@ -3744,7 +3744,7 @@ export function MainContent() {
                                       onChange={(e) => patchImage(img, { postCaption: e.target.value })}
                                       placeholder="No caption yet…"
                                       minRows={2}
-                                      className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500/50 focus:outline-none transition-colors"
+                                      className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-[#c5a062]/50 focus:outline-none transition-colors"
                                     />
                                   </div>
                                   <div className="space-y-1">
@@ -3819,7 +3819,7 @@ export function MainContent() {
                                         type="date"
                                         value={schedule.date}
                                         onChange={(e) => setScheduleFor(img.id, { date: e.target.value })}
-                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#c5a062]/30"
                                       />
                                     </div>
                                     <div className="space-y-1">
@@ -3829,7 +3829,7 @@ export function MainContent() {
                                       <TimePicker24
                                         value={schedule.time}
                                         onChange={(v) => setScheduleFor(img.id, { time: v })}
-                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#c5a062]/30"
                                       />
                                     </div>
                                   </div>
@@ -4298,7 +4298,7 @@ export function MainContent() {
                               setSelectedForBatch(newSet);
                             }}
                             onClick={(e) => e.stopPropagation()}
-                            className="w-5 h-5 rounded border-zinc-600 bg-zinc-900/80 backdrop-blur-sm text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-500"
+                            className="w-5 h-5 rounded border-zinc-600 bg-zinc-900/80 backdrop-blur-sm text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#c5a062]"
                           />
                         </div>
                       )}
@@ -4768,7 +4768,7 @@ export function MainContent() {
                         setSelectedImage({ ...selectedImage, collectionId: undefined });
                       }
                     }}
-                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                   >
                     <option value="">None</option>
                     {collections.map(col => (
@@ -4914,7 +4914,7 @@ export function MainContent() {
                     value={settings.apiKeys.leonardo || ''}
                     onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, leonardo: e.target.value } })}
                     placeholder="••••••••••••••••"
-                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                   />
                 </div>
                 
@@ -4929,14 +4929,14 @@ export function MainContent() {
                         value={settings.apiKeys.instagram?.igAccountId || ''}
                         onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, instagram: { ...settings.apiKeys.instagram, igAccountId: e.target.value } as any } })}
                         placeholder="Instagram Business Account ID"
-                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                       />
                       <input
                         type="password"
                         value={settings.apiKeys.instagram?.accessToken || ''}
                         onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, instagram: { ...settings.apiKeys.instagram, accessToken: e.target.value } as any } })}
                         placeholder="Long-lived Page Access Token"
-                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                       />
                     </div>
                     <p className="text-[10px] text-zinc-500 mt-1">Requires a Facebook Developer App linked to an Instagram Business account.</p>
@@ -4951,14 +4951,14 @@ export function MainContent() {
                         value={settings.apiKeys.pinterest?.accessToken || ''}
                         onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, pinterest: { ...settings.apiKeys.pinterest, accessToken: e.target.value } as any } })}
                         placeholder="Pinterest Access Token"
-                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                       />
                       <input
                         type="text"
                         value={settings.apiKeys.pinterest?.boardId || ''}
                         onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, pinterest: { ...settings.apiKeys.pinterest, boardId: e.target.value } as any } })}
                         placeholder="Board ID (optional — defaults to account's first board)"
-                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                       />
                     </div>
                     <p className="text-[10px] text-zinc-500 mt-1">
@@ -4977,7 +4977,7 @@ export function MainContent() {
                     <select
                       value={settings.defaultLeonardoModel}
                       onChange={(e) => updateSettings({ defaultLeonardoModel: e.target.value })}
-                      className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                      className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                     >
                       {LEONARDO_MODELS.map(m => (
                         <option key={m.id} value={m.id}>{m.name}</option>
@@ -5240,7 +5240,7 @@ export function MainContent() {
                           value={settings.channelName || ''}
                           onChange={(e) => updateSettings({ channelName: e.target.value })}
                           placeholder="e.g. MultiverseMashupAI"
-                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all"
+                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 transition-all"
                         />
                       </div>
                     </div>
@@ -5251,7 +5251,7 @@ export function MainContent() {
                         <select 
                           value={settings.watermark.position || 'bottom-right'}
                           onChange={(e) => updateSettings({ watermark: { ...settings.watermark, position: e.target.value as any } as any })}
-                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 cursor-pointer"
                         >
                           <option value="bottom-right">Bottom Right</option>
                           <option value="bottom-left">Bottom Left</option>
@@ -5266,7 +5266,7 @@ export function MainContent() {
                         <select 
                           value={settings.watermark.opacity || 0.8}
                           onChange={(e) => updateSettings({ watermark: { ...settings.watermark, opacity: parseFloat(e.target.value) } as any })}
-                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 cursor-pointer"
                         >
                           {[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0].map(val => (
                             <option key={val} value={val}>{Math.round(val * 100)}%</option>
@@ -5280,7 +5280,7 @@ export function MainContent() {
                       <select 
                         value={settings.watermark.scale || 0.15}
                         onChange={(e) => updateSettings({ watermark: { ...settings.watermark, scale: parseFloat(e.target.value) } as any })}
-                        className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                        className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 cursor-pointer"
                       >
                         {[0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5].map(val => (
                           <option key={val} value={val}>{Math.round(val * 100)}%</option>
@@ -5300,7 +5300,7 @@ export function MainContent() {
                     <select 
                       value={settings.defaultAnimationDuration || 5}
                       onChange={(e) => updateSettings({ defaultAnimationDuration: Number(e.target.value) as 5 | 10 })}
-                      className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                      className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 cursor-pointer"
                     >
                       <option value={5}>5 Seconds</option>
                       <option value={10}>10 Seconds</option>
@@ -5311,7 +5311,7 @@ export function MainContent() {
                     <select 
                       value={settings.defaultAnimationStyle || 'DYNAMIC'}
                       onChange={(e) => updateSettings({ defaultAnimationStyle: e.target.value })}
-                      className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                      className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 cursor-pointer"
                     >
                       <option value="DYNAMIC">Dynamic</option>
                       <option value="STATIC">Static</option>
@@ -5323,7 +5323,7 @@ export function MainContent() {
                     <select 
                       value={settings.defaultVideoModel || 'kling-3.0'}
                       onChange={(e) => updateSettings({ defaultVideoModel: e.target.value })}
-                      className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                      className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 cursor-pointer"
                     >
                       <option value="kling-video-o-3">Kling O3 Omni (New)</option>
                       <option value="kling-3.0">Kling 3.0 (Pro Quality)</option>
@@ -5344,7 +5344,7 @@ export function MainContent() {
                       value={settings.agentPrompt}
                       onChange={(e) => updateSettings({ agentPrompt: e.target.value })}
                       placeholder="Define who the AI is, how it speaks, and what it focuses on..."
-                      className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 min-h-[220px] resize-y leading-relaxed font-mono"
+                      className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 min-h-[220px] resize-y leading-relaxed font-mono"
                     />
                     <p className="text-[10px] text-zinc-500 leading-tight">
                       This prompt shapes every AI interaction: idea generation, prompt enhancement, captions, and parameter selection. Applied to every pi request on top of the mode directive. Restart pi (Settings → Pi.dev AI Engine → Stop + Start) after editing.
@@ -5434,7 +5434,7 @@ export function MainContent() {
                               }
                             }
                           }}
-                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                          className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                         />
                         <div className="pt-2">
                           <p className="text-[10px] text-zinc-500 mb-2 uppercase tracking-tight font-semibold">Recommended Genres</p>
@@ -5608,7 +5608,7 @@ export function MainContent() {
                   value={newCollectionName}
                   onChange={(e) => setNewCollectionName(e.target.value)}
                   placeholder="e.g., Epic Battles, Cyberpunk DC..."
-                  className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                  className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                 />
               </div>
               <div className="space-y-2">
@@ -5617,7 +5617,7 @@ export function MainContent() {
                   value={newCollectionDesc}
                   onChange={(e) => setNewCollectionDesc(e.target.value)}
                   placeholder="What is this collection about?"
-                  className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 min-h-[100px] resize-none"
+                  className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 min-h-[100px] resize-none"
                 />
               </div>
             </div>
@@ -5673,7 +5673,7 @@ export function MainContent() {
                     value={bulkTagsInput}
                     onChange={(e) => setBulkTagsInput(e.target.value)}
                     placeholder="e.g. Marvel, Cinematic, 4k"
-                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                   />
                 </div>
                 <div className="flex gap-4">
