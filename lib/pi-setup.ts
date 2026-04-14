@@ -18,6 +18,68 @@ export const BUILD_MARKER = 'pi-install-debug-2026-04-14T14:00-v4-runtime-instal
 const isWindows = platform() === 'win32';
 
 /**
+ * Translate common Node errno codes into Windows-specific user-facing guidance.
+ * Desktop users see these in the Settings / install flow and have no way to
+ * interpret raw EACCES / ENOENT / EINVAL strings. Each branch explains the
+ * likely cause AND the concrete action to take.
+ *
+ * Non-Windows callers fall through to the raw message unchanged so Linux/macOS
+ * dev output isn't cluttered.
+ */
+function humanizeWindowsError(e: unknown, context: 'mkdir' | 'write' | 'spawn' | 'install', path?: string): string {
+  const err = e as NodeJS.ErrnoException | undefined;
+  const raw = (err && err.message) || String(e);
+  if (!isWindows) return raw;
+
+  const code = err?.code;
+  const where = path ? ` at ${path}` : '';
+
+  if (code === 'ENOENT' && context === 'spawn') {
+    return (
+      'Node.js not found. MashupForge needs Node.js 22 LTS on PATH to install pi. ' +
+      'Download the installer from https://nodejs.org/ and relaunch MashupForge. ' +
+      `(underlying error: ${raw})`
+    );
+  }
+  if (code === 'ENOENT') {
+    return (
+      `Path not found${where}. ` +
+      'If your %APPDATA% folder is redirected to OneDrive, the redirect may be broken. ' +
+      `(underlying error: ${raw})`
+    );
+  }
+  if (code === 'EACCES' || code === 'EPERM') {
+    return (
+      `Permission denied${where}. Likely causes on Windows: ` +
+      '(1) antivirus is quarantining the MashupForge install folder — add an exclusion for %APPDATA%\\MashupForge; ' +
+      '(2) OneDrive "Files On-Demand" has the folder locked — right-click → Always keep on this device; ' +
+      '(3) Controlled folder access is blocking writes — allow MashupForge in Windows Security → Virus & threat protection → Ransomware protection. ' +
+      `(underlying error: ${raw})`
+    );
+  }
+  if (code === 'EINVAL' && context === 'spawn') {
+    return (
+      'Node.js is too old to safely spawn .cmd files. Upgrade to Node 18.20.2+, 20.12.2+, or 22.x and relaunch. ' +
+      `(underlying error: ${raw})`
+    );
+  }
+  if (code === 'ENOSPC') {
+    return (
+      `Disk full${where}. Free up space on the %APPDATA% drive and try again. ` +
+      `(underlying error: ${raw})`
+    );
+  }
+  if (code === 'ETIMEDOUT' || code === 'ECONNRESET' || code === 'ENETUNREACH') {
+    return (
+      'Network error reaching the npm registry. Check your internet connection and any corporate proxy. ' +
+      'If you are on a corporate network, set HTTPS_PROXY before launching MashupForge. ' +
+      `(underlying error: ${raw})`
+    );
+  }
+  return raw;
+}
+
+/**
  * Writable install prefix.
  *
  * Tauri desktop: Rust launcher sets `MASHUPFORGE_PI_DIR` to a user-writable
@@ -177,7 +239,7 @@ export function installPi(): InstallPiResult {
       success: false,
       stdout: '',
       stderr: '',
-      error: `Failed to create install prefix ${localPrefix}: ${(e as Error).message}`,
+      error: `Failed to create install prefix ${localPrefix}: ${humanizeWindowsError(e, 'mkdir', localPrefix)}`,
       diagnostics,
     };
   }
@@ -274,7 +336,7 @@ export function installPi(): InstallPiResult {
       success: false,
       stdout: result.stdout || '',
       stderr: result.stderr || '',
-      error: result.error.message,
+      error: humanizeWindowsError(result.error, 'spawn'),
       diagnostics,
     };
   }
@@ -282,6 +344,18 @@ export function installPi(): InstallPiResult {
   const success = result.status === 0;
   const piPath = getPiPath() || undefined;
   diagnostics.resolvedPiPath = piPath ?? null;
+
+  // npm ran but exited non-zero. Surface the tail of stderr with a Windows
+  // hint so users get something actionable instead of raw npm verbiage.
+  if (!success) {
+    const stderrTail = (result.stderr || '').slice(-400).trim();
+    const hint = isWindows
+      ? ' — on Windows, the most common causes are antivirus quarantining ' +
+        '%APPDATA%\\MashupForge\\pi or a corporate proxy blocking registry.npmjs.org. ' +
+        'Try adding a Defender exclusion for %APPDATA%\\MashupForge and set HTTPS_PROXY if you are on a VPN.'
+      : '';
+    diagnostics.humanizedError = `npm install exited with status ${result.status}${hint}`;
+  }
 
   // On success, make the freshly-installed binary visible to later spawns in
   // this same Node process (pi-client etc.) without requiring a server restart.
@@ -293,11 +367,27 @@ export function installPi(): InstallPiResult {
     }
   }
 
+  const finalError = !success
+    ? `npm install failed (exit ${result.status}). ${(result.stderr || '').slice(-300).trim()}${
+        isWindows
+          ? ' — common Windows fixes: add a Windows Defender exclusion for %APPDATA%\\MashupForge, ' +
+            'ensure you are not behind a blocking corporate proxy, and verify Node 22 LTS is installed.'
+          : ''
+      }`
+    : !piPath
+      ? isWindows
+        ? `npm reported success but pi.cmd was not found at ${localPrefix}\\pi.cmd. ` +
+          'Antivirus (especially Windows Defender and third-party suites) sometimes quarantines ' +
+          'freshly-installed .cmd shims. Check your quarantine list and add an exclusion for ' +
+          '%APPDATA%\\MashupForge\\pi, then retry installation.'
+        : 'npm reported success but pi binary not found'
+      : undefined;
+
   return {
     success: success && !!piPath,
     stdout: result.stdout || '',
     stderr: result.stderr || '',
-    error: success && !piPath ? 'npm reported success but pi binary not found' : undefined,
+    error: finalError,
     piPath,
     diagnostics,
   };
