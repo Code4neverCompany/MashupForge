@@ -32,27 +32,41 @@ Supported pi providers include: Google Antigravity, Google AI Studio, Anthropic,
 - **pi.dev RPC** for text AI (subprocess, no cloud dependency)
 - **Tailwind CSS** for styling
 
-## Setup
+## Local Setup
 
-```
-# Install dependencies
+**Requirements**
+
+- Node.js 18 or newer
+- `tmux` (used by the pi.dev setup flow to host pi's interactive login)
+
+**Steps**
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/Code4neverCompany/MashupForge.git
+cd MashupForge
+
+# 2. Install dependencies
 npm install
 
-# Set your Leonardo API key
-echo "LEONARDO_API_KEY=your-key-here" > .env.local
-
-# Start dev server
+# 3. Start the dev server
 npm run dev
+
+# 4. Open http://localhost:3000 in your browser
 ```
 
-### pi.dev Setup (AI Text Features)
+5. In the app, open **Settings** and click **Setup Pi.dev**. This installs
+   pi into a local prefix and opens its login flow in a tmux session so you
+   can pick a provider and authenticate. Once pi reports as installed +
+   authenticated, click **Start Pi** to bring the RPC subprocess up.
 
-1. Open Settings in the app
-2. Click **Setup Pi.dev** — this installs pi and opens its login flow
-3. Pick your provider and authenticate through pi's native UI
-4. Click **Start Pi** — done
+> **Note:** pi.dev is a local-only dependency — it spawns subprocesses and
+> uses `tmux` for its login flow, neither of which work on Vercel or any
+> other serverless platform. The deployed Vercel build will surface image
+> generation and other Leonardo features, but all pi-powered text features
+> (ideas, prompts, captions, chat) require running locally.
 
-Pi stores its own credentials in `~/.pi/agent/auth.json`. No API keys needed in the app.
+Pi stores its own credentials in `~/.pi/agent/auth.json`. No API keys needed in the app for text features.
 
 ### Leonardo.ai (Image Generation)
 
