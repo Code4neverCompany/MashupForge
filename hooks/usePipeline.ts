@@ -483,10 +483,6 @@ Return ONLY the prompt text, nothing else.`;
       }
     }
 
-    if (attempts >= 60) {
-      addLog('image-ready', idea.id, 'error', 'Timed out waiting for image generation');
-    }
-
     // Step h: Mark done
     updateIdeaStatus(idea.id, 'done');
     addLog('complete', idea.id, 'success', `"${idea.concept}" pipeline complete`);
