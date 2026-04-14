@@ -4234,7 +4234,7 @@ export function MainContent() {
                     whileHover={{ scale: 1.02, y: -4, transition: { type: "spring", stiffness: 300, damping: 25 } }}
                     onClick={() => setSelectedImage(img)}
                     className={`group relative bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer ${
-                      dragOverCollection ? 'ring-2 ring-[#00e6ff] border-[#00e6ff]/50' : 'border-[#c5a062]/20 hover:border-[#c5a062]/50 hover:shadow-[0_0_20px_rgba(197,160,98,0.08)]'
+                      dragOverCollection ? 'ring-2 ring-[#00e6ff] border-[#00e6ff]/50' : 'border-[#c5a062]/20 hover:border-[#c5a062]/60 hover:shadow-[0_8px_40px_rgba(197,160,98,0.18),0_0_0_1px_rgba(197,160,98,0.15)]'
                     }`}
                     draggable={view === 'gallery'}
                     onDragStart={(e) => {
@@ -4338,6 +4338,9 @@ export function MainContent() {
                         />
                       )}
                       
+                      {/* Hover glow overlay — warm-gold from below, cool-blue at top edge */}
+                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none z-[6] bg-gradient-to-t from-[#c5a062]/12 via-transparent to-[#00e6ff]/6" />
+
                       {/* Permanent approved indicator — bottom-left so
                           it avoids the top-right action row AND the
                           top-left batch-select checkbox in gallery view.
