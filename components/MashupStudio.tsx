@@ -46,7 +46,7 @@ function MashupApp() {
 
 export function MashupStudio() {
   return (
-    <ErrorBoundary section="App">
+    <ErrorBoundary section="App" fullScreen>
       <MashupProvider>
         <MashupApp />
       </MashupProvider>
