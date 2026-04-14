@@ -1437,21 +1437,22 @@ export function MainContent() {
         </div>
         
         <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
-          <div className="relative hidden md:flex bg-zinc-900/60 rounded-xl p-1 border border-[#c5a062]/15 overflow-x-auto hide-scrollbar snap-x group">
-            {['ideas', 'compare', 'gallery', 'captioning', 'post-ready', 'pipeline'].map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v as any)}
-                className={`relative px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2 shrink-0 snap-start z-10 ${view === v ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
-              >
-                {view === v && (
-                  <motion.div
-                    layoutId="activeTab"
-                    className="absolute inset-0 bg-[#00e6ff]/10 border border-[#00e6ff]/20 rounded-lg"
-                    transition={{ type: 'spring', duration: 0.4, bounce: 0.15 }}
-                  />
-                )}
-                <span className="relative z-10 flex items-center gap-2">
+          <div className="relative hidden md:block">
+            <div className="flex bg-zinc-900/60 rounded-xl p-1 border border-[#c5a062]/15 overflow-x-auto hide-scrollbar snap-x">
+              {['ideas', 'compare', 'gallery', 'captioning', 'post-ready', 'pipeline'].map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v as any)}
+                  className={`relative px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2 shrink-0 snap-start z-10 ${view === v ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                >
+                  {view === v && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute inset-0 bg-[#00e6ff]/10 border border-[#00e6ff]/20 rounded-lg"
+                      transition={{ type: 'spring', duration: 0.4, bounce: 0.15 }}
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center gap-2">
                     {v === 'ideas' && <Lightbulb className="w-4 h-4 hidden sm:block" />}
                     {v === 'compare' && <Sparkles className="w-4 h-4 hidden sm:block" />}
                     {v === 'gallery' && <LayoutGrid className="w-4 h-4 hidden sm:block" />}
@@ -1461,9 +1462,12 @@ export function MainContent() {
                     {v === 'compare'
                       ? 'Studio'
                       : v.charAt(0).toUpperCase() + v.slice(1).replace('-', ' ')}
-                </span>
-              </button>
-            ))}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {/* Scroll affordance — fades right edge when tabs overflow at tablet width */}
+            <div className="pointer-events-none absolute right-0 inset-y-0 w-8 rounded-r-xl bg-gradient-to-l from-[#050505] to-transparent" />
           </div>
 
           <button
