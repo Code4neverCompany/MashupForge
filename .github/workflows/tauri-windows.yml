@@ -26,6 +26,11 @@ jobs:
     name: Build Windows installer
     runs-on: windows-latest
     timeout-minutes: 45
+    # softprops/action-gh-release@v2 needs contents:write to create the
+    # draft release on tag pushes. Without this, repos with restricted
+    # default GITHUB_TOKEN permissions 403 on the first tag build.
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
