@@ -159,11 +159,11 @@ export function PipelinePanel() {
                 <div className="flex items-center gap-3">
                   {isActive ? (
                     <div className="relative w-3 h-3">
-                      <div className="absolute inset-0 bg-emerald-500 rounded-full animate-ping" />
-                      <div className="relative bg-emerald-500 w-3 h-3 rounded-full" />
+                      <div className={`absolute inset-0 ${stage.dotColor} rounded-full animate-ping`} />
+                      <div className={`relative ${stage.dotColor} w-3 h-3 rounded-full`} />
                     </div>
                   ) : (
-                    <div className={`w-3 h-3 rounded-full ${isCompleted ? 'bg-emerald-500' : 'bg-zinc-700'}`} />
+                    <div className={`w-3 h-3 rounded-full ${isCompleted ? stage.dotColor : 'bg-zinc-700'}`} />
                   )}
                   <span className={`text-sm font-medium ${isActive ? 'text-[#00e6ff]' : isCompleted ? 'text-white' : 'text-zinc-500'}`}>
                     {stage.label}

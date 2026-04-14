@@ -21,15 +21,17 @@ export type Stage = {
   icon: React.ComponentType<{ className?: string }>;
   matchStep?: string;
   toggleKey?: PipelineToggleKey;
+  /** Tailwind bg class for the status dot (active ping + completed fill). */
+  dotColor: string;
 };
 
 export const STAGES: Stage[] = [
-  { key: 'idea', label: 'Idea', icon: Lightbulb, matchStep: 'Updating status' },
-  { key: 'trending', label: 'Trending', icon: TrendingUp, matchStep: 'Researching trending' },
-  { key: 'prompt', label: 'Prompt', icon: Sparkles, matchStep: 'Expanding idea' },
-  { key: 'image', label: 'Image', icon: ImageIcon, matchStep: 'Generating' },
-  { key: 'tag', label: 'Tag', icon: Tag, matchStep: 'Tagging', toggleKey: 'pipelineAutoTag' },
-  { key: 'caption', label: 'Caption', icon: Edit3, matchStep: 'Captioning', toggleKey: 'pipelineAutoCaption' },
-  { key: 'schedule', label: 'Schedule', icon: Calendar, matchStep: 'Scheduling', toggleKey: 'pipelineAutoSchedule' },
-  { key: 'post', label: 'Post', icon: Send, matchStep: 'Posting', toggleKey: 'pipelineAutoPost' },
+  { key: 'idea',     label: 'Idea',     icon: Lightbulb,  matchStep: 'Updating status',      dotColor: 'bg-amber-500' },
+  { key: 'trending', label: 'Trending', icon: TrendingUp,  matchStep: 'Researching trending', dotColor: 'bg-[#00e6ff]' },
+  { key: 'prompt',   label: 'Prompt',   icon: Sparkles,    matchStep: 'Expanding idea',        dotColor: 'bg-purple-500' },
+  { key: 'image',    label: 'Image',    icon: ImageIcon,   matchStep: 'Generating',            dotColor: 'bg-emerald-500' },
+  { key: 'tag',      label: 'Tag',      icon: Tag,         matchStep: 'Tagging',   toggleKey: 'pipelineAutoTag',      dotColor: 'bg-sky-400' },
+  { key: 'caption',  label: 'Caption',  icon: Edit3,       matchStep: 'Captioning', toggleKey: 'pipelineAutoCaption', dotColor: 'bg-violet-400' },
+  { key: 'schedule', label: 'Schedule', icon: Calendar,    matchStep: 'Scheduling', toggleKey: 'pipelineAutoSchedule', dotColor: 'bg-amber-400' },
+  { key: 'post',     label: 'Post',     icon: Send,        matchStep: 'Posting',   toggleKey: 'pipelineAutoPost',     dotColor: 'bg-[#c5a062]' },
 ];
