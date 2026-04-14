@@ -128,8 +128,8 @@ export function PipelinePanel() {
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center">
-          <Zap className="w-5 h-5 text-indigo-400" />
+        <div className="w-10 h-10 rounded-xl bg-[#00e6ff]/10 border border-[#00e6ff]/25 flex items-center justify-center">
+          <Zap className="w-5 h-5 text-[#00e6ff]" />
         </div>
         <div>
           <h2 className="type-title">Ideas-to-Content Pipeline</h2>
@@ -153,7 +153,7 @@ export function PipelinePanel() {
                 transition={{ delay: idx * 0.05 }}
                 className={`relative p-4 rounded-xl border transition-all duration-300 ${
                   isActive ? 'bg-[#00e6ff]/8 border-[#00e6ff]/30 shadow-[0_0_16px_rgba(0,230,255,0.08)]' :
-                  isCompleted ? 'bg-zinc-800/40 border-[#c5a062]/20' : 'bg-zinc-900/20 border-zinc-800/30'
+                  isCompleted ? 'bg-zinc-900/60 border-[#c5a062]/25' : 'bg-[#050505]/80 border-[#c5a062]/12'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -302,7 +302,7 @@ export function PipelinePanel() {
                   type="checkbox"
                   checked={opt.value}
                   onChange={() => toggleStage(opt.key)}
-                  className="w-4 h-4 accent-emerald-500"
+                  className="w-4 h-4 accent-[#00e6ff]"
                 />
                 <span className="text-sm text-zinc-300">{opt.label}</span>
               </label>
@@ -446,8 +446,8 @@ export function PipelinePanel() {
           </div>
           {pipelineRunning && (
             <div className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
-              <span className="text-sm text-indigo-400 font-medium">Running</span>
+              <Loader2 className="w-4 h-4 text-[#00e6ff] animate-spin" />
+              <span className="text-sm text-[#00e6ff] font-medium">Running</span>
             </div>
           )}
         </div>
