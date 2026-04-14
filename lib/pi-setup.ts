@@ -13,11 +13,22 @@ import { join } from 'node:path';
  * stale lib code — a fresh build will return the new value in the install
  * diagnostics payload, an old cached one won't.
  */
-export const BUILD_MARKER = 'pi-install-debug-2026-04-14T09:55-v2';
+export const BUILD_MARKER = 'pi-install-debug-2026-04-14T11:20-v3-tmpdir';
 
-/** Project-local install prefix used when global install isn't possible (sandboxed envs). */
-const LOCAL_PREFIX = join(process.cwd(), '.pi-install');
-const LOCAL_BIN = join(LOCAL_PREFIX, 'bin', 'pi');
+/**
+ * Writable install prefix. On Vercel Lambda, `process.cwd()` is `/var/task`,
+ * which is read-only — mkdir fails with ENOENT. `/tmp` (via `tmpdir()`) is
+ * the only writable location in the sandbox, so anchor the prefix there.
+ * Lazy-evaluated inside a function so Turbopack's file tracer doesn't see
+ * `process.cwd()` as a top-level side effect and drag the whole project
+ * into the serverless bundle.
+ */
+function getLocalPrefix(): string {
+  return join(tmpdir(), 'mashupforge-pi-install');
+}
+function getLocalBin(): string {
+  return join(getLocalPrefix(), 'bin', 'pi');
+}
 
 /**
  * Writable HOME for spawned npm. If the process HOME doesn't exist (e.g. Vercel
@@ -44,7 +55,7 @@ function ensureWritableHome(): string {
 function piCandidates(): string[] {
   return [
     process.env.PI_BIN,
-    LOCAL_BIN,
+    getLocalBin(),
     join(homedir(), '.hermes', 'node', 'bin', 'pi'),
     '/usr/local/bin/pi',
     '/usr/bin/pi',
@@ -120,10 +131,11 @@ export interface InstallPiResult {
  * sidesteps both problems and leaves the binary at a known candidate path.
  */
 export function installPi(): InstallPiResult {
+  const localPrefix = getLocalPrefix();
   const diagnostics: Record<string, unknown> = {
     buildMarker: BUILD_MARKER,
     cwd: process.cwd(),
-    localPrefix: LOCAL_PREFIX,
+    localPrefix,
     processEnvHome: process.env.HOME ?? null,
     osHomedir: (() => { try { return homedir(); } catch (e) { return `error:${(e as Error).message}`; } })(),
     tmpdir: tmpdir(),
@@ -134,23 +146,23 @@ export function installPi(): InstallPiResult {
   console.log('[pi-install]', BUILD_MARKER, 'starting', diagnostics);
 
   try {
-    mkdirSync(LOCAL_PREFIX, { recursive: true });
+    mkdirSync(localPrefix, { recursive: true });
     diagnostics.localPrefixMkdir = 'ok';
   } catch (e) {
     diagnostics.localPrefixMkdir = `error:${(e as Error).message}`;
-    console.error('[pi-install] LOCAL_PREFIX mkdir failed', diagnostics);
+    console.error('[pi-install] localPrefix mkdir failed', diagnostics);
     return {
       success: false,
       stdout: '',
       stderr: '',
-      error: `Failed to create install prefix ${LOCAL_PREFIX}: ${(e as Error).message}`,
+      error: `Failed to create install prefix ${localPrefix}: ${(e as Error).message}`,
       diagnostics,
     };
   }
 
-  // Probe actual write access to LOCAL_PREFIX — mkdir can succeed on a
+  // Probe actual write access to localPrefix — mkdir can succeed on a
   // read-only overlay while writeFileSync still fails later.
-  const writeProbe = join(LOCAL_PREFIX, '.write-probe');
+  const writeProbe = join(localPrefix, '.write-probe');
   try {
     writeFileSync(writeProbe, 'ok');
     unlinkSync(writeProbe);
@@ -178,7 +190,7 @@ export function installPi(): InstallPiResult {
     HOME: home,
     npm_config_cache: join(home, '.npm-cache'),
     npm_config_logs_dir: join(home, '.npm-logs'),
-    npm_config_prefix: LOCAL_PREFIX,
+    npm_config_prefix: localPrefix,
     // Silence update-notifier writes into HOME.
     NO_UPDATE_NOTIFIER: '1',
   };
@@ -202,7 +214,7 @@ export function installPi(): InstallPiResult {
 
   const result = spawnSync(
     'npm',
-    ['install', '--prefix', LOCAL_PREFIX, '--global', '@mariozechner/pi-coding-agent'],
+    ['install', '--prefix', localPrefix, '--global', '@mariozechner/pi-coding-agent'],
     { encoding: 'utf8', timeout: 5 * 60 * 1000, env }
   );
 
@@ -229,7 +241,7 @@ export function installPi(): InstallPiResult {
   // On success, make the freshly-installed binary visible to later spawns in
   // this same Node process (pi-client etc.) without requiring a server restart.
   if (success && piPath) {
-    const binDir = join(LOCAL_PREFIX, 'bin');
+    const binDir = join(localPrefix, 'bin');
     if (!process.env.PATH?.split(':').includes(binDir)) {
       process.env.PATH = `${binDir}:${process.env.PATH || ''}`;
     }
