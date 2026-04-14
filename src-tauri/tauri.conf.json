@@ -5,7 +5,7 @@
   "identifier": "com.4nevercompany.mashupforge",
   "build": {
     "frontendDist": "../src-tauri/frontend-stub",
-    "devUrl": "http://localhost:3100",
+    "devUrl": "http://localhost:3000",
     "beforeDevCommand": "npm run dev"
   },
   "app": {

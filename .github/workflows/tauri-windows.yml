@@ -63,10 +63,11 @@ jobs:
           key: bundled-node-v22.11.0-${{ runner.os }}
 
       # Single source of truth — build-windows.ps1 runs the same pipeline
-      # a developer runs locally (fetch-node → bake-pi → next build →
-      # copy-standalone → tauri build). The -SkipToolchainCheck flag
-      # bypasses the upfront tool check because the runner already
-      # provisioned node + rust via the earlier steps.
+      # a developer runs locally (fetch-node → next build → copy-standalone
+      # → tauri build). pi.dev is NOT baked into resources; it's installed
+      # at runtime on first app launch into %APPDATA%\MashupForge\pi. The
+      # -SkipToolchainCheck flag bypasses the upfront tool check because
+      # the runner already provisioned node + rust via the earlier steps.
       - name: Build
         shell: pwsh
         run: .\build-windows.ps1 -SkipToolchainCheck

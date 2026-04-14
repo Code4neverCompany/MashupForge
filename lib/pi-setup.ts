@@ -5,7 +5,7 @@
 
 import { spawnSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { homedir, tmpdir, platform } from 'node:os';
 import { join } from 'node:path';
 
 /**
@@ -13,21 +13,38 @@ import { join } from 'node:path';
  * stale lib code — a fresh build will return the new value in the install
  * diagnostics payload, an old cached one won't.
  */
-export const BUILD_MARKER = 'pi-install-debug-2026-04-14T11:20-v3-tmpdir';
+export const BUILD_MARKER = 'pi-install-debug-2026-04-14T14:00-v4-runtime-install';
+
+const isWindows = platform() === 'win32';
 
 /**
- * Writable install prefix. On Vercel Lambda, `process.cwd()` is `/var/task`,
- * which is read-only — mkdir fails with ENOENT. `/tmp` (via `tmpdir()`) is
- * the only writable location in the sandbox, so anchor the prefix there.
+ * Writable install prefix.
+ *
+ * Tauri desktop: Rust launcher sets `MASHUPFORGE_PI_DIR` to a user-writable
+ * APPDATA subdirectory (e.g. `%APPDATA%\MashupForge\pi`). That's where pi
+ * gets installed on first launch and where it's found on subsequent launches.
+ *
+ * Vercel / serverless: no env var, fall back to `/tmp`. Read-only `/var/task`
+ * makes `tmpdir()` the only writable location in the sandbox.
+ *
  * Lazy-evaluated inside a function so Turbopack's file tracer doesn't see
  * `process.cwd()` as a top-level side effect and drag the whole project
  * into the serverless bundle.
  */
 function getLocalPrefix(): string {
+  const override = process.env.MASHUPFORGE_PI_DIR;
+  if (override) return override;
   return join(tmpdir(), 'mashupforge-pi-install');
 }
+
+/**
+ * Resolve the pi shim path inside an install prefix. Windows npm writes
+ * shims as `<prefix>/pi.cmd` at the prefix root; POSIX npm writes them as
+ * `<prefix>/bin/pi`.
+ */
 function getLocalBin(): string {
-  return join(getLocalPrefix(), 'bin', 'pi');
+  const prefix = getLocalPrefix();
+  return isWindows ? join(prefix, 'pi.cmd') : join(prefix, 'bin', 'pi');
 }
 
 /**
@@ -62,14 +79,11 @@ function piCandidates(): string[] {
   ].filter(Boolean) as string[];
 }
 
-/** Resolve the pi binary path, preferring PATH, then known install dirs. */
+/** Resolve the pi binary path, preferring known install dirs, then PATH. */
 export function getPiPath(): string | null {
-  // PATH lookup first
-  const which = spawnSync('which', ['pi'], { encoding: 'utf8' });
-  if (which.status === 0 && which.stdout.trim()) {
-    return which.stdout.trim();
-  }
-
+  // Check known install locations FIRST — on Tauri desktop, PATH lookup
+  // ("which" / "where") might hit a stale global install from a previous
+  // user session, while MASHUPFORGE_PI_DIR is the canonical per-app path.
   for (const candidate of piCandidates()) {
     try {
       if (existsSync(candidate)) {
@@ -78,6 +92,14 @@ export function getPiPath(): string | null {
     } catch {
       // ignore
     }
+  }
+
+  // PATH fallback — only meaningful on POSIX dev boxes where pi is globally
+  // installed. `where` is the Windows equivalent of `which`.
+  const lookup = isWindows ? 'where' : 'which';
+  const res = spawnSync(lookup, ['pi'], { encoding: 'utf8' });
+  if (res.status === 0 && res.stdout.trim()) {
+    return res.stdout.trim().split(/\r?\n/)[0];
   }
 
   return null;
@@ -202,9 +224,19 @@ export function installPi(): InstallPiResult {
     PATH: process.env.PATH ?? null,
   };
 
+  // On Windows, `npm` is a `.cmd` shim — spawnSync without `shell: true`
+  // won't resolve it. Use explicit name + shell flag on Windows.
+  const npmCmd = isWindows ? 'npm.cmd' : 'npm';
+  const spawnOpts = {
+    encoding: 'utf8' as const,
+    timeout: 5 * 60 * 1000,
+    env,
+    shell: isWindows,
+  };
+
   // Log npm version to confirm which npm we're even calling.
   try {
-    const nv = spawnSync('npm', ['--version'], { encoding: 'utf8', env });
+    const nv = spawnSync(npmCmd, ['--version'], spawnOpts);
     diagnostics.npmVersion = nv.stdout?.trim() || `status=${nv.status} err=${nv.stderr?.trim()}`;
   } catch (e) {
     diagnostics.npmVersion = `error:${(e as Error).message}`;
@@ -213,9 +245,9 @@ export function installPi(): InstallPiResult {
   console.log('[pi-install] spawning npm install', diagnostics);
 
   const result = spawnSync(
-    'npm',
+    npmCmd,
     ['install', '--prefix', localPrefix, '--global', '@mariozechner/pi-coding-agent'],
-    { encoding: 'utf8', timeout: 5 * 60 * 1000, env }
+    spawnOpts,
   );
 
   diagnostics.npmStatus = result.status;
@@ -241,9 +273,10 @@ export function installPi(): InstallPiResult {
   // On success, make the freshly-installed binary visible to later spawns in
   // this same Node process (pi-client etc.) without requiring a server restart.
   if (success && piPath) {
-    const binDir = join(localPrefix, 'bin');
-    if (!process.env.PATH?.split(':').includes(binDir)) {
-      process.env.PATH = `${binDir}:${process.env.PATH || ''}`;
+    const binDir = isWindows ? localPrefix : join(localPrefix, 'bin');
+    const sep = isWindows ? ';' : ':';
+    if (!process.env.PATH?.split(sep).includes(binDir)) {
+      process.env.PATH = `${binDir}${sep}${process.env.PATH || ''}`;
     }
   }
 

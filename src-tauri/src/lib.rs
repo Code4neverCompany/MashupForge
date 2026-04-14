@@ -46,16 +46,6 @@ fn node_binary_path(resource_dir: &PathBuf) -> PathBuf {
     }
 }
 
-/// Resolve the bundled pi binary. Windows npm installs create a `pi.cmd`
-/// shim at the prefix root; Unix npm installs create `bin/pi`.
-fn pi_binary_path(resource_dir: &PathBuf) -> PathBuf {
-    if cfg!(target_os = "windows") {
-        resource_dir.join("pi").join("pi.cmd")
-    } else {
-        resource_dir.join("pi").join("bin").join("pi")
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -73,23 +63,38 @@ pub fn run() {
             let node_bin = node_binary_path(&resource_dir);
             let app_dir = resource_dir.join("app");
             let start_js = app_dir.join("start.js");
-            let pi_bin = pi_binary_path(&resource_dir);
 
-            log::info!("[tauri] resource_dir: {}", resource_dir.display());
+            // Runtime-install target for pi.dev. The Next sidecar's
+            // /api/pi/install route reads MASHUPFORGE_PI_DIR as the npm
+            // `--prefix` target, so this must point at a user-writable
+            // location (never inside `resource_dir`, which is read-only
+            // under Program Files on Windows). Create it eagerly so the
+            // first install attempt doesn't race on mkdir.
+            let app_data_dir = app.path().app_data_dir()?;
+            let pi_install_dir = app_data_dir.join("pi");
+            if let Err(e) = std::fs::create_dir_all(&pi_install_dir) {
+                log::error!(
+                    "[tauri] could not create pi install dir {}: {}",
+                    pi_install_dir.display(),
+                    e
+                );
+            }
+
+            log::info!("[tauri] resource_dir:   {}", resource_dir.display());
             log::info!(
-                "[tauri] node_bin:     {} (exists={})",
+                "[tauri] node_bin:       {} (exists={})",
                 node_bin.display(),
                 node_bin.exists()
             );
             log::info!(
-                "[tauri] start_js:     {} (exists={})",
+                "[tauri] start_js:       {} (exists={})",
                 start_js.display(),
                 start_js.exists()
             );
             log::info!(
-                "[tauri] pi_bin:       {} (exists={})",
-                pi_bin.display(),
-                pi_bin.exists()
+                "[tauri] pi_install_dir: {} (exists={})",
+                pi_install_dir.display(),
+                pi_install_dir.exists()
             );
 
             let port = pick_free_port().ok_or("could not bind ephemeral 127.0.0.1 port")?;
@@ -101,7 +106,8 @@ pub fn run() {
                 .env("PORT", port.to_string())
                 .env("HOSTNAME", "127.0.0.1")
                 .env("MASHUPFORGE_RESOURCES_DIR", &resource_dir)
-                .env("PI_BIN", &pi_bin)
+                .env("MASHUPFORGE_PI_DIR", &pi_install_dir)
+                .env("MASHUPFORGE_DESKTOP", "1")
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit());
 

@@ -782,65 +782,78 @@ export function MainContent() {
   const [piBusy, setPiBusy] = useState<null | 'install' | 'start' | 'stop' | 'setup'>(null);
   const [piError, setPiError] = useState<string | null>(null);
   const [piSetupMsg, setPiSetupMsg] = useState<string | null>(null);
+  const piAutoBootRef = useRef(false);
 
-  const refreshPiStatus = async () => {
+  const refreshPiStatus = async (): Promise<PiStatus | null> => {
     try {
       const res = await fetch('/api/pi/status');
       if (!res.ok) throw new Error(`status ${res.status}`);
       const data = await res.json();
       setPiStatus(data);
+      return data;
     } catch (e: unknown) {
       setPiError(getErrorMessage(e) || 'Failed to fetch pi status');
+      return null;
     }
   };
+
+  // Autonomous pi boot: on first mount, check status → install if missing
+  // → start if installed but not running. Runs once per page load. Auth is
+  // the only step that requires user action (Sign In button below).
+  useEffect(() => {
+    if (piAutoBootRef.current) return;
+    piAutoBootRef.current = true;
+    (async () => {
+      const initial = await refreshPiStatus();
+      if (!initial) return;
+
+      let s = initial;
+      if (!s.installed) {
+        setPiBusy('install');
+        try {
+          const res = await fetch('/api/pi/install', { method: 'POST' });
+          const data = await res.json();
+          if (!res.ok || data.success === false) {
+            setPiError(data.stderr || data.error || 'Auto-install failed');
+          }
+        } catch (e) {
+          setPiError(getErrorMessage(e) || 'Auto-install failed');
+        } finally {
+          setPiBusy(null);
+        }
+        s = (await refreshPiStatus()) || s;
+      }
+
+      if (s.installed && s.authenticated && !s.running) {
+        setPiBusy('start');
+        try {
+          const res = await fetch('/api/pi/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ systemPrompt: settings.agentPrompt || '' }),
+          });
+          const data = await res.json();
+          if (!res.ok || data.success === false) {
+            setPiError(data.error || 'Auto-start failed');
+          }
+        } catch (e) {
+          setPiError(getErrorMessage(e) || 'Auto-start failed');
+        } finally {
+          setPiBusy(null);
+        }
+        await refreshPiStatus();
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (showSettings) refreshPiStatus();
   }, [showSettings]);
 
-  const handlePiInstall = async () => {
-    setPiBusy('install');
-    setPiError(null);
-    try {
-      const res = await fetch('/api/pi/install', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok || data.success === false) {
-        setPiError(data.stderr || data.error || 'Install failed');
-      }
-      await refreshPiStatus();
-    } finally {
-      setPiBusy(null);
-    }
-  };
-
-  const handlePiStart = async () => {
-    setPiBusy('start');
-    setPiError(null);
-    try {
-      const res = await fetch('/api/pi/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ systemPrompt: settings.agentPrompt || '' }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.success === false) {
-        setPiError(data.error || 'Start failed');
-      }
-      await refreshPiStatus();
-    } finally {
-      setPiBusy(null);
-    }
-  };
-
-  const handlePiStop = async () => {
-    setPiBusy('stop');
-    try {
-      await fetch('/api/pi/stop', { method: 'POST' });
-      await refreshPiStatus();
-    } finally {
-      setPiBusy(null);
-    }
-  };
+  // handlePiInstall / handlePiStart / handlePiStop intentionally removed —
+  // pi install + start are autonomous (see piAutoBootRef effect). Only the
+  // auth step (handlePiSetup → /api/pi/setup) requires user interaction.
 
   const handlePiSetup = async () => {
     setPiBusy('setup');
@@ -5012,37 +5025,26 @@ export function MainContent() {
                   )}
                 </div>
 
-                {/* Action buttons */}
-                <div className="flex flex-wrap gap-2">
-                  {piStatus && !piStatus.installed && (
-                    <button
-                      onClick={handlePiInstall}
-                      disabled={piBusy !== null}
-                      className="btn-blue-sm rounded-lg"
-                    >
-                      {piBusy === 'install' ? 'Installing…' : 'Install Pi'}
-                    </button>
+                {/* Autonomous boot status — no manual install/start buttons.
+                    Install + start are triggered automatically on app mount
+                    (see piAutoBootRef effect above). The only user action
+                    that remains is the Sign-in button below for pi's auth
+                    flow, which requires interactive OAuth. */}
+                <div className="flex flex-wrap gap-2 items-center">
+                  {piBusy === 'install' && (
+                    <span className="text-[11px] text-[#00e6ff]">Installing pi.dev (first launch only, ~30–60s)…</span>
                   )}
-                  {piStatus?.installed && !piStatus.running && (
-                    <button
-                      onClick={handlePiStart}
-                      disabled={piBusy !== null}
-                      className="btn-blue-sm rounded-lg"
-                    >
-                      {piBusy === 'start' ? 'Starting…' : 'Start Pi'}
-                    </button>
+                  {piBusy === 'start' && (
+                    <span className="text-[11px] text-[#00e6ff]">Starting pi.dev…</span>
                   )}
-                  {piStatus?.running && (
-                    <button
-                      onClick={handlePiStop}
-                      disabled={piBusy !== null}
-                      className="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white rounded-lg transition-colors"
-                    >
-                      {piBusy === 'stop' ? 'Stopping…' : 'Stop Pi'}
-                    </button>
+                  {!piBusy && piStatus && !piStatus.installed && (
+                    <span className="text-[11px] text-amber-400">pi.dev not installed — retry pending</span>
+                  )}
+                  {!piBusy && piStatus?.running && (
+                    <span className="text-[11px] text-emerald-400">pi.dev running</span>
                   )}
                   <button
-                    onClick={refreshPiStatus}
+                    onClick={() => refreshPiStatus()}
                     disabled={piBusy !== null}
                     className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
                   >

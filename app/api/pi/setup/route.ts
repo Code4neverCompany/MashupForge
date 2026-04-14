@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getPiPath, isPiInstalled } from '@/lib/pi-setup';
 import { getErrorMessage } from '@/lib/errors';
-import { execSync } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
+import { platform } from 'node:os';
 
 export const runtime = 'nodejs';
 
@@ -52,11 +53,24 @@ export async function POST() {
   }
 
   try {
-    // Kill any existing pi-setup session
-    try { execSync('tmux kill-session -t pi-setup 2>/dev/null'); } catch {}
+    if (platform() === 'win32') {
+      // Windows: pop a native console window running `pi /login`.
+      // `start "Title" cmd /k ...` opens a new cmd window; detached + shell
+      // because `start` is a cmd builtin, not an executable.
+      spawn(
+        `start "MashupForge — pi.dev Sign In" cmd /k "\"${piPath}\" /login"`,
+        { shell: true, detached: true, stdio: 'ignore' },
+      ).unref();
 
-    // Create a new tmux session running pi's interactive setup
-    // pi /login opens an interactive OAuth flow or API-key prompt
+      return NextResponse.json({
+        success: true,
+        message: 'A new terminal window opened running `pi /login`. Follow the prompts to sign in.',
+        platform: 'win32',
+      });
+    }
+
+    // POSIX desktop: use tmux as before so Linux dev boxes keep working.
+    try { execSync('tmux kill-session -t pi-setup 2>/dev/null'); } catch {}
     execSync(
       `tmux new-session -d -s pi-setup -x 120 -y 30 ` +
       `'${piPath} /login'`,
@@ -67,6 +81,7 @@ export async function POST() {
       success: true,
       message: 'Pi setup opened in tmux session "pi-setup". Attach with: tmux attach -t pi-setup',
       tmuxSession: 'pi-setup',
+      platform: 'posix',
     });
   } catch (e: unknown) {
     return NextResponse.json(

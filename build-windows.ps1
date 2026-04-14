@@ -70,12 +70,16 @@ Write-Host "[3/7] Fetching bundled Node.js for sidecar ..."
 if ($LASTEXITCODE -ne 0) { throw "fetch-windows-node.ps1 failed" }
 
 # -----------------------------------------------------------------------------
-# [4/7] Bake pi into resources
+# [4/7] (Runtime install) — pi.dev is installed on first launch, not baked
 # -----------------------------------------------------------------------------
+# Previous Phase 1 builds baked @mariozechner/pi-coding-agent into
+# src-tauri/resources/pi/ via scripts/bake-pi.ps1. That was superseded by
+# the runtime-install architecture: the Rust launcher sets
+# MASHUPFORGE_PI_DIR to %APPDATA%\MashupForge\pi, and the Next sidecar's
+# /api/pi/install route installs pi into that prefix on first app launch.
+# Smaller installer, no pinned pi version in the .msi.
 Write-Host ""
-Write-Host "[4/7] Baking pi into resources ..."
-& (Join-Path $ScriptsDir 'bake-pi.ps1')
-if ($LASTEXITCODE -ne 0) { throw "bake-pi.ps1 failed" }
+Write-Host "[4/7] Skipping pi bake — runtime-install architecture"
 
 # -----------------------------------------------------------------------------
 # [5/7] Next.js standalone build
