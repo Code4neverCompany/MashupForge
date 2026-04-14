@@ -323,10 +323,11 @@
   }
 
   .progress-fill {
-    @apply h-full rounded-full
-           bg-gradient-to-r from-[#00b8cc] to-[#00e6ff]
-           transition-all duration-500
-           shadow-[0_0_8px_rgba(0,230,255,0.4)];
+    @apply h-full rounded-full shadow-[0_0_10px_rgba(0,230,255,0.45)];
+    background: linear-gradient(90deg, #009bb0 0%, #00e6ff 40%, #7ffeff 55%, #00e6ff 70%, #009bb0 100%);
+    background-size: 200% 100%;
+    transition: width 700ms ease-out;
+    animation: progress-shimmer 2s linear infinite;
   }
 
   /* ── Semantic type scale ───────────────────────────────────────── */
@@ -367,6 +368,9 @@
     @apply text-2xl font-bold text-white tabular-nums tracking-tight;
   }
 
+  /* ── Progress bar keyframe (defined outside layer to be global) ─── */
+  /* see @keyframes progress-shimmer below the layer block             */
+
   /* ── Gold header gradient line ──────────────────────────────────── */
   .header-line {
     @apply after:content-[''] after:absolute after:bottom-0
@@ -374,4 +378,9 @@
            after:bg-gradient-to-r after:from-transparent
            after:via-[#c5a062]/30 after:to-transparent;
   }
+}
+
+@keyframes progress-shimmer {
+  0%   { background-position: 100% center; }
+  100% { background-position: -100% center; }
 }

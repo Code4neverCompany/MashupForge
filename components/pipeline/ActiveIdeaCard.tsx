@@ -125,7 +125,7 @@ export function ActiveIdeaCard({
                       {isError ? (
                         <XCircle className="w-4 h-4 text-red-500" />
                       ) : (
-                        <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                        <Loader2 className="w-4 h-4 text-[#00e6ff] animate-spin" />
                       )}
                       <span className="text-[9px] text-zinc-500 px-1 text-center line-clamp-1">
                         {img.modelInfo?.modelName || 'model'}
