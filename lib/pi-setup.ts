@@ -4,9 +4,16 @@
  */
 
 import { spawnSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+/**
+ * Deploy-cache buster. Bump this string when you suspect Vercel is serving
+ * stale lib code — a fresh build will return the new value in the install
+ * diagnostics payload, an old cached one won't.
+ */
+const BUILD_MARKER = 'pi-install-debug-2026-04-14T09:40';
 
 /** Project-local install prefix used when global install isn't possible (sandboxed envs). */
 const LOCAL_PREFIX = join(process.cwd(), '.pi-install');
@@ -102,6 +109,7 @@ export interface InstallPiResult {
   stderr: string;
   error?: string;
   piPath?: string;
+  diagnostics?: Record<string, unknown>;
 }
 
 /**
@@ -112,18 +120,59 @@ export interface InstallPiResult {
  * sidesteps both problems and leaves the binary at a known candidate path.
  */
 export function installPi(): InstallPiResult {
+  const diagnostics: Record<string, unknown> = {
+    buildMarker: BUILD_MARKER,
+    cwd: process.cwd(),
+    localPrefix: LOCAL_PREFIX,
+    processEnvHome: process.env.HOME ?? null,
+    osHomedir: (() => { try { return homedir(); } catch (e) { return `error:${(e as Error).message}`; } })(),
+    tmpdir: tmpdir(),
+    vercel: process.env.VERCEL ?? null,
+    vercelRegion: process.env.VERCEL_REGION ?? null,
+    nodeVersion: process.version,
+  };
+  console.log('[pi-install]', BUILD_MARKER, 'starting', diagnostics);
+
   try {
     mkdirSync(LOCAL_PREFIX, { recursive: true });
+    diagnostics.localPrefixMkdir = 'ok';
   } catch (e) {
+    diagnostics.localPrefixMkdir = `error:${(e as Error).message}`;
+    console.error('[pi-install] LOCAL_PREFIX mkdir failed', diagnostics);
     return {
       success: false,
       stdout: '',
       stderr: '',
       error: `Failed to create install prefix ${LOCAL_PREFIX}: ${(e as Error).message}`,
+      diagnostics,
     };
   }
 
+  // Probe actual write access to LOCAL_PREFIX — mkdir can succeed on a
+  // read-only overlay while writeFileSync still fails later.
+  const writeProbe = join(LOCAL_PREFIX, '.write-probe');
+  try {
+    writeFileSync(writeProbe, 'ok');
+    unlinkSync(writeProbe);
+    diagnostics.localPrefixWritable = true;
+  } catch (e) {
+    diagnostics.localPrefixWritable = `error:${(e as Error).message}`;
+  }
+
   const home = ensureWritableHome();
+  diagnostics.resolvedHome = home;
+  diagnostics.resolvedHomeExists = existsSync(home);
+
+  // Probe write access to resolved HOME too.
+  try {
+    const homeProbe = join(home, '.write-probe');
+    writeFileSync(homeProbe, 'ok');
+    unlinkSync(homeProbe);
+    diagnostics.homeWritable = true;
+  } catch (e) {
+    diagnostics.homeWritable = `error:${(e as Error).message}`;
+  }
+
   const env = {
     ...process.env,
     HOME: home,
@@ -133,6 +182,23 @@ export function installPi(): InstallPiResult {
     // Silence update-notifier writes into HOME.
     NO_UPDATE_NOTIFIER: '1',
   };
+  diagnostics.spawnEnv = {
+    HOME: env.HOME,
+    npm_config_cache: env.npm_config_cache,
+    npm_config_logs_dir: env.npm_config_logs_dir,
+    npm_config_prefix: env.npm_config_prefix,
+    PATH: process.env.PATH ?? null,
+  };
+
+  // Log npm version to confirm which npm we're even calling.
+  try {
+    const nv = spawnSync('npm', ['--version'], { encoding: 'utf8', env });
+    diagnostics.npmVersion = nv.stdout?.trim() || `status=${nv.status} err=${nv.stderr?.trim()}`;
+  } catch (e) {
+    diagnostics.npmVersion = `error:${(e as Error).message}`;
+  }
+
+  console.log('[pi-install] spawning npm install', diagnostics);
 
   const result = spawnSync(
     'npm',
@@ -140,17 +206,25 @@ export function installPi(): InstallPiResult {
     { encoding: 'utf8', timeout: 5 * 60 * 1000, env }
   );
 
+  diagnostics.npmStatus = result.status;
+  diagnostics.npmSignal = result.signal;
+  console.log('[pi-install] npm install finished',
+    { status: result.status, signal: result.signal, stderrTail: (result.stderr || '').slice(-500) });
+
   if (result.error) {
+    diagnostics.spawnError = result.error.message;
     return {
       success: false,
       stdout: result.stdout || '',
       stderr: result.stderr || '',
       error: result.error.message,
+      diagnostics,
     };
   }
 
   const success = result.status === 0;
   const piPath = getPiPath() || undefined;
+  diagnostics.resolvedPiPath = piPath ?? null;
 
   // On success, make the freshly-installed binary visible to later spawns in
   // this same Node process (pi-client etc.) without requiring a server restart.
@@ -167,6 +241,7 @@ export function installPi(): InstallPiResult {
     stderr: result.stderr || '',
     error: success && !piPath ? 'npm reported success but pi binary not found' : undefined,
     piPath,
+    diagnostics,
   };
 }
 
