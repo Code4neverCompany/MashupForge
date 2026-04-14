@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getErrorMessage } from '@/lib/errors';
 
 /**
  * Leonardo AI Image Generation API Route
@@ -138,10 +139,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ generationId });
 
-  } catch (error: any) {
-    console.error('Leonardo API error:', error);
-    return NextResponse.json({ 
-      error: error.message || 'Internal Server Error' 
+  } catch (e: unknown) {
+    console.error('Leonardo API error:', e);
+    return NextResponse.json({
+      error: getErrorMessage(e) || 'Internal Server Error'
     }, { status: 500 });
   }
 }

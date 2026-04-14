@@ -1,4 +1,5 @@
 import { prompt as piPrompt, start as piStart, isRunning } from '@/lib/pi-client';
+import { getErrorMessage } from '@/lib/errors';
 
 /**
  * POST /api/pi/prompt
@@ -77,8 +78,8 @@ export async function POST(req: Request) {
     if (!isRunning()) {
       await piStart();
     }
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err?.message || 'pi not available' }), {
+  } catch (e: unknown) {
+    return new Response(JSON.stringify({ error: getErrorMessage(e) || 'pi not available' }), {
       status: 503,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -97,10 +98,10 @@ export async function POST(req: Request) {
             encoder.encode(`data: ${JSON.stringify({ text: delta })}\n\n`)
           );
         }
-      } catch (err: any) {
+      } catch (e: unknown) {
         controller.enqueue(
           encoder.encode(
-            `data: ${JSON.stringify({ error: err?.message || 'pi stream error' })}\n\n`
+            `data: ${JSON.stringify({ error: getErrorMessage(e) || 'pi stream error' })}\n\n`
           )
         );
       } finally {

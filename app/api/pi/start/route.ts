@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { start, getStatus, setUserSystemPrompt } from '@/lib/pi-client';
+import { getErrorMessage } from '@/lib/errors';
 
 export async function POST(req: Request) {
   try {
@@ -14,9 +15,9 @@ export async function POST(req: Request) {
     }
     await start();
     return NextResponse.json({ success: true, status: getStatus() });
-  } catch (err: any) {
+  } catch (e: unknown) {
     return NextResponse.json(
-      { success: false, error: err?.message || 'failed to start pi' },
+      { success: false, error: getErrorMessage(e) || 'failed to start pi' },
       { status: 500 }
     );
   }

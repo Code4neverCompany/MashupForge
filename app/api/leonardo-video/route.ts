@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getErrorMessage } from '@/lib/errors';
 
 export async function POST(req: Request) {
   try {
@@ -95,8 +96,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ generationId });
 
-  } catch (error: any) {
-    console.error('Leonardo Video API error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+  } catch (e: unknown) {
+    console.error('Leonardo Video API error:', e);
+    return NextResponse.json({ error: getErrorMessage(e) || 'Internal Server Error' }, { status: 500 });
   }
 }

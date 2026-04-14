@@ -82,6 +82,7 @@ const PipelinePanel = dynamic(
 );
 import { streamAIToString, extractJsonFromLLM } from '@/lib/aiClient';
 import { enhancePromptForModel } from '@/lib/modelOptimizer';
+import { getErrorMessage } from '@/lib/errors';
 import { findBestSlots, fetchInstagramEngagement, loadEngagementData, type SlotScore } from '@/lib/smartScheduler';
 import type { CarouselGroup } from './MashupContext';
 import TimePicker24 from './TimePicker24';
@@ -350,10 +351,10 @@ export function MainContent() {
         ...prev,
         [img.id]: `Posted to ${platforms.join(', ')} ✓`,
       }));
-    } catch (err: any) {
+    } catch (e: unknown) {
       setPostStatus((prev) => ({
         ...prev,
-        [img.id]: `Error: ${err?.message || 'failed'}`,
+        [img.id]: `Error: ${getErrorMessage(e)}`,
       }));
     } finally {
       setPostBusy((prev) => ({ ...prev, [img.id]: null }));
@@ -681,8 +682,8 @@ export function MainContent() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Carousel post failed');
       setPostStatus((prev) => ({ ...prev, [key]: `Posted carousel to ${platforms.join(', ')} ✓` }));
-    } catch (err: any) {
-      setPostStatus((prev) => ({ ...prev, [key]: `Error: ${err?.message || 'failed'}` }));
+    } catch (e: unknown) {
+      setPostStatus((prev) => ({ ...prev, [key]: `Error: ${getErrorMessage(e)}` }));
     } finally {
       setPostBusy((prev) => ({ ...prev, [key]: null }));
     }
@@ -788,8 +789,8 @@ export function MainContent() {
       if (!res.ok) throw new Error(`status ${res.status}`);
       const data = await res.json();
       setPiStatus(data);
-    } catch (err: any) {
-      setPiError(err?.message || 'Failed to fetch pi status');
+    } catch (e: unknown) {
+      setPiError(getErrorMessage(e) || 'Failed to fetch pi status');
     }
   };
 
@@ -1097,11 +1098,11 @@ export function MainContent() {
               statusPatches.set(gp.id, 'posted');
               processedIds.add(gp.id);
             });
-          } catch (e: any) {
+          } catch (e: unknown) {
             console.error(
               'Auto-post carousel failed for group',
               post.carouselGroupId,
-              e?.message || e
+              getErrorMessage(e)
             );
             groupPosts.forEach((gp) => {
               statusPatches.set(gp.id, 'failed');
@@ -1135,8 +1136,8 @@ export function MainContent() {
           if (!res.ok) throw new Error(data.error || 'Failed to post');
 
           statusPatches.set(post.id, 'posted');
-        } catch (e: any) {
-          console.error('Auto-post failed for', post.id, e?.message || e);
+        } catch (e: unknown) {
+          console.error('Auto-post failed for', post.id, getErrorMessage(e));
           statusPatches.set(post.id, 'failed');
         }
       }
@@ -1401,9 +1402,9 @@ export function MainContent() {
           if (!isBatch) alert('Video generated and saved to gallery!');
         }
       }
-    } catch (error: any) {
-      console.error('Animation error:', error);
-      if (!isBatch) alert(`Animation failed: ${error.message}`);
+    } catch (e: unknown) {
+      console.error('Animation error:', e);
+      if (!isBatch) alert(`Animation failed: ${getErrorMessage(e)}`);
     } finally {
       setImageStatus(img.id, 'ready');
     }
@@ -3428,6 +3429,8 @@ export function MainContent() {
                             const anchor = item.images[0];
                             const isExplicit = !!item.group;
                             const selPlatforms = getSelectedPlatforms(key);
+                            const carouselSchedule = getSchedule(key);
+                            const isCarouselRegen = preparingPostId === anchor.id;
                             return (
                               <div
                                 key={item.id}
@@ -3526,39 +3529,31 @@ export function MainContent() {
                                     )}
                                   </div>
 
-                                  {/* Date + time (same key-namespace as cells) */}
-                                  {(() => {
-                                    const carouselSchedule = getSchedule(key);
-                                    return (
-                                      <div className="grid grid-cols-2 gap-2">
-                                        <div className="space-y-1">
-                                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Date</label>
-                                          <input
-                                            type="date"
-                                            value={carouselSchedule.date}
-                                            onChange={(e) => setScheduleFor(key, { date: e.target.value })}
-                                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                          />
-                                        </div>
-                                        <div className="space-y-1">
-                                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Time</label>
-                                          <TimePicker24
-                                            value={carouselSchedule.time}
-                                            onChange={(v) => setScheduleFor(key, { time: v })}
-                                            className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                          />
-                                        </div>
-                                      </div>
-                                    );
-                                  })()}
+                                  {/* Date + time */}
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Date</label>
+                                      <input
+                                        type="date"
+                                        value={carouselSchedule.date}
+                                        onChange={(e) => setScheduleFor(key, { date: e.target.value })}
+                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Time</label>
+                                      <TimePicker24
+                                        value={carouselSchedule.time}
+                                        onChange={(v) => setScheduleFor(key, { time: v })}
+                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                      />
+                                    </div>
+                                  </div>
 
                                   <div className="grid grid-cols-2 gap-2">
                                     <button
-                                      disabled={!!busy || selPlatforms.length === 0}
-                                      onClick={() => {
-                                        const sch = getSchedule(key);
-                                        scheduleCarousel(item, selPlatforms, sch.date, sch.time);
-                                      }}
+                                      disabled={!!busy || selPlatforms.length === 0 || !carouselSchedule.date || !carouselSchedule.time}
+                                      onClick={() => scheduleCarousel(item, selPlatforms, carouselSchedule.date, carouselSchedule.time)}
                                       className="btn-gold-sm text-[11px] px-2 justify-center"
                                     >
                                       <Clock className="w-3.5 h-3.5" /> Schedule
@@ -3574,6 +3569,58 @@ export function MainContent() {
                                         <Send className="w-3.5 h-3.5" />
                                       )}
                                       Post Now
+                                    </button>
+                                  </div>
+
+                                  {/* Secondary row: copy caption, regen, unready all */}
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                      onClick={() => copyWithFeedback(formatPost(anchor), `all-${key}`)}
+                                      disabled={!anchor.postCaption}
+                                      className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1 transition-colors"
+                                    >
+                                      {copiedId === `all-${key}` ? (
+                                        <Check className="w-3 h-3 text-emerald-400" />
+                                      ) : (
+                                        <Copy className="w-3 h-3" />
+                                      )}
+                                      Copy
+                                    </button>
+                                    <button
+                                      disabled={isCarouselRegen || !!busy}
+                                      onClick={async () => {
+                                        setPreparingPostId(anchor.id);
+                                        try {
+                                          const withCaption = await generatePostContent(anchor);
+                                          if (withCaption?.postCaption) {
+                                            for (const ci of item.images) {
+                                              if (ci.id === anchor.id) continue;
+                                              patchImage(ci, { postCaption: withCaption.postCaption, postHashtags: withCaption.postHashtags });
+                                            }
+                                          }
+                                        } finally {
+                                          setPreparingPostId(null);
+                                        }
+                                      }}
+                                      className="px-2 py-1.5 text-[10px] bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-1 transition-colors"
+                                    >
+                                      {isCarouselRegen ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        <RefreshCw className="w-3 h-3" />
+                                      )}
+                                      Regen
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        for (const ci of item.images) {
+                                          patchImage(ci, { isPostReady: false });
+                                        }
+                                      }}
+                                      className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-red-500/80 text-white rounded-xl flex items-center justify-center gap-1 transition-colors"
+                                    >
+                                      <MinusCircle className="w-3 h-3" />
+                                      Unready
                                     </button>
                                   </div>
 

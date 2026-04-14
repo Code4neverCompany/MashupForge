@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getErrorMessage } from '@/lib/errors';
 
 /**
  * Pinterest v5 "create pin" proxy.
@@ -113,8 +114,8 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ success: true, data: pinData });
-  } catch (err: any) {
-    console.error('Pinterest route error:', err);
-    return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });
+  } catch (e: unknown) {
+    console.error('Pinterest route error:', e);
+    return NextResponse.json({ error: getErrorMessage(e) || 'Unknown error' }, { status: 500 });
   }
 }

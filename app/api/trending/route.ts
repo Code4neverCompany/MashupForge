@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getErrorMessage } from '@/lib/errors';
 
 /**
  * Trending research endpoint for the content pipeline.
@@ -288,9 +289,9 @@ export async function POST(req: NextRequest) {
       },
       note,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json(
-      { success: false, error: e.message, results: [], summary: '' },
+      { success: false, error: getErrorMessage(e), results: [], summary: '' },
       { status: 500 }
     );
   }

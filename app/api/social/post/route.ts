@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { TwitterApi } from 'twitter-api-v2';
 import sharp from 'sharp';
+import { getErrorMessage } from '@/lib/errors';
 
 /**
  * Pad an image to fit Instagram's accepted aspect ratio range (4:5 → 1.91:1).
@@ -137,8 +138,8 @@ export async function POST(req: Request) {
           const uploadData = await uploadRes.json();
           if (!uploadData.success || !uploadData.files || !uploadData.files[0]) throw new Error('Temporary host returned invalid response');
           igMediaUrls.push(uploadData.files[0].url);
-        } catch (err: any) {
-          throw new Error(`Failed to host image for Instagram: ${err.message}`);
+        } catch (e: unknown) {
+          throw new Error(`Failed to host image for Instagram: ${getErrorMessage(e)}`);
         }
       }
 
@@ -251,8 +252,8 @@ export async function POST(req: Request) {
             throw new Error('uguu returned invalid response');
           }
           publicUrl = uploadData.files[0].url;
-        } catch (err: any) {
-          throw new Error(`Failed to host image for Pinterest: ${err.message}`);
+        } catch (e: unknown) {
+          throw new Error(`Failed to host image for Pinterest: ${getErrorMessage(e)}`);
         }
       }
 
@@ -307,8 +308,8 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ success: true, results });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error(e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }

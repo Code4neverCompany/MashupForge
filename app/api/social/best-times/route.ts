@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getErrorMessage } from '@/lib/errors';
 
 /**
  * Fetch Instagram engagement insights to determine best posting times.
@@ -135,9 +136,9 @@ export async function POST(req: NextRequest) {
         multiplier: d.multiplier,
       })),
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json(
-      { success: false, error: e.message, source: 'error' },
+      { success: false, error: getErrorMessage(e), source: 'error' },
       { status: 500 }
     );
   }

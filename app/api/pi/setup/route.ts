@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPiPath, isPiInstalled } from '@/lib/pi-setup';
+import { getErrorMessage } from '@/lib/errors';
 import { execSync } from 'node:child_process';
 
 export const runtime = 'nodejs';
@@ -67,9 +68,9 @@ export async function POST() {
       message: 'Pi setup opened in tmux session "pi-setup". Attach with: tmux attach -t pi-setup',
       tmuxSession: 'pi-setup',
     });
-  } catch (err: any) {
+  } catch (e: unknown) {
     return NextResponse.json(
-      { success: false, error: err.message },
+      { success: false, error: getErrorMessage(e) },
       { status: 500 },
     );
   }
