@@ -43,8 +43,8 @@ Return ONLY a JSON object with exactly two keys: "caption" (string) and "hashtag
         );
         return updatedImg;
       }
-    } catch (e) {
-      console.error('Failed to generate post content:', e);
+    } catch {
+      // caller receives undefined; UI handles missing caption gracefully
     }
     return undefined;
   };

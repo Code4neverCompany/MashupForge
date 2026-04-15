@@ -22,8 +22,8 @@ export function useCollections(settings: UserSettings) {
           const idbCollections = await get('mashup_collections');
           if (idbCollections) setCollections(idbCollections);
         }
-      } catch (e) {
-        console.error('Failed to load collections', e);
+      } catch {
+        // silent — collections remain empty, loaded flag still set
       } finally {
         setIsCollectionsLoaded(true);
       }
@@ -54,8 +54,7 @@ Return a JSON object with "name" and "description" keys.`,
         name: data.name || 'New Collection',
         description: data.description || 'A collection of amazing mashups.'
       };
-    } catch (error) {
-      console.error('Error auto-generating collection info:', error);
+    } catch {
       return { name: 'New Collection', description: 'A collection of amazing mashups.' };
     }
   };

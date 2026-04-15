@@ -13,8 +13,8 @@ export function useIdeas() {
       try {
         const idbIdeas = await get('mashup_ideas');
         if (idbIdeas) setIdeas(idbIdeas);
-      } catch (e) {
-        console.error('Failed to load ideas', e);
+      } catch {
+        // silent — ideas remain empty, loaded flag still set
       } finally {
         setIsIdeasLoaded(true);
       }

@@ -26,8 +26,8 @@ export function useSettings() {
             setSettings(prev => ({ ...prev, ...idbSettings }));
           }
         }
-      } catch (e) {
-        console.error('Failed to load settings', e);
+      } catch {
+        // silent — settings fall back to defaults
       } finally {
         setIsSettingsLoaded(true);
       }
@@ -44,9 +44,7 @@ export function useSettings() {
   // there is no closure to capture from.
   useEffect(() => {
     if (!isSettingsLoaded) return;
-    void set('mashup_settings', settings).catch((e) =>
-      console.error('Failed to save settings to IndexedDB', e),
-    );
+    void set('mashup_settings', settings).catch(() => {});
   }, [settings, isSettingsLoaded]);
 
   // Stable identity across renders — useState's setSettings is itself
