@@ -60,7 +60,7 @@ export async function POST(req: Request) {
       });
       if (!uploadRes.ok) {
         return NextResponse.json(
-          { error: 'Failed to upload image to temporary host' },
+          { error: `Failed to upload image to temporary host (HTTP ${uploadRes.status})` },
           { status: 502 }
         );
       }
@@ -116,7 +116,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, data: pinData });
   } catch (e: unknown) {
-    console.error('Pinterest route error:', e);
-    return NextResponse.json({ error: getErrorMessage(e) || 'Unknown error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
