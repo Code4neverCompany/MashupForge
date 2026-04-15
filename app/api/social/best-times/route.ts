@@ -43,10 +43,15 @@ export async function POST(req: NextRequest) {
 
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) {
-      const errText = await res.text();
+      const errText = await res.text().catch(() => '');
+      const snippet = errText.slice(0, 200).replace(/\s+/g, ' ').trim();
       return NextResponse.json(
-        { success: false, error: `Instagram API error: ${res.status}`, source: 'default' },
-        { status: 200 } // Still return 200 so client falls back gracefully
+        {
+          success: false,
+          error: `Instagram API error ${res.status}${snippet ? `: ${snippet}` : ''}`,
+          source: 'default',
+        },
+        { status: 200 }, // Still return 200 so client falls back gracefully
       );
     }
 
@@ -143,9 +148,16 @@ export async function POST(req: NextRequest) {
       })),
     });
   } catch (e: unknown) {
+    // Distinguish timeout (AbortError) from other errors so the client
+    // can show "Instagram is slow" rather than "operation was aborted".
+    const isTimeout =
+      e instanceof Error && (e.name === 'AbortError' || e.name === 'TimeoutError');
+    const message = isTimeout
+      ? 'Instagram API timed out after 10s — using engagement defaults'
+      : getErrorMessage(e);
     return NextResponse.json(
-      { success: false, error: getErrorMessage(e), source: 'error' },
-      { status: 500 }
+      { success: false, error: message, source: 'default' },
+      { status: 200 }, // 200 so client always gets a fallback response
     );
   }
 }
