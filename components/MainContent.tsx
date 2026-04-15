@@ -2720,15 +2720,17 @@ export function MainContent() {
                             setShowScheduleAll(true);
                           }}
                           disabled={ready.length === 0 || available.length === 0 || smartScheduler.loading}
+                          aria-busy={smartScheduler.loading}
+                          aria-label={smartScheduler.loading ? 'Analysing best posting times…' : 'Schedule with optimal posting times'}
                           className="btn-gold-sm rounded-lg"
-                          title="Schedule with optimal posting times"
+                          title={smartScheduler.loading ? 'Analysing best posting times…' : 'Schedule with optimal posting times'}
                         >
                           {smartScheduler.loading ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           ) : (
                             <TrendingUp className="w-3.5 h-3.5" />
                           )}
-                          Smart Schedule
+                          {smartScheduler.loading ? 'Analysing…' : 'Smart Schedule'}
                         </button>
                         <button
                           onClick={postAllNow}
