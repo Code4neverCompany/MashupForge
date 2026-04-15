@@ -381,7 +381,13 @@ export async function POST(req: Request) {
         body: formData
       });
 
-      if (!discordRes.ok) throw new Error('Discord post failed');
+      if (!discordRes.ok) {
+        const errBody = await discordRes.text().catch(() => '');
+        const snippet = errBody.slice(0, 200).replace(/\s+/g, ' ').trim();
+        throw new Error(
+          `Discord post failed (HTTP ${discordRes.status})${snippet ? `: ${snippet}` : ''}`,
+        );
+      }
       results.discord = { success: true };
     }
 
