@@ -63,7 +63,8 @@ import {
   LIGHTING_OPTIONS,
   CAMERA_ANGLES,
   ASPECT_RATIOS,
-  IMAGE_SIZES
+  IMAGE_SIZES,
+  type ViewType,
 } from './MashupContext';
 // Lazy-loaded — the Pipeline tab pulls in smart-scheduler logic +
 // its own local state tree and isn't needed on first paint. ssr:false
@@ -1411,7 +1412,7 @@ export function MainContent() {
               {['ideas', 'compare', 'gallery', 'captioning', 'post-ready', 'pipeline'].map((v) => (
                 <button
                   key={v}
-                  onClick={() => setView(v as any)}
+                  onClick={() => setView(v as ViewType)}
                   className={`relative px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2 shrink-0 snap-start z-10 ${view === v ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
                 >
                   {view === v && (
