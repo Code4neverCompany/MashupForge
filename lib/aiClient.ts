@@ -129,7 +129,8 @@ export async function streamAIToString(
  */
 function parseJsonFromLLM(raw: string, kind: 'array' | 'object'): unknown {
   let text = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  if (!text) return kind === 'array' ? [] : {};
+  const fallback = kind === 'array' ? [] : {};
+  if (!text) return fallback;
   const open = kind === 'array' ? '[' : '{';
   const close = kind === 'array' ? ']' : '}';
   const first = text.indexOf(open);
@@ -137,7 +138,11 @@ function parseJsonFromLLM(raw: string, kind: 'array' | 'object'): unknown {
   if (first !== -1 && last > first) {
     text = text.slice(first, last + 1);
   }
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch {
+    return fallback;
+  }
 }
 
 /**
