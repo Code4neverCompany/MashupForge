@@ -355,9 +355,9 @@ function handleStdoutChunk(chunk: string) {
     stdoutBuffer = stdoutBuffer.slice(nlIndex + 1);
     if (!rawLine.trim()) continue;
 
-    let parsed: any;
+    let parsed: Record<string, unknown>;
     try {
-      parsed = JSON.parse(rawLine);
+      parsed = JSON.parse(rawLine) as Record<string, unknown>;
     } catch {
       // Non-JSON output (unlikely from pi in rpc mode) — ignore.
       continue;
@@ -367,11 +367,11 @@ function handleStdoutChunk(chunk: string) {
   }
 }
 
-function dispatchEvent(evt: any) {
+function dispatchEvent(evt: Record<string, unknown>) {
   // Ack for the command we just sent (arrives immediately, not the end).
   if (evt.type === 'response' && evt.command === 'prompt') {
     if (!evt.success && currentRequest) {
-      currentRequest.onError(new Error(evt.error || 'pi command failed'));
+      currentRequest.onError(new Error((evt.error as string) || 'pi command failed'));
     }
     return;
   }
@@ -379,10 +379,10 @@ function dispatchEvent(evt: any) {
   // Main event stream: pi wraps each assistant message event in a
   // message_update envelope.
   if (evt.type === 'message_update' && evt.assistantMessageEvent) {
-    const inner = evt.assistantMessageEvent;
-    const partial = inner.partial || evt.message;
-    if (partial?.provider) lastProvider = partial.provider;
-    if (partial?.model) lastModel = partial.model;
+    const inner = evt.assistantMessageEvent as Record<string, unknown>;
+    const partial = (inner.partial || evt.message) as Record<string, unknown> | undefined;
+    if (partial?.provider) lastProvider = partial.provider as string;
+    if (partial?.model) lastModel = partial.model as string;
 
     if (inner.type === 'text_delta' && typeof inner.delta === 'string' && inner.delta.length > 0) {
       currentRequest?.onDelta(inner.delta);
@@ -394,7 +394,7 @@ function dispatchEvent(evt: any) {
   if (evt.type === 'agent_end') {
     const lastMsg: PiAssistantMessage | null =
       Array.isArray(evt.messages) && evt.messages.length > 0
-        ? evt.messages[evt.messages.length - 1]
+        ? evt.messages[evt.messages.length - 1] as PiAssistantMessage
         : null;
 
     if (lastMsg?.stopReason === 'error' && lastMsg.errorMessage) {
@@ -408,7 +408,7 @@ function dispatchEvent(evt: any) {
 
   // Errors outside the agent loop (e.g., invalid command shape).
   if (evt.type === 'error' || (evt.type === 'response' && evt.success === false)) {
-    const msg = evt.error || evt.errorMessage || 'pi error';
+    const msg = (evt.error || evt.errorMessage || 'pi error') as string;
     currentRequest?.onError(new Error(msg));
     return;
   }

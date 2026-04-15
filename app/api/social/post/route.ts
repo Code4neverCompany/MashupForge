@@ -283,7 +283,9 @@ export async function POST(req: Request) {
 
       const tweet = await client.v2.tweet({
         text: caption,
-        ...(mediaIds.length > 0 ? { media: { media_ids: mediaIds as any } } : {})
+        // twitter-api-v2 requires an exact-length tuple ([string] | [string,string] | …)
+        // but our array length is dynamic (0-4). Double-cast via unknown avoids `as any`.
+        ...(mediaIds.length > 0 ? { media: { media_ids: mediaIds as unknown as [string, string, string, string] } } : {})
       });
       results.twitter = tweet;
     }
