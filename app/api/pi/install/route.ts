@@ -9,6 +9,12 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// PROP-013 (Option A) — in-process mutex. If two POST requests arrive
+// concurrently (e.g. auto-installer + user button click) the second caller
+// awaits the first promise instead of spawning a second installPi() run.
+// Safe for single-process environments (Next dev + Tauri sidecar).
+let installInFlight: Promise<ReturnType<typeof installPi>> | null = null;
+
 /**
  * GET /api/pi/install
  * Sandbox probe. Reports the resolved paths installPi will use — handy
@@ -35,7 +41,12 @@ export async function POST() {
         piPath: existing,
       });
     }
-    const result = installPi();
+    if (!installInFlight) {
+      installInFlight = Promise.resolve().then(() => installPi()).finally(() => {
+        installInFlight = null;
+      });
+    }
+    const result = await installInFlight;
     return NextResponse.json(
       result,
       { status: result.success ? 200 : 500 },
