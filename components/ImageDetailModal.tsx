@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { GeneratedImage, Collection } from './MashupContext';
 import type { UserSettings } from '@/types/mashup';
+import { showToast } from '@/components/Toast';
 
 // FIX-100 slice C: extracted from MainContent.tsx (~319 LOC).
 // Fullscreen image-detail viewer — shows media, metadata, tags,
@@ -194,7 +195,11 @@ export function ImageDetailModal({
               <div className="bg-zinc-950 border border-zinc-800/60 rounded-2xl p-4 text-sm text-zinc-300 leading-relaxed group relative">
                 {image.prompt}
                 <button
-                  onClick={() => navigator.clipboard.writeText(image.prompt)}
+                  onClick={() =>
+                    navigator.clipboard.writeText(image.prompt).catch(() =>
+                      showToast('Failed to copy prompt', 'error'),
+                    )
+                  }
                   className="absolute top-2 right-2 p-1.5 bg-zinc-900 text-zinc-500 hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all"
                   title="Copy Prompt"
                 >
