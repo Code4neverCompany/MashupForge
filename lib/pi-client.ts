@@ -27,7 +27,7 @@
  */
 
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
-import { getPiPath } from './pi-setup';
+import { getPiPath, resolvePiJsEntry } from './pi-setup';
 
 export interface PiPromptOptions {
   /** Extra per-request instruction prepended to the user message. */
@@ -167,7 +167,24 @@ export async function start(): Promise<void> {
     }
   }
 
-  const child = spawn(piPath, args, {
+  // Windows: `pi.cmd` is an npm shim and Node 18.20.2+ refuses to spawn
+  // `.cmd` / `.bat` files without `shell: true` (CVE-2024-27980). Shell mode
+  // would mangle our stdin/stdout RPC pipe, so bypass the shim by spawning
+  // the bundled `node.exe` (= `process.execPath` inside the Tauri sidecar)
+  // against pi's resolved JS entry point. STORY-120: without this, the
+  // first spawn attempt fired `error: EINVAL` on the async 'error' event
+  // and prompts hung forever writing into a dead child's stdin.
+  let spawnCmd = piPath;
+  let spawnArgs = args;
+  if (process.platform === 'win32' && piPath.toLowerCase().endsWith('.cmd')) {
+    const jsEntry = resolvePiJsEntry(piPath);
+    if (jsEntry) {
+      spawnCmd = process.execPath;
+      spawnArgs = [jsEntry, ...args];
+    }
+  }
+
+  const child = spawn(spawnCmd, spawnArgs, {
     env: cleanEnv,
     stdio: ['pipe', 'pipe', 'pipe'],
   });

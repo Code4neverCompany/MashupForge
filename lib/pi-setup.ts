@@ -6,7 +6,7 @@
 import { spawnSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir, tmpdir, platform } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 /**
  * Deploy-cache buster. Bump this string when you suspect Vercel is serving
@@ -139,6 +139,45 @@ function piCandidates(): string[] {
     '/usr/local/bin/pi',
     '/usr/bin/pi',
   ].filter(Boolean) as string[];
+}
+
+/**
+ * Resolve pi's underlying JavaScript entry point, given the path to the
+ * `pi.cmd` shim on Windows. Needed because Node 18.20.2+ refuses to spawn
+ * `.cmd` / `.bat` files without `shell: true` (CVE-2024-27980), but
+ * `shell: true` breaks the stdin/stdout RPC pipe we need for long-lived
+ * pi. Bypassing the shim lets us spawn `node.exe <entry>` directly with
+ * a clean argv array.
+ *
+ * Layout (npm --prefix install on Windows):
+ *   <prefix>/pi.cmd                                             ← shim
+ *   <prefix>/node_modules/@mariozechner/pi-coding-agent/<bin>   ← real entry
+ *
+ * Reads `bin.pi` (or the scalar `bin` field) from the package's own
+ * `package.json` so we don't hardcode a path that may shift between
+ * package versions.
+ */
+export function resolvePiJsEntry(piCmdPath: string): string | null {
+  const prefix = dirname(piCmdPath);
+  const pkgDir = join(prefix, 'node_modules', '@mariozechner', 'pi-coding-agent');
+  const pkgJson = join(pkgDir, 'package.json');
+  try {
+    if (!existsSync(pkgJson)) return null;
+    const pkg = JSON.parse(readFileSync(pkgJson, 'utf8')) as {
+      bin?: string | Record<string, string>;
+    };
+    let relEntry: string | undefined;
+    if (typeof pkg.bin === 'string') {
+      relEntry = pkg.bin;
+    } else if (pkg.bin && typeof pkg.bin === 'object') {
+      relEntry = pkg.bin.pi ?? Object.values(pkg.bin)[0];
+    }
+    if (!relEntry) return null;
+    const full = join(pkgDir, relEntry);
+    return existsSync(full) ? full : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Resolve the pi binary path, preferring known install dirs, then PATH. */
@@ -410,7 +449,21 @@ export function getPiModels(): PiModelInfo[] {
   const piPath = getPiPath();
   if (!piPath) return [];
 
-  const result = spawnSync(piPath, ['--list-models'], {
+  // On Windows, pi.cmd can't be spawned without `shell: true` (CVE-2024-27980),
+  // and shell mode mangles stdout capture. Resolve the underlying .js entry
+  // and call it via `node.exe` directly. `process.execPath` in the Tauri
+  // sidecar is the bundled node.exe.
+  let cmd = piPath;
+  let args = ['--list-models'];
+  if (isWindows && piPath.toLowerCase().endsWith('.cmd')) {
+    const jsEntry = resolvePiJsEntry(piPath);
+    if (jsEntry) {
+      cmd = process.execPath;
+      args = [jsEntry, '--list-models'];
+    }
+  }
+
+  const result = spawnSync(cmd, args, {
     encoding: 'utf8',
     timeout: 10_000,
     env: process.env,
