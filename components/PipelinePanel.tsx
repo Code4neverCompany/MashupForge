@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Play,
   Square,
@@ -152,12 +152,20 @@ export function PipelinePanel() {
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: idx * 0.05 }}
-                className={`relative p-3 sm:p-4 rounded-xl border transition-all duration-300 ${
-                  isActive ? 'bg-[#00e6ff]/8 border-[#00e6ff]/30 shadow-[0_0_16px_rgba(0,230,255,0.08)]' :
+                className={`relative p-3 sm:p-4 rounded-xl border overflow-hidden transition-colors duration-200 ${
+                  isActive ? 'border-[#00e6ff]/30' :
                   isCompleted ? 'bg-zinc-900/60 border-[#c5a062]/25' : 'bg-[#050505]/80 border-[#c5a062]/12'
                 }`}
               >
-                <div className="flex items-center gap-3">
+                {/* Shared-layout glow — spring-animates between active stages */}
+                {isActive && (
+                  <motion.div
+                    layoutId="active-stage-bg"
+                    className="absolute inset-0 bg-[#00e6ff]/8 shadow-[inset_0_0_16px_rgba(0,230,255,0.06)]"
+                    transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+                  />
+                )}
+                <div className="relative flex items-center gap-3">
                   {isActive ? (
                     <div className="relative w-3 h-3">
                       <div className={`absolute inset-0 ${stage.dotColor} rounded-full animate-ping`} />
@@ -530,27 +538,32 @@ export function PipelinePanel() {
             {reversedLog.length === 0 ? (
               <p className="p-4 text-sm text-zinc-500 text-center">No log entries yet</p>
             ) : (
-              reversedLog.map((entry, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-start gap-3 px-4 py-2.5 border-b border-zinc-800/40 last:border-0"
-                >
-                  {entry.status === 'success' ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
-                  ) : (
-                    <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-zinc-500">{entry.step}</span>
-                      <span className="text-xs text-zinc-500">
-                        {entry.timestamp.toLocaleTimeString()}
-                      </span>
+              <AnimatePresence initial={false}>
+                {reversedLog.map((entry) => (
+                  <motion.div
+                    key={`${entry.step}-${entry.timestamp.getTime()}`}
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                    className="flex items-start gap-3 px-4 py-2.5 border-b border-zinc-800/40 last:border-0"
+                  >
+                    {entry.status === 'success' ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                    ) : (
+                      <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono text-zinc-500">{entry.step}</span>
+                        <span className="text-xs text-zinc-500">
+                          {entry.timestamp.toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-zinc-300 truncate">{entry.message}</p>
                     </div>
-                    <p className="text-sm text-zinc-300 truncate">{entry.message}</p>
-                  </div>
-                </div>
-              ))
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             )}
           </div>
         )}
