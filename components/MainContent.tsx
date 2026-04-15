@@ -351,7 +351,7 @@ export function MainContent() {
           credentials: buildCredentialsPayload(),
         }),
       });
-      const data = await res.json();
+      const data = await res.json() as { error?: string };
       if (!res.ok) throw new Error(data.error || 'Post failed');
       setPostStatus((prev) => ({
         ...prev,
@@ -685,7 +685,7 @@ export function MainContent() {
           credentials: buildCredentialsPayload(),
         }),
       });
-      const data = await res.json();
+      const data = await res.json() as { error?: string };
       if (!res.ok) throw new Error(data.error || 'Carousel post failed');
       setPostStatus((prev) => ({ ...prev, [key]: `Posted carousel to ${platforms.join(', ')} ✓` }));
     } catch (e: unknown) {
@@ -785,7 +785,7 @@ export function MainContent() {
     try {
       const res = await fetch('/api/pi/status');
       if (!res.ok) throw new Error(`status ${res.status}`);
-      const data = await res.json();
+      const data = await res.json() as PiStatus;
       setPiStatus(data);
       return data;
     } catch (e: unknown) {
@@ -809,7 +809,7 @@ export function MainContent() {
         setPiBusy('install');
         try {
           const res = await fetch('/api/pi/install', { method: 'POST' });
-          const data = await res.json();
+          const data = await res.json() as { success?: boolean; stderr?: string; error?: string };
           if (!res.ok || data.success === false) {
             setPiError(data.stderr || data.error || 'Auto-install failed');
           }
@@ -829,7 +829,7 @@ export function MainContent() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ systemPrompt: settings.agentPrompt || '' }),
           });
-          const data = await res.json();
+          const data = await res.json() as { success?: boolean; error?: string };
           if (!res.ok || data.success === false) {
             setPiError(data.error || 'Auto-start failed');
           }
@@ -857,7 +857,7 @@ export function MainContent() {
     setPiError(null);
     try {
       const res = await fetch('/api/pi/setup', { method: 'POST' });
-      const data = await res.json();
+      const data = await res.json() as { success?: boolean; error?: string; tmuxSession?: string };
       if (!res.ok || data.success === false) {
         setPiError(data.error || 'Setup failed');
       } else {
@@ -1107,7 +1107,7 @@ export function MainContent() {
                 credentials,
               }),
             });
-            const data = await res.json();
+            const data = await res.json() as { error?: string };
             if (!res.ok) throw new Error(data.error || 'Failed to post carousel');
 
             groupPosts.forEach((gp) => {
@@ -1148,7 +1148,7 @@ export function MainContent() {
             }),
           });
 
-          const data = await res.json();
+          const data = await res.json() as { error?: string };
           if (!res.ok) throw new Error(data.error || 'Failed to post');
 
           statusPatches.set(post.id, 'posted');
@@ -1301,7 +1301,7 @@ export function MainContent() {
       if (!res.ok) {
         let errMessage = 'Failed to animate image';
         try {
-          const err = await res.json();
+          const err = await res.json() as { error?: string };
           errMessage = err.error || errMessage;
         } catch (e) {
           const text = await res.text();
@@ -1310,8 +1310,8 @@ export function MainContent() {
         throw new Error(errMessage);
       }
 
-      const data = await res.json();
-      
+      const data = await res.json() as { generationId?: string };
+
       if (data.generationId) {
         let status = 'PENDING';
         let attempts = 0;
@@ -1325,10 +1325,10 @@ export function MainContent() {
             const errText = await statusRes.text();
             throw new Error(`Failed to check status: ${errText.slice(0, 100)}`);
           }
-          const statusData = await statusRes.json();
-          status = statusData.status;
+          const statusData = await statusRes.json() as { status?: string; url?: string; error?: string };
+          status = statusData.status ?? 'PENDING';
           if (status === 'COMPLETE') {
-            videoUrl = statusData.url;
+            videoUrl = statusData.url ?? '';
           } else if (status === 'FAILED') {
             throw new Error(statusData.error || 'Leonardo video generation failed');
           }
