@@ -118,9 +118,11 @@ function AutoTextarea({ minRows = 2, className, value, ...rest }: AutoTextareaPr
 }
 
 import { useAuth } from '@/hooks/useAuth';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 
 export function MainContent() {
   const { logout } = useAuth();
+  const isDesktop = useIsDesktop();
   const { 
     images, 
     savedImages, 
@@ -4907,17 +4909,26 @@ export function MainContent() {
               {/* API Keys Section */}
               <div className="space-y-4 pt-4 border-t border-zinc-800">
                 <label className="text-sm font-medium text-zinc-300">API Keys</label>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Leonardo API Key</label>
-                  <input
-                    type="password"
-                    value={settings.apiKeys.leonardo || ''}
-                    onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, leonardo: e.target.value } })}
-                    placeholder="••••••••••••••••"
-                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
-                  />
-                </div>
-                
+                {/*
+                  STORY-130: In desktop mode the Leonardo API key is owned by
+                  DesktopSettingsPanel (writes to config.json + injects env var
+                  into the sidecar). Rendering a second input here persisted to
+                  origin-scoped IndexedDB and silently shadowed the real value
+                  — top appeared broken while bottom worked. Hide in desktop.
+                */}
+                {isDesktop === false && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Leonardo API Key</label>
+                    <input
+                      type="password"
+                      value={settings.apiKeys.leonardo || ''}
+                      onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, leonardo: e.target.value } })}
+                      placeholder="••••••••••••••••"
+                      className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
+                    />
+                  </div>
+                )}
+
                 <div className="space-y-4 pt-4 border-t border-zinc-800">
                   <h4 className="text-sm font-bold text-white">Free Social Posting Setup</h4>
                   
