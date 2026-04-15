@@ -23,21 +23,15 @@
 - Agent: Developer
 - Status: **DONE** (satisfied by commit `fbf81a5`, review `docs/bmad/reviews/STORY-002.md`, QA-approved in `docs/bmad/qa/QA-001.md`)
 
-## STORY-003: Verify bundled pi.dev starts from app Settings
-- Description: Phase 1 bakes pi into `src-tauri/resources/pi/` at build
-  time (via `scripts/bake-pi.ps1`) and the Rust launcher sets `PI_BIN`
-  to the bundled binary, so runtime install is gone. The remaining
-  work is validating that the existing Settings modal's "Start pi"
-  button correctly spawns the bundled `pi.cmd` in desktop mode.
-- Acceptance:
-  - Clicking "Start pi" in Settings launches `%PI_BIN%` (bundled pi.cmd)
-  - `/api/pi/status` reports the child as running
-  - `/api/pi/stop` terminates the child cleanly
-  - Works from a fresh install with no pre-existing global pi.dev install
-- Complexity: routine (verification task; code changes only if Windows
-  spawn-shim handling breaks)
-- Agent: Developer
-- Depends on: STORY-004 producing a working `.msi` to test against
+## STORY-003: ~~Verify bundled pi.dev starts from app Settings~~ — COLLAPSED INTO STORY-004
+- Status: **SUPERSEDED** — The Phase 1 baked-pi approach (`scripts/bake-pi.ps1`)
+  was abandoned before implementation. pi.dev is installed at runtime via
+  `/api/pi/install` (Settings → "Install pi.dev" button) rather than bundled
+  at build time. `PI_BIN` is set dynamically by `lib/pi-setup.ts` after install.
+- The original acceptance criteria (bundled pi.cmd launch, /api/pi/status, /api/pi/stop)
+  are covered by STORY-004 Tests 5–6 on the live Windows build.
+- `scripts/bake-pi.ps1` has been deleted as it is no longer part of the build flow.
+- See: `docs/bmad/reviews/STORY-004.md` for the current pi.dev validation checklist.
 
 ## STORY-004: Human validation of full Windows flow
 - Description: Human-run end-to-end validation of the Phase 1 build on

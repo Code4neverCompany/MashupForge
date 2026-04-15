@@ -12,19 +12,20 @@ resources/
 │   ├── node.exe
 │   ├── npm.cmd
 │   └── node_modules/npm/
-├── app/                    Next.js standalone server
-│   ├── start.js            Tauri server wrapper (env hydration + require(./server.js))
-│   ├── server.js           Next.js standalone entrypoint
-│   ├── .next/              compiled Next output
-│   ├── public/             static assets
-│   └── node_modules/       trace-minimized runtime deps
-└── pi/                     @mariozechner/pi-coding-agent baked in
-    ├── pi.cmd              Windows shim
-    └── node_modules/@mariozechner/pi-coding-agent/
+└── app/                    Next.js standalone server
+    ├── start.js            Tauri server wrapper (env hydration + require(./server.js))
+    ├── server.js           Next.js standalone entrypoint
+    ├── .next/              compiled Next output
+    ├── public/             static assets
+    └── node_modules/       trace-minimized runtime deps
 ```
+
+Note: pi.dev is **not** bundled at build time. It is installed at runtime
+via Settings → "Install pi.dev". `PI_BIN` is resolved by `lib/pi-setup.ts`
+after install completes.
 
 The Tauri Rust launcher (`src/lib.rs`) resolves `resource_dir` at runtime
 and spawns `node/node.exe` with `app/start.js`, passing a random ephemeral
-`PORT` and a `PI_BIN` env var pointing at `pi/pi.cmd`.
+`PORT`.
 
 See `docs/WINDOWS-BUILD.md` for the full build flow.
