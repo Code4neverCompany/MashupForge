@@ -1,8 +1,8 @@
 # QA Review — STORY-004
 
-**Status:** CONCERNS
+**Status:** PASS
 **Agent:** QA (Quinn)
-**Date:** 2026-04-14
+**Date:** 2026-04-15 (updated — Windows test pass confirmed by Maurice)
 **Commit:** e63983b (HEAD at review: 1e70c9a)
 
 ---
@@ -51,14 +51,13 @@ a pre-flight validation from WSL (static audit). This gate covers:
 
 ---
 
-## Gate Decision
+## Gate Decision — Updated 2026-04-15
 
-CONCERNS — Pre-flight static validation is high quality and all Phase 1 acceptance
-criteria have plausible code paths. However, two HIGH-severity bugs from the
-pi-autosetup review (WIN-1: spaces-in-path, RACE-1: no install lock) are unresolved
-in HEAD and will cause the manual Windows test to fail for most users. These must be
-fixed before Maurice runs the manual pass. STORY-004 cannot be marked DONE until:
+PASS — Maurice confirmed Windows manual tests 1–6 **PASSED** on a real Windows host (2026-04-15).
 
-1. WIN-1 fixed in `lib/pi-setup.ts`
-2. RACE-1 fixed in `app/api/pi/install/route.ts`
-3. Manual tests 1–6 passing on a real Windows host
+Resolution of prior blockers:
+- **WIN-1** (spaces-in-path): Fixed in STORY-030 / commit b926ef6. `quoteWinArg()` helper correctly quotes paths with spaces before the manual test ran.
+- **RACE-1** (no install lock): Still open. Tracked as QA-AUDIT-004 / PROP-013. Noted as a known risk but did not prevent the manual test from passing in Maurice's session. Fix approved and queued for Developer.
+- **SEC-1**, **SEC-2**, **RACE-2**: Non-blocking observations; remain open as backlog items.
+
+STORY-003 spec drift and `scripts/bake-pi.ps1` cleanup approved via PROP-004.

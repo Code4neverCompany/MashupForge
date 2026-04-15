@@ -127,7 +127,7 @@ export async function streamAIToString(
  * `[` to the last `]` (or `{` / `}` for objects) before parsing.
  * Falls back to an empty array / object on empty input.
  */
-export function extractJsonFromLLM(raw: string, kind: 'array' | 'object' = 'array'): any {
+function parseJsonFromLLM(raw: string, kind: 'array' | 'object'): unknown {
   let text = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   if (!text) return kind === 'array' ? [] : {};
   const open = kind === 'array' ? '[' : '{';
@@ -141,22 +141,18 @@ export function extractJsonFromLLM(raw: string, kind: 'array' | 'object' = 'arra
 }
 
 /**
- * Typed siblings of `extractJsonFromLLM` (PROP-015 phase 1).
- *
- * The original returns `any` for legacy reasons — flipping it to
- * `unknown[]` / `Record<string, unknown>` cascades to ~16 type errors
- * across 3 files that each need bespoke narrowing. These two helpers
- * give new code a typed entry point without breaking existing
- * callers; PROP-015 phases 2-4 migrate callers one batch at a time
- * and then delete the `any` version.
- *
- * Both delegate to the same parsing logic — they're not duplicating
- * work, just providing a tighter return type.
+ * Typed entry points for LLM JSON parsing. Each helper enforces the
+ * top-level shape at runtime — callers get an empty array / object
+ * (not a cast lie) if the LLM returns the wrong kind.
  */
 export function extractJsonArrayFromLLM(raw: string): unknown[] {
-  return extractJsonFromLLM(raw, 'array') as unknown[];
+  const parsed = parseJsonFromLLM(raw, 'array');
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function extractJsonObjectFromLLM(raw: string): Record<string, unknown> {
-  return extractJsonFromLLM(raw, 'object') as Record<string, unknown>;
+  const parsed = parseJsonFromLLM(raw, 'object');
+  return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : {};
 }

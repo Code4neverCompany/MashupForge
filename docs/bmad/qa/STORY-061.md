@@ -1,6 +1,6 @@
 # QA Review — STORY-061
 
-**Status:** WAIVED
+**Status:** PASS
 **Agent:** QA (Quinn)
 **Date:** 2026-04-15
 **Commit:** n/a (handoff artifact — no code changes)
@@ -15,4 +15,4 @@
 
 ## Gate Decision
 
-WAIVED — Handoff artifact. No code to gate. Story completes when Maurice records test pass results. QA gate on the test outcome will be written as an update to `docs/bmad/qa/STORY-004.md`.
+PASS — Maurice confirmed Windows tests passed 2026-04-15. Tests 1–6 (including Test 2.5 loopback check from STORY-041) completed on a real Windows host. Gate cleared in the same session as STORY-004.

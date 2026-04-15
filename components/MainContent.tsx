@@ -81,7 +81,7 @@ const PipelinePanel = dynamic(
     ),
   }
 );
-import { streamAIToString, extractJsonFromLLM } from '@/lib/aiClient';
+import { streamAIToString, extractJsonArrayFromLLM, extractJsonObjectFromLLM } from '@/lib/aiClient';
 import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import { getErrorMessage } from '@/lib/errors';
 import { findBestSlots, fetchInstagramEngagement, loadEngagementData, type SlotScore } from '@/lib/smartScheduler';
@@ -919,17 +919,26 @@ export function MainContent() {
         - "imageSize": string`,
         { mode: 'enhance' }
       );
-      const data = extractJsonFromLLM(text, 'object');
-      
-      setComparisonPrompt(data.enhancedPrompt || prompt);
+      const data = extractJsonObjectFromLLM(text);
+      const pickString = (v: unknown): string | undefined =>
+        typeof v === 'string' ? v : undefined;
+      const enhancedPrompt = pickString(data.enhancedPrompt);
+      const negativePrompt = pickString(data.negativePrompt);
+      const styleStr = pickString(data.style);
+      const lightingStr = pickString(data.lighting);
+      const angleStr = pickString(data.angle);
+      const aspectRatioStr = pickString(data.aspectRatio);
+      const imageSizeStr = pickString(data.imageSize);
+
+      setComparisonPrompt(enhancedPrompt || prompt);
       setComparisonOptions(prev => ({
         ...prev,
-        negativePrompt: data.negativePrompt || '',
-        style: ART_STYLES.includes(data.style) ? data.style : ART_STYLES[0],
-        lighting: LIGHTING_OPTIONS.includes(data.lighting) ? data.lighting : LIGHTING_OPTIONS[0],
-        angle: CAMERA_ANGLES.includes(data.angle) ? data.angle : CAMERA_ANGLES[0],
-        aspectRatio: ['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'].includes(data.aspectRatio) ? data.aspectRatio : '16:9',
-        imageSize: ['512px', '1K', '2K', '4K'].includes(data.imageSize) ? data.imageSize : '1K'
+        negativePrompt: negativePrompt || '',
+        style: styleStr && ART_STYLES.includes(styleStr) ? styleStr : ART_STYLES[0],
+        lighting: lightingStr && LIGHTING_OPTIONS.includes(lightingStr) ? lightingStr : LIGHTING_OPTIONS[0],
+        angle: angleStr && CAMERA_ANGLES.includes(angleStr) ? angleStr : CAMERA_ANGLES[0],
+        aspectRatio: aspectRatioStr && ['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'].includes(aspectRatioStr) ? aspectRatioStr : '16:9',
+        imageSize: imageSizeStr && ['512px', '1K', '2K', '4K'].includes(imageSizeStr) ? imageSizeStr : '1K',
       }));
     } catch (error) {
       console.error('Error pushing idea to compare:', error);
@@ -1258,12 +1267,14 @@ export function MainContent() {
         Return ONLY a JSON object with keys "duration" (number) and "style" (string).`,
           { mode: 'generate' }
         );
-        const dynamicSettings = extractJsonFromLLM(dynamicText, 'object');
-        if (dynamicSettings.duration && [3, 5, 10].includes(dynamicSettings.duration)) {
-          duration = dynamicSettings.duration;
+        const dynamicSettings = extractJsonObjectFromLLM(dynamicText);
+        const rawDuration = dynamicSettings.duration;
+        if (rawDuration === 3 || rawDuration === 5 || rawDuration === 10) {
+          duration = rawDuration;
         }
-        if (dynamicSettings.style) {
-          style = dynamicSettings.style;
+        const rawStyle = dynamicSettings.style;
+        if (typeof rawStyle === 'string' && rawStyle.length > 0) {
+          style = rawStyle;
         }
 
         // Update settings in UI to reflect the dynamically chosen values
@@ -1351,8 +1362,9 @@ export function MainContent() {
                 `Analyze this image prompt: "${prompt}". Generate 5-8 fitting tags (universe, character, style, theme). Return ONLY a JSON array of strings.`,
                 { mode: 'tag' }
               );
-              const parsed = extractJsonFromLLM(text, 'array');
-              return Array.isArray(parsed) ? parsed : (parsed?.tags || ['Mashup']);
+              const parsed = extractJsonArrayFromLLM(text);
+              const strTags = parsed.filter((t): t is string => typeof t === 'string');
+              return strTags.length > 0 ? strTags : ['Mashup'];
             } catch (e) {
               console.error('Failed to auto-tag during generation', e);
               return ['Mashup'];

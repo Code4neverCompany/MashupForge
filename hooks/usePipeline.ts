@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { streamAIToString, extractJsonFromLLM } from '@/lib/aiClient';
+import { streamAIToString, extractJsonArrayFromLLM, extractJsonObjectFromLLM } from '@/lib/aiClient';
 import {
   LEONARDO_MODELS,
   type Idea,
@@ -541,10 +541,10 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
     });
 
     if (themed) {
-      const parsed = extractJsonFromLLM(text, 'object');
-      const theme = typeof parsed?.theme === 'string' ? parsed.theme.trim() : '';
-      const variations = Array.isArray(parsed?.variations) ? parsed.variations : [];
-      const ideasOut = (variations as unknown[])
+      const parsed = extractJsonObjectFromLLM(text);
+      const theme = typeof parsed.theme === 'string' ? parsed.theme.trim() : '';
+      const variations = Array.isArray(parsed.variations) ? (parsed.variations as unknown[]) : [];
+      const ideasOut = variations
         .filter((v): v is Record<string, unknown> => typeof v === 'object' && v !== null && typeof (v as Record<string, unknown>).concept === 'string' && Boolean((v as Record<string, unknown>).concept))
         .map((v, i) =>
           buildIdea(
@@ -559,9 +559,8 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
       if (ideasOut.length > 0) return ideasOut;
     }
 
-    const parsed = extractJsonFromLLM(text, 'array');
-    if (!Array.isArray(parsed)) return [];
-    return (parsed as unknown[])
+    const parsed = extractJsonArrayFromLLM(text);
+    return parsed
       .filter((idea): idea is Record<string, unknown> => typeof idea === 'object' && idea !== null && typeof (idea as Record<string, unknown>).concept === 'string' && Boolean((idea as Record<string, unknown>).concept))
       .map((idea, i) =>
         buildIdea(
