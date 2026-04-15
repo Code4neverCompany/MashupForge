@@ -2591,7 +2591,6 @@ export function MainContent() {
                     if (sel.length > 0) {
                       // Sequential — each platform call can be slow and we
                       // want per-card status badges to update in order.
-                      // eslint-disable-next-line no-await-in-loop
                       await postImageNow(img, sel);
                     }
                   }

@@ -106,7 +106,6 @@ export function Toast() {
       window.removeEventListener('mashup:toast', handler);
       Object.values(timers.current).forEach(clearTimeout);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (toasts.length === 0) return null;
