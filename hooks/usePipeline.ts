@@ -583,6 +583,34 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
     setPipelineRunning(true);
     addLog('pipeline-start', '', 'success', `Pipeline started${pipelineContinuousRef.current ? ' (continuous mode)' : ''}`);
 
+    // AUDIT-011: pi.dev pre-check. The pipeline calls pi for trending
+    // research, prompt expansion, and caption generation — if pi is
+    // unreachable each step silently falls through to a generic fallback
+    // and the user sees a string of identical errors after 90s of image
+    // generation has already burned. Surface the problem upfront with a
+    // single status fetch so Maurice sees the warning before any work.
+    try {
+      const piRes = await fetch('/api/pi/status');
+      if (piRes.ok) {
+        const piStatus = (await piRes.json()) as {
+          installed?: boolean;
+          running?: boolean;
+          lastError?: string | null;
+        };
+        if (!piStatus.installed) {
+          addLog('pi-precheck', '', 'error', 'pi.dev not installed — caption/prompt/trending steps will fall back to generic output');
+        } else if (!piStatus.running) {
+          addLog('pi-precheck', '', 'error', `pi.dev installed but not running${piStatus.lastError ? ` — last error: ${piStatus.lastError}` : ''}`);
+        } else {
+          addLog('pi-precheck', '', 'success', 'pi.dev reachable — proceeding');
+        }
+      } else {
+        addLog('pi-precheck', '', 'error', `pi.dev status check failed (HTTP ${piRes.status})`);
+      }
+    } catch (e: unknown) {
+      addLog('pi-precheck', '', 'error', `pi.dev status check threw: ${getErrorMessage(e)}`);
+    }
+
     // Refresh engagement data from Instagram (cached 24h)
     let engagement: CachedEngagement;
     try {
