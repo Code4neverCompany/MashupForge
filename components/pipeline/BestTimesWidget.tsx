@@ -36,7 +36,7 @@ export function BestTimesWidget({ settings }: { settings: any }) {
         <button
           onClick={fetchInsights}
           disabled={loading}
-          className="text-[11px] px-2 py-1 bg-indigo-600/20 text-indigo-400 rounded-xl hover:bg-indigo-600/30 transition-colors disabled:opacity-50"
+          className="text-[11px] px-2 py-1 bg-[#00e6ff]/10 text-[#00e6ff] rounded-xl hover:bg-[#00e6ff]/20 transition-colors disabled:opacity-50"
         >
           {loading ? 'Analyzing...' : insights ? 'Refresh' : 'Analyze'}
         </button>
