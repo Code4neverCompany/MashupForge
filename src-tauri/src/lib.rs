@@ -12,13 +12,52 @@ use tauri::{Manager, WindowEvent};
 /// Holds the running Node sidecar child so we can kill it on window close.
 struct SidecarState(Mutex<Option<Child>>);
 
-/// Bind an ephemeral port, drop the listener, return the port number.
-/// Small race window between pick and sidecar bind, but a single-process
-/// desktop app on `127.0.0.1` makes that effectively impossible in practice.
-fn pick_free_port() -> Option<u16> {
-    let listener = TcpListener::bind("127.0.0.1:0").ok()?;
-    let addr = listener.local_addr().ok()?;
-    Some(addr.port())
+/// Stable loopback port for the Next.js sidecar.
+///
+/// STORY-121: the webview persists settings via IndexedDB, which is
+/// origin-scoped (`host:port`). Previously we picked an ephemeral port
+/// on every launch, so each run produced a new origin
+/// (`http://127.0.0.1:<random>`) and the IndexedDB lookup missed the
+/// previous session's data — settings, carousel groups, pipeline
+/// state, API keys all appeared wiped. WebView2 was faithfully
+/// persisting everything, just under the prior launch's origin key.
+///
+/// Fixing the port pins the origin across launches. 19782 is IANA-
+/// unassigned, outside both the Windows (49152–65535) and Linux
+/// (32768–60999) ephemeral ranges, and well above the privileged-
+/// port cutoff so no elevation is needed.
+const DESKTOP_PORT: u16 = 19782;
+
+/// Resolve the port to bind the sidecar on.
+///
+/// First tries the stable `DESKTOP_PORT` (IndexedDB persistence). If
+/// something else is already bound there, falls back to an ephemeral
+/// port so the app still launches — but logs a prominent warning that
+/// settings persistence is broken for this session, which is the one
+/// regression we'd otherwise hit silently.
+fn resolve_port(log_dir: &Path) -> Option<u16> {
+    match TcpListener::bind(("127.0.0.1", DESKTOP_PORT)) {
+        Ok(listener) => {
+            let port = listener.local_addr().ok()?.port();
+            startup_log_line(log_dir, &format!("bound stable port {}", port));
+            Some(port)
+        }
+        Err(e) => {
+            startup_log_line(
+                log_dir,
+                &format!(
+                    "WARN stable port {} unavailable ({}) — falling back to ephemeral. \
+                     Settings WILL NOT persist across launches until the conflicting \
+                     process is closed.",
+                    DESKTOP_PORT, e
+                ),
+            );
+            let listener = TcpListener::bind("127.0.0.1:0").ok()?;
+            let addr = listener.local_addr().ok()?;
+            startup_log_line(log_dir, &format!("bound ephemeral port {}", addr.port()));
+            Some(addr.port())
+        }
+    }
 }
 
 /// Poll the loopback port until it accepts a TCP connection, up to `timeout`.
@@ -372,11 +411,13 @@ pub fn run() {
                 );
             }
 
-            // ---- step 4: pick ephemeral port
-            let port = match pick_free_port() {
+            // ---- step 4: resolve loopback port (stable for IndexedDB
+            // persistence, ephemeral fallback if the stable port is
+            // already in use — see STORY-121).
+            let port = match resolve_port(&log_dir) {
                 Some(p) => p,
                 None => {
-                    let msg = "could not bind an ephemeral 127.0.0.1 port";
+                    let msg = "could not bind any 127.0.0.1 port";
                     startup_log_line(&log_dir, msg);
                     show_error_dialog(
                         "MashupForge — networking error",
