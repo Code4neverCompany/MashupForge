@@ -1021,7 +1021,13 @@ export function MainContent() {
       });
     }, 800);
     return () => { if (previewTimerRef.current) clearTimeout(previewTimerRef.current); };
-  }, [comparisonPrompt, comparisonModels]);
+  }, [
+    comparisonPrompt,
+    comparisonModels,
+    comparisonOptions.style,
+    comparisonOptions.aspectRatio,
+    comparisonOptions.negativePrompt,
+  ]);
 
   // Auto-posting effect
   useEffect(() => {
