@@ -17,6 +17,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useMashup } from './MashupContext';
+import type { UserSettings } from '@/types/mashup';
 import { BestTimesWidget } from './pipeline/BestTimesWidget';
 import { ActiveIdeaCard } from './pipeline/ActiveIdeaCard';
 import { ApprovalQueue } from './pipeline/ApprovalQueue';
@@ -110,7 +111,7 @@ export function PipelinePanel() {
       pipelineAutoPost: false,
     };
     const effective = current ?? defaults[key];
-    updateSettings({ [key]: !effective } as any);
+    updateSettings({ [key]: !effective } as Partial<UserSettings>);
   };
 
   const activeStageKey = (() => {
