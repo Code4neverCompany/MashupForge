@@ -6,6 +6,12 @@
  * Engagement data is cached in localStorage with a 24h TTL.
  */
 
+interface IgMediaPost {
+  timestamp?: string;
+  like_count?: number;
+  comments_count?: number;
+}
+
 export interface SlotScore {
   date: string;
   time: string;
@@ -115,8 +121,8 @@ export async function fetchInstagramEngagement(
       return loadEngagementData();
     }
 
-    const data = await res.json();
-    const posts = data.data || [];
+    const data = await res.json() as { data?: IgMediaPost[] };
+    const posts: IgMediaPost[] = data.data ?? [];
 
     if (posts.length < 5) {
       return loadEngagementData();
