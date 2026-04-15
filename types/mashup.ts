@@ -110,6 +110,8 @@ export interface Idea {
   status: 'idea' | 'in-work' | 'done';
 }
 
+export type PostPlatform = 'instagram' | 'pinterest' | 'twitter' | 'discord';
+
 export interface ScheduledPost {
   id: string;
   imageId: string;

@@ -84,8 +84,10 @@ const PipelinePanel = dynamic(
 import { streamAIToString, extractJsonArrayFromLLM, extractJsonObjectFromLLM } from '@/lib/aiClient';
 import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import { getErrorMessage } from '@/lib/errors';
-import { findBestSlots, fetchInstagramEngagement, loadEngagementData, type SlotScore } from '@/lib/smartScheduler';
+import { useSmartScheduler } from '@/hooks/useSmartScheduler';
+import { SmartScheduleModal } from './SmartScheduleModal';
 import type { CarouselGroup } from './MashupContext';
+import type { PostPlatform } from '@/types/mashup';
 import TimePicker24 from './TimePicker24';
 import { formatTime24, formatTimeShort } from './TimePicker24';
 import { SettingsModal, type PiStatus, type PiBusy } from './SettingsModal';
@@ -233,7 +235,8 @@ export function MainContent() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // ── Post Ready scheduling state ────────────────────────────────────
-  type PostPlatform = 'instagram' | 'pinterest' | 'twitter' | 'discord';
+  // PostPlatform is exported from @/types/mashup and shared with the
+  // useSmartScheduler hook + SmartScheduleModal component.
 
   // Per-card platform selection (defaults set when the card first renders).
   const [postPlatformSel, setPostPlatformSel] = useState<Record<string, PostPlatform[]>>({});
@@ -265,15 +268,6 @@ export function MainContent() {
 
   // Batch "Schedule All" mini-modal state.
   const [showScheduleAll, setShowScheduleAll] = useState(false);
-  const [scheduleAllForm, setScheduleAllForm] = useState<{ date: string; time: string; platforms: PostPlatform[] }>({
-    date: '',
-    time: '',
-    platforms: [],
-  });
-  // Smart schedule insights
-  const [smartSlots, setSmartSlots] = useState<SlotScore[]>([]);
-  const [smartScheduleLoading, setSmartScheduleLoading] = useState(false);
-  const [smartScheduleSource, setSmartScheduleSource] = useState<string>('');
 
   const hasPlatformCreds = (p: PostPlatform): boolean => {
     switch (p) {
@@ -296,6 +290,15 @@ export function MainContent() {
   const availablePlatforms = (): PostPlatform[] => {
     return (['instagram', 'pinterest', 'twitter', 'discord'] as PostPlatform[]).filter(hasPlatformCreds);
   };
+
+  // PROP-016: smart scheduler hook — owns slot computation state.
+  const smartScheduler = useSmartScheduler({
+    postCount: 1,                          // updated per-call via trigger options
+    scheduledPosts: settings.scheduledPosts || [],
+    defaultPlatforms: availablePlatforms(),
+    igAccessToken: settings.apiKeys?.instagram?.accessToken,
+    igAccountId: settings.apiKeys?.instagram?.igAccountId,
+  });
 
   /** Return the per-card selection, initialising to "all available" on first access. */
   const getSelectedPlatforms = (id: string): PostPlatform[] => {
@@ -2713,48 +2716,14 @@ export function MainContent() {
                         )}
                         <button
                           onClick={async () => {
-                            // Fetch engagement data and compute optimal slots
-                            setSmartScheduleLoading(true);
-                            setSmartSlots([]);
-                            try {
-                              const eng = await fetchInstagramEngagement(
-                                settings.apiKeys?.instagram?.accessToken,
-                                settings.apiKeys?.instagram?.igAccountId,
-                              );
-                              setSmartScheduleSource(eng.source === 'instagram' ? 'IG insights' : 'Research defaults');
-                              const existing = settings.scheduledPosts || [];
-                              const slots = findBestSlots(existing, postItems.length, eng);
-                              setSmartSlots(slots);
-                              // Pre-fill form with best slot
-                              if (slots.length > 0) {
-                                setScheduleAllForm({
-                                  date: slots[0].date,
-                                  time: slots[0].time,
-                                  platforms: available,
-                                });
-                              }
-                            } catch {
-                              const eng = loadEngagementData();
-                              setSmartScheduleSource('Research defaults');
-                              const existing = settings.scheduledPosts || [];
-                              const slots = findBestSlots(existing, postItems.length, eng);
-                              setSmartSlots(slots);
-                              if (slots.length > 0) {
-                                setScheduleAllForm({
-                                  date: slots[0].date,
-                                  time: slots[0].time,
-                                  platforms: available,
-                                });
-                              }
-                            }
-                            setSmartScheduleLoading(false);
+                            await smartScheduler.trigger(postItems.length);
                             setShowScheduleAll(true);
                           }}
-                          disabled={ready.length === 0 || available.length === 0 || smartScheduleLoading}
+                          disabled={ready.length === 0 || available.length === 0 || smartScheduler.loading}
                           className="btn-gold-sm rounded-lg"
                           title="Schedule with optimal posting times"
                         >
-                          {smartScheduleLoading ? (
+                          {smartScheduler.loading ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           ) : (
                             <TrendingUp className="w-3.5 h-3.5" />
@@ -3915,157 +3884,41 @@ export function MainContent() {
                     )
                     )}
 
-                    {/* Schedule-All mini modal */}
+                    {/* Schedule-All modal — extracted to SmartScheduleModal (PROP-016) */}
                     {showScheduleAll && (
-                      <div
-                        className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4"
-                        onClick={() => setShowScheduleAll(false)}
-                      >
-                        <div
-                          className="bg-zinc-900/90 backdrop-blur-xl border-0 sm:border border-zinc-800/60 rounded-none sm:rounded-xl w-full sm:max-w-lg p-5 space-y-4 h-full sm:h-auto max-h-[100dvh] sm:max-h-[90vh] overflow-y-auto"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-between">
-                            <h3 className="type-title flex items-center gap-2">
-                              <TrendingUp className="w-5 h-5 text-amber-400" />
-                              Smart Schedule ({postItems.length} posts)
-                            </h3>
-                            <button
-                              onClick={() => setShowScheduleAll(false)}
-                              className="p-1 text-zinc-400 hover:text-white"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-
-                          {/* Engagement source badge */}
-                          {smartScheduleSource && (
-                            <div className="flex items-center gap-2 px-3 py-2 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
-                              <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
-                              <span className="text-[11px] text-indigo-300">
-                                Data source: <strong>{smartScheduleSource}</strong>
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Optimal slots preview */}
-                          {smartSlots.length > 0 && (
-                            <div className="space-y-2">
-                              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                Recommended Slots (score = engagement likelihood)
-                              </label>
-                              <div className="space-y-1">
-                                {smartSlots.slice(0, Math.max(postItems.length, 5)).map((slot, i) => {
-                                  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                                  const slotDate = new Date(slot.date);
-                                  const dayLabel = dayNames[slotDate.getDay()];
-                                  const pct = Math.round(slot.score * 100);
-                                  return (
-                                    <div
-                                      key={i}
-                                      className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 border border-zinc-700/50 rounded-lg"
-                                    >
-                                      <span className="text-[10px] text-zinc-500 w-5">#{i + 1}</span>
-                                      <span className="text-xs font-mono text-white">{slot.date}</span>
-                                      <span className="text-xs font-mono text-amber-400">{formatTimeShort(slot.time)}</span>
-                                      <span className="text-[10px] text-zinc-600">{dayLabel}</span>
-                                      <div className="flex-1" />
-                                      <div className="w-20 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
-                                        <div
-                                          className="h-full bg-[#00e6ff] rounded-full"
-                                          style={{ width: `${pct}%` }}
-                                        />
-                                      </div>
-                                      <span className="text-[10px] text-zinc-400 w-8 text-right">{pct}%</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Platforms */}
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Platforms</label>
-                            <div className="flex flex-wrap gap-1.5">
-                              {available.map((p) => {
-                                const checked = scheduleAllForm.platforms.includes(p);
-                                return (
-                                  <button
-                                    key={p}
-                                    type="button"
-                                    onClick={() =>
-                                      setScheduleAllForm({
-                                        ...scheduleAllForm,
-                                        platforms: checked
-                                          ? scheduleAllForm.platforms.filter((x) => x !== p)
-                                          : [...scheduleAllForm.platforms, p],
-                                      })
-                                    }
-                                    className={`px-2.5 py-1 text-[10px] rounded-full border transition-colors ${
-                                      checked
-                                        ? `${platformBadgeClass(p)} text-white border-transparent`
-                                        : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
-                                    }`}
-                                  >
-                                    {checked && <Check className="w-3 h-3 inline mr-1" />}
-                                    {p}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          <p className="text-[11px] text-zinc-500">
-                            {smartSlots.length > 0
-                              ? `Each post gets its own optimal slot — distributed across ${smartSlots.length} best times.`
-                              : 'All posts will be scheduled for the same time.'}
-                          </p>
-
-                          <div className="flex gap-2 justify-end">
-                            <button
-                              onClick={() => setShowScheduleAll(false)}
-                              className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              disabled={
-                                scheduleAllForm.platforms.length === 0
-                              }
-                              onClick={() => {
-                                // Dispatch per PostItem (carousel-aware) instead of
-                                // per raw image, so grouped carousels consume one
-                                // slot and get routed to scheduleCarousel — which
-                                // assigns a shared carouselGroupId the auto-post
-                                // worker can fan out as one multi-image call.
-                                const dispatch = (item: PostItem, date: string, time: string) => {
-                                  if (item.kind === 'carousel') {
-                                    scheduleCarousel(item, scheduleAllForm.platforms, date, time);
-                                  } else {
-                                    scheduleImage(item.img, scheduleAllForm.platforms, date, time);
-                                  }
-                                };
-                                if (smartSlots.length >= postItems.length) {
-                                  for (let i = 0; i < postItems.length; i++) {
-                                    const slot = smartSlots[i];
-                                    dispatch(postItems[i], slot.date, slot.time);
-                                  }
-                                } else {
-                                  for (const item of postItems) {
-                                    dispatch(item, scheduleAllForm.date, scheduleAllForm.time);
-                                  }
-                                }
-                                setShowScheduleAll(false);
-                                setSmartSlots([]);
-                              }}
-                              className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5"
-                            >
-                              <TrendingUp className="w-3.5 h-3.5" /> Smart Schedule {postItems.length} Posts
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                      <SmartScheduleModal
+                        slots={smartScheduler.slots}
+                        source={smartScheduler.source}
+                        form={smartScheduler.form}
+                        available={available}
+                        postCount={postItems.length}
+                        onFormChange={(patch) => smartScheduler.setForm((prev) => ({ ...prev, ...patch }))}
+                        onClose={() => { setShowScheduleAll(false); smartScheduler.clear(); }}
+                        onConfirm={() => {
+                          // Dispatch per PostItem (carousel-aware) so grouped carousels
+                          // consume one slot and route to scheduleCarousel.
+                          const form = smartScheduler.form;
+                          const slots = smartScheduler.slots;
+                          const dispatch = (item: PostItem, date: string, time: string) => {
+                            if (item.kind === 'carousel') {
+                              scheduleCarousel(item, form.platforms, date, time);
+                            } else {
+                              scheduleImage(item.img, form.platforms, date, time);
+                            }
+                          };
+                          if (slots.length >= postItems.length) {
+                            for (let i = 0; i < postItems.length; i++) {
+                              dispatch(postItems[i], slots[i].date, slots[i].time);
+                            }
+                          } else {
+                            for (const item of postItems) {
+                              dispatch(item, form.date, form.time);
+                            }
+                          }
+                          setShowScheduleAll(false);
+                          smartScheduler.clear();
+                        }}
+                      />
                     )}
                   </div>
                 );
