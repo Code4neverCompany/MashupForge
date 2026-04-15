@@ -418,6 +418,9 @@ Return ONLY the prompt text, nothing else.`;
         }
 
         // Step f: Schedule post (smart — uses engagement data)
+        // Captured below so step g can flip status to 'posted' if auto-post
+        // succeeds (LOW-1 from STORY-091 audit).
+        let scheduledPostId: string | null = null;
         if (autoSchedule) {
           setPipelineProgress({ current: index + 1, total, currentStep: `Scheduling ${modelLabel}`, currentIdea: idea.concept, currentIdeaId: idea.id });
           if (pipelinePlatforms.length === 0) {
@@ -447,6 +450,7 @@ Return ONLY the prompt text, nothing else.`;
               status: 'pending_approval',
               sourceIdeaId: idea.id,
             };
+            scheduledPostId = newPost.id;
             accumulatedPosts.push(newPost);
             // Functional updater so we append to the LATEST list — protects
             // against a long async pipeline run clobbering manual edits or
@@ -481,6 +485,16 @@ Return ONLY the prompt text, nothing else.`;
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'post failed');
             addLog('post', idea.id, 'success', `[${modelLabel}] Posted to ${pipelinePlatforms.join(', ')}`);
+            // LOW-1 fix (STORY-091): flip the scheduled post to 'posted' so
+            // the calendar doesn't keep it in 'pending_approval' forever.
+            if (scheduledPostId) {
+              const postedId = scheduledPostId;
+              updateSettings((prev) => ({
+                scheduledPosts: (prev.scheduledPosts || []).map((p) =>
+                  p.id === postedId ? { ...p, status: 'posted' as const } : p,
+                ),
+              }));
+            }
           } catch (e: unknown) {
             addLog('post', idea.id, 'error', `[${modelLabel}] Auto-post failed: ${getErrorMessage(e)}`);
           }
