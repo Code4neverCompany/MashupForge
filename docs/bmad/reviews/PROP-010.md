@@ -190,3 +190,45 @@ class of bug that just bit us).
 
 **Recommendation:** approve Option B + the load-path defensive check, ship
 as a single commit. Estimated 15 minutes including tsc/lint.
+
+---
+
+## Fix shipped — 2026-04-15 (commit `5df7495`)
+
+Maurice approved Option B. Shipped as a single commit touching only
+`hooks/useSettings.ts`:
+
+- `updateSettings` is now a synchronous pure setState wrapper. No
+  closure capture, no `await`, no race window.
+- New `useEffect([settings, isSettingsLoaded])` persists to IDB after
+  every committed state change. Skipped on initial seed via
+  `isSettingsLoaded` guard so the load-then-save loop doesn't fire on
+  mount.
+- Load path adds `idbSettings && typeof idbSettings === 'object'` so any
+  leftover corrupted/`undefined` value left by the pre-fix race is
+  ignored instead of hydrating into state.
+
+**Caller compatibility:** the prior signature was
+`async (...) => Promise<void>`, but the context type at
+`types/mashup.ts:544` already declared it as `=> void`, so callers were
+already discarding the promise. Verified zero `await updateSettings`
+matches across the codebase before shipping.
+
+**Migration:** none needed. The first normal save after the fix
+overwrites any `undefined` value in the store, and the load path's
+`typeof === 'object'` guard handles users who reload before that
+happens.
+
+**Verification checklist for QA:**
+1. Open settings, edit watermark/agentPrompt/savedPersonalities.
+2. Hard-reload (Ctrl+R in dev, full close+reopen in installed Tauri).
+3. Confirm fields persist instead of resetting to defaults.
+4. Repeat with rapid edits (mash a slider) to exercise the previously-
+   racy code path.
+
+**Out of scope (still open under PROP-010):** the actual dual-store
+consolidation between IDB and `~/.config/MashupForge/config.json`. That
+remains a worthwhile refactor but is not on the critical path now that
+the reset symptom is fixed.
+
+**Status:** DONE — fix shipped, ready for QA.
