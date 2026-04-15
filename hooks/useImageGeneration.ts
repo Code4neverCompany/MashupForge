@@ -328,8 +328,8 @@ Return ONLY a JSON array of strings, nothing else.`,
       if (strTags.length > 0) {
         updateImageTags(id, strTags);
       }
-    } catch (error) {
-      console.error('Error auto-tagging image:', error);
+    } catch {
+      // auto-tag is best-effort; silently skip on failure
     }
   };
 
@@ -347,8 +347,7 @@ Keep it under 100 words. Return ONLY the negative prompt text, nothing else.`,
         { mode: 'negative-prompt' }
       );
       return text.trim();
-    } catch (e) {
-      console.error('Failed to generate negative prompt', e);
+    } catch {
       return '';
     }
   };
@@ -390,8 +389,7 @@ Keep it under 100 words. Return ONLY the negative prompt text, nothing else.`,
           const parsed = extractJsonArrayFromLLM(text);
           const strTags = parsed.filter((t): t is string => typeof t === 'string');
           return strTags.length > 0 ? strTags : ['Mashup'];
-        } catch (e) {
-          console.error('Failed to auto-tag during generation', e);
+        } catch {
           return ['Mashup'];
         }
       };
@@ -431,8 +429,7 @@ Random Seed: ${Math.random()}`,
 
         try {
           itemsToGenerate = parseGeneratedItems(promptText);
-        } catch (e) {
-          console.error('Failed to parse prompts:', e, 'Raw:', promptText?.slice(0, 200));
+        } catch {
           itemsToGenerate = [
             { prompt: 'A Space Marine from Warhammer 40k wielding a lightsaber from Star Wars, standing on a desolate alien planet.', aspectRatio: '16:9', tags: ['Warhammer 40k', 'Star Wars', 'Crossover'] },
             { prompt: 'Batman wearing an Iron Man suit, perched on a gargoyle in a futuristic cyberpunk Gotham.', aspectRatio: '9:16', tags: ['DC', 'Marvel', 'Crossover'] },
@@ -471,8 +468,7 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
 
         try {
           itemsToGenerate = parseGeneratedItems(promptText2);
-        } catch (e) {
-          console.error('Failed to parse enhanced prompts:', e, 'Raw:', promptText2?.slice(0, 200));
+        } catch {
           itemsToGenerate = customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio }));
         }
 
@@ -584,7 +580,6 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
             setLastError(null);
           }
         } catch (imgError: unknown) {
-          console.error(`Error generating image ${i + 1} with ${modelName}:`, imgError);
           // Don't leave the placeholder stuck on 'generating'. Flip it
           // to 'error' with a human-readable reason so the UI can show
           // the failure instead of a forever-spinning loader.
@@ -619,7 +614,6 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
         setProgress('');
       }
     } catch (error: unknown) {
-      console.error('Generation error:', error);
       const message = getErrorMessage(error) || 'An error occurred during generation.';
       setGenerationError(message);
       setProgress('');
@@ -648,8 +642,7 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
           const parsed = extractJsonArrayFromLLM(text);
           const strTags = parsed.filter((t): t is string => typeof t === 'string');
           return strTags.length > 0 ? strTags : ['Mashup'];
-        } catch (e) {
-          console.error('Failed to auto-tag during generation', e);
+        } catch {
           return ['Mashup'];
         }
       };
@@ -662,8 +655,8 @@ Target Genres: ${settings.agentGenres?.join(', ') || 'None'}.
 The user wants to re-roll an image based on this idea: "${prompt}". Enhance this idea into a highly detailed, cinematic image generation prompt. You MUST strictly limit the content to ONLY these franchises: Star Wars, Marvel, DC, and Warhammer 40k. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers. Return ONLY the enhanced prompt as a single string.`,
           { mode: 'enhance' }
         );
-      } catch (e) {
-        console.error('Reroll prompt enhancement failed, using original prompt', e);
+      } catch {
+        // enhancement failed — proceed with original prompt
       }
 
       const finalPrompt = options?.negativePrompt
@@ -761,7 +754,6 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
           setLastError(null);
         }
       } catch (err) {
-        console.error('Leonardo reroll failed:', err);
         const lErr = err as LeonardoGenerationError;
         const classifications = lErr?.moderationClassification || [];
         if (classifications.length > 0) {
@@ -785,7 +777,6 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
 
       setProgress('');
     } catch (error: unknown) {
-      console.error('Reroll error:', error);
       const message = getErrorMessage(error) || 'An error occurred during reroll.';
       setGenerationError(message);
       setProgress('');
