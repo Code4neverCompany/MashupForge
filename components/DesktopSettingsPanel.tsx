@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Save, Monitor, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { DESKTOP_CONFIG_KEYS } from '@/lib/desktop-config-keys';
+import { UpdateBanner } from './UpdateBanner';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -164,6 +165,9 @@ export function DesktopSettingsPanel() {
         API keys stored in <code className="text-zinc-400">config.json</code> on your machine — never sent to any server.
         Injected into the sidecar process at launch.
       </p>
+
+      {/* Update check (STORY-122) */}
+      <UpdateBanner />
 
       {/* Key fields */}
       <div className="space-y-4">
