@@ -1,10 +1,12 @@
 'use client';
 
+import { useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
 import {
   Settings as SettingsIcon,
   X,
+  Check,
   Image as ImageIcon,
   Trash2,
   Folder,
@@ -100,7 +102,7 @@ interface SettingsModalProps {
 export function SettingsModal({
   onClose,
   settings,
-  updateSettings,
+  updateSettings: updateSettingsProp,
   isDesktop,
   piStatus,
   piBusy,
@@ -113,6 +115,17 @@ export function SettingsModal({
   deleteCollection,
   openCollectionModal,
 }: SettingsModalProps) {
+  const [showSaved, setShowSaved] = useState(false);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Wrapper that triggers the "Saved" indicator on every settings write.
+  const updateSettings: typeof updateSettingsProp = (patch) => {
+    updateSettingsProp(patch);
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+    setShowSaved(true);
+    savedTimer.current = setTimeout(() => setShowSaved(false), 1500);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
       <motion.div
@@ -127,12 +140,22 @@ export function SettingsModal({
             <SettingsIcon className="w-5 h-5 text-[#c5a062]" />
             Settings
           </h3>
-          <button
-            onClick={onClose}
-            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            <motion.span
+              animate={{ opacity: showSaved ? 1 : 0 }}
+              transition={{ duration: 0.2 }}
+              className="text-xs text-emerald-400 flex items-center gap-1 pointer-events-none select-none"
+            >
+              <Check className="w-3 h-3" />
+              Saved
+            </motion.span>
+            <button
+              onClick={onClose}
+              className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6 overflow-y-auto">
