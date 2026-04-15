@@ -286,18 +286,19 @@ Generate a set of 5-8 fitting tags for a gallery. Include:
 Return ONLY a JSON array of strings, nothing else.`,
         { mode: 'tag' }
       );
-      let tags: any = [];
+      let tags: unknown = [];
       try {
         tags = extractJsonFromLLM(text, 'array');
-        if (!Array.isArray(tags) && typeof tags === 'object') {
-          tags = tags.tags || Object.values(tags).flat();
+        if (!Array.isArray(tags) && typeof tags === 'object' && tags !== null) {
+          const obj = tags as Record<string, unknown>;
+          tags = (obj.tags as unknown[]) ?? Object.values(obj).flat();
         }
       } catch {
         tags = ['Mashup'];
       }
       if (Array.isArray(tags)) {
-        tags = tags.map((t: string) => t === 'Warhammer 40,000' ? 'Warhammer 40k' : t);
-        updateImageTags(id, tags);
+        const strTags = (tags as string[]).map((t) => t === 'Warhammer 40,000' ? 'Warhammer 40k' : t);
+        updateImageTags(id, strTags);
       }
     } catch (error) {
       console.error('Error auto-tagging image:', error);

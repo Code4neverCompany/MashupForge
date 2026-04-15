@@ -546,9 +546,9 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
       const parsed = extractJsonFromLLM(text, 'object');
       const theme = typeof parsed?.theme === 'string' ? parsed.theme.trim() : '';
       const variations = Array.isArray(parsed?.variations) ? parsed.variations : [];
-      const ideasOut = variations
-        .filter((v: any) => v && typeof v.concept === 'string' && v.concept.trim())
-        .map((v: any, i: number) =>
+      const ideasOut = (variations as unknown[])
+        .filter((v): v is Record<string, unknown> => typeof v === 'object' && v !== null && typeof (v as Record<string, unknown>).concept === 'string' && Boolean((v as Record<string, unknown>).concept))
+        .map((v, i) =>
           buildIdea(
             String(v.concept),
             theme ? `Theme: ${theme}${v.context ? ` — ${v.context}` : ''}` : (typeof v.context === 'string' ? v.context : ''),
@@ -563,9 +563,9 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
 
     const parsed = extractJsonFromLLM(text, 'array');
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((idea: any) => idea && typeof idea.concept === 'string' && idea.concept.trim())
-      .map((idea: any, i: number) =>
+    return (parsed as unknown[])
+      .filter((idea): idea is Record<string, unknown> => typeof idea === 'object' && idea !== null && typeof (idea as Record<string, unknown>).concept === 'string' && Boolean((idea as Record<string, unknown>).concept))
+      .map((idea, i) =>
         buildIdea(
           String(idea.concept),
           typeof idea.context === 'string' ? idea.context : '',
