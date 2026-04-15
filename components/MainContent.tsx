@@ -231,6 +231,9 @@ export function MainContent() {
   const [postReadySelected, setPostReadySelected] = useState<Set<string>>(new Set());
   const [batchCaptioning, setBatchCaptioning] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
+  // Captioning tab "remove" confirmation — tracks which image id is pending
+  // confirmation so we can show an inline ✓/✗ pair instead of window.confirm.
+  const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
   // Image id currently copied (for the brief "Copied" affordance on the
   // Post Ready tab). Auto-clears after a short timeout.
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -2578,17 +2581,35 @@ export function MainContent() {
                                 >
                                   <Check className="w-3.5 h-3.5" />
                                 </button>
-                                <button
-                                  onClick={() => {
-                                    if (window.confirm('Remove from Captioning? The image stays in your Gallery.')) {
-                                      patchImage(img, { postCaption: '', postHashtags: [], tags: [] });
-                                    }
-                                  }}
-                                  className="px-3 py-1.5 text-xs bg-red-600/80 hover:bg-red-500 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
-                                  title="Delete image"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                {pendingRemoveId === img.id ? (
+                                  <div className="flex gap-1" title="Remove from Captioning? Image stays in Gallery.">
+                                    <button
+                                      onClick={() => {
+                                        patchImage(img, { postCaption: '', postHashtags: [], tags: [] });
+                                        setPendingRemoveId(null);
+                                      }}
+                                      className="px-2 py-1.5 text-xs bg-red-600/90 hover:bg-red-500 text-white rounded-lg flex items-center gap-1 transition-colors"
+                                      title="Confirm remove"
+                                    >
+                                      <Check className="w-3 h-3" /> Remove
+                                    </button>
+                                    <button
+                                      onClick={() => setPendingRemoveId(null)}
+                                      className="px-2 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg transition-colors"
+                                      title="Cancel"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => setPendingRemoveId(img.id)}
+                                    className="px-3 py-1.5 text-xs bg-red-600/20 hover:bg-red-600/80 text-red-400 hover:text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                    title="Remove from Captioning (image stays in Gallery)"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
