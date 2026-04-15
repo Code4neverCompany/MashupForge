@@ -57,8 +57,8 @@ export async function* streamAI(
   if (!res.ok || !res.body) {
     let errMsg = `pi request failed (${res.status})`;
     try {
-      const err = await res.json();
-      if (err?.error) errMsg = err.error;
+      const err = await res.json() as Record<string, unknown>;
+      if (typeof err?.error === 'string') errMsg = err.error;
     } catch {
       // ignore
     }
@@ -85,8 +85,8 @@ export async function* streamAI(
         if (!data) continue;
         if (data === '[DONE]') return;
         try {
-          const parsed = JSON.parse(data);
-          if (parsed.error) throw new Error(parsed.error);
+          const parsed = JSON.parse(data) as Record<string, unknown>;
+          if (parsed.error) throw new Error(String(parsed.error));
           if (typeof parsed.text === 'string' && parsed.text.length > 0) {
             yield parsed.text;
           }
