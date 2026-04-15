@@ -88,6 +88,7 @@ import type { CarouselGroup } from './MashupContext';
 import TimePicker24 from './TimePicker24';
 import { formatTime24, formatTimeShort } from './TimePicker24';
 import { SettingsModal, type PiStatus, type PiBusy } from './SettingsModal';
+import { CollectionModal } from './CollectionModal';
 
 /**
  * Auto-sizing textarea that grows with its content. Resets to
@@ -4883,62 +4884,21 @@ export function MainContent() {
       )}
 
       {showCollectionModal && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full sm:max-w-md bg-zinc-900/90 backdrop-blur-xl border-0 sm:border border-zinc-800/60 rounded-none sm:rounded-2xl shadow-2xl overflow-hidden h-full sm:h-auto max-h-[100dvh] sm:max-h-none"
-          >
-            <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-white">Create New Collection</h3>
-              <button onClick={() => setShowCollectionModal(false)} className="text-zinc-500 hover:text-white transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Collection Name</label>
-                <input 
-                  type="text" 
-                  value={newCollectionName}
-                  onChange={(e) => setNewCollectionName(e.target.value)}
-                  placeholder="e.g., Epic Battles, Cyberpunk DC..."
-                  className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Description (Optional)</label>
-                <textarea 
-                  value={newCollectionDesc}
-                  onChange={(e) => setNewCollectionDesc(e.target.value)}
-                  placeholder="What is this collection about?"
-                  className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 min-h-[100px] resize-none"
-                />
-              </div>
-            </div>
-            <div className="p-6 border-t border-zinc-800 bg-zinc-950/50 flex justify-end gap-3">
-              <button 
-                onClick={() => setShowCollectionModal(false)}
-                className="px-4 py-2 text-zinc-400 hover:text-white transition-colors text-sm font-medium"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={async () => {
-                  const imageIds = selectedForBatch.size > 0 ? Array.from(selectedForBatch) : undefined;
-                  await createCollection(newCollectionName.trim() || undefined, newCollectionDesc.trim() || undefined, imageIds);
-                  setNewCollectionName('');
-                  setNewCollectionDesc('');
-                  setShowCollectionModal(false);
-                  if (imageIds) setSelectedForBatch(new Set());
-                }}
-                className="btn-blue-sm px-6 py-2 text-sm rounded-lg"
-              >
-                Create Collection
-              </button>
-            </div>
-          </motion.div>
-        </div>
+        <CollectionModal
+          onClose={() => setShowCollectionModal(false)}
+          name={newCollectionName}
+          onNameChange={setNewCollectionName}
+          description={newCollectionDesc}
+          onDescriptionChange={setNewCollectionDesc}
+          onCreate={async () => {
+            const imageIds = selectedForBatch.size > 0 ? Array.from(selectedForBatch) : undefined;
+            await createCollection(newCollectionName.trim() || undefined, newCollectionDesc.trim() || undefined, imageIds);
+            setNewCollectionName('');
+            setNewCollectionDesc('');
+            setShowCollectionModal(false);
+            if (imageIds) setSelectedForBatch(new Set());
+          }}
+        />
       )}
 
       {/* Bulk Tag Modal */}
