@@ -119,7 +119,7 @@ export async function POST(req: Request) {
   try {
     const { caption, platforms, mediaUrl, mediaUrls, mediaBase64, credentials } = await req.json();
 
-    const results: any = {};
+    const results: Record<string, unknown> = {};
 
     // Helper to get image buffers
     const imageItems: { buffer: Buffer, mimeType: string, url?: string }[] = [];

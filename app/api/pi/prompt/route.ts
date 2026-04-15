@@ -55,7 +55,7 @@ function directiveFor(mode: unknown): string | null {
 }
 
 export async function POST(req: Request) {
-  let body: any;
+  let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {

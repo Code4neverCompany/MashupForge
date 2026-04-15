@@ -4,7 +4,7 @@ import { getErrorMessage } from '@/lib/errors';
 
 export async function POST(req: Request) {
   try {
-    let body: any = null;
+    let body: Record<string, unknown> | null = null;
     try {
       body = await req.json();
     } catch {
