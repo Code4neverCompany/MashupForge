@@ -72,14 +72,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     // [{moderationClassification: ["NSFW", "TRADEMARK"]}] — the nesting
     // is historical, one entry per pipeline stage. Clients only care
     // about the union so we deduplicate here.
-    const extractModeration = (gen: any): {
+    const extractModeration = (gen: Record<string, unknown>): {
       classifications: string[];
-      raw: any;
+      raw: unknown[];
     } => {
-      const mods = Array.isArray(gen?.prompt_moderations) ? gen.prompt_moderations : [];
+      const mods: unknown[] = Array.isArray(gen?.prompt_moderations) ? (gen.prompt_moderations as unknown[]) : [];
       const classifications: string[] = [];
       for (const m of mods) {
-        const list = m?.moderationClassification;
+        const list = (m as Record<string, unknown>)?.moderationClassification;
         if (Array.isArray(list)) {
           for (const c of list) {
             if (typeof c === 'string' && c.trim()) classifications.push(c.trim());
