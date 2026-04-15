@@ -87,7 +87,6 @@ import { findBestSlots, fetchInstagramEngagement, loadEngagementData, type SlotS
 import type { CarouselGroup } from './MashupContext';
 import TimePicker24 from './TimePicker24';
 import { formatTime24, formatTimeShort } from './TimePicker24';
-import { DesktopSettingsPanel } from './DesktopSettingsPanel';
 import { SettingsModal, type PiStatus, type PiBusy } from './SettingsModal';
 
 /**
