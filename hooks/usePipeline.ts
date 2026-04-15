@@ -320,11 +320,13 @@ Return ONLY the prompt text, nothing else.`;
             saveImage(withCaption);
             addLog('caption', idea.id, 'success', `[carousel] Caption: "${sharedCaption.slice(0, 60)}..."`);
           } else {
-            addLog('caption', idea.id, 'error', `[carousel] Caption returned empty`);
+            sharedCaption = expandedPrompt;
+            addLog('caption', idea.id, 'error', `[carousel] Caption returned empty — using prompt as fallback`);
           }
         } catch (e: unknown) {
           if (getErrorMessage(e) === '__SKIP_IDEA__') throw e;
-          addLog('caption', idea.id, 'error', `[carousel] Caption failed: ${getErrorMessage(e)}`);
+          sharedCaption = expandedPrompt;
+          addLog('caption', idea.id, 'error', `[carousel] Caption failed: ${getErrorMessage(e)} — using prompt as fallback`);
         }
       }
 
@@ -403,10 +405,15 @@ Return ONLY the prompt text, nothing else.`;
               saveImage(withCaption);
               addLog('caption', idea.id, 'success', `[${modelLabel}] Caption: "${withCaption.postCaption?.slice(0, 60)}..."`);
             } else {
-              addLog('caption', idea.id, 'error', `[${modelLabel}] Caption returned empty`);
+              // Fallback: use expanded prompt as caption so the scheduled
+              // post is never blank.
+              captionedImg = { ...latestImage, postCaption: expandedPrompt };
+              addLog('caption', idea.id, 'error', `[${modelLabel}] Caption returned empty — using prompt as fallback`);
             }
           } catch (e: unknown) {
-            addLog('caption', idea.id, 'error', `[${modelLabel}] Caption failed: ${getErrorMessage(e)}`);
+            // Same fallback on exception so scheduling always has a caption.
+            captionedImg = { ...latestImage, postCaption: expandedPrompt };
+            addLog('caption', idea.id, 'error', `[${modelLabel}] Caption failed: ${getErrorMessage(e)} — using prompt as fallback`);
           }
         }
 
