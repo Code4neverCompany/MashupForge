@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getPiPath, isPiInstalled } from '@/lib/pi-setup';
 import { getErrorMessage } from '@/lib/errors';
-import { execSync, spawn } from 'node:child_process';
+import { isServerless } from '@/lib/runtime-env';
+import { spawn, spawnSync } from 'node:child_process';
 import { platform } from 'node:os';
 
 export const runtime = 'nodejs';
@@ -16,14 +17,6 @@ export const runtime = 'nodejs';
  * a serverless environment we short-circuit with 503 so the caller sees
  * a clear error instead of a raw shell failure.
  */
-function isServerless(): boolean {
-  return Boolean(
-    process.env.VERCEL ||
-      process.env.AWS_LAMBDA_FUNCTION_NAME ||
-      process.env.NETLIFY ||
-      process.env.CF_PAGES
-  );
-}
 
 export async function POST() {
   if (isServerless()) {
@@ -70,12 +63,19 @@ export async function POST() {
     }
 
     // POSIX desktop: use tmux as before so Linux dev boxes keep working.
-    try { execSync('tmux kill-session -t pi-setup 2>/dev/null'); } catch {}
-    execSync(
-      `tmux new-session -d -s pi-setup -x 120 -y 30 ` +
-      `'${piPath} /login'`,
+    // SEC-003: pass the pi binary path as a separate spawn argument
+    // instead of interpolating it into a single-quoted shell fence.
+    // A piPath containing a single quote (or spaces, semicolons, etc.)
+    // would otherwise break out of the fence and execute as shell code.
+    spawnSync('tmux', ['kill-session', '-t', 'pi-setup'], { stdio: 'ignore' });
+    const tmuxResult = spawnSync(
+      'tmux',
+      ['new-session', '-d', '-s', 'pi-setup', '-x', '120', '-y', '30', piPath, '/login'],
       { encoding: 'utf8' },
     );
+    if (tmuxResult.status !== 0) {
+      throw new Error(`tmux new-session failed (exit ${tmuxResult.status}): ${tmuxResult.stderr?.trim() || 'unknown error'}`);
+    }
 
     return NextResponse.json({
       success: true,

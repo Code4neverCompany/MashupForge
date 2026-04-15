@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server';
 import { start, getStatus, setUserSystemPrompt } from '@/lib/pi-client';
 import { getErrorMessage } from '@/lib/errors';
+import { isServerless } from '@/lib/runtime-env';
 
 export async function POST(req: Request) {
+  if (isServerless()) {
+    return NextResponse.json(
+      { success: false, error: 'pi start is desktop-only — sidecar process is unavailable on serverless runtimes.' },
+      { status: 503 },
+    );
+  }
   try {
     let body: Record<string, unknown> | null = null;
     try {

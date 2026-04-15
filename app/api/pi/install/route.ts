@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPiPath, installPi } from '@/lib/pi-setup';
 import { getErrorMessage } from '@/lib/errors';
+import { isServerless } from '@/lib/runtime-env';
 import { homedir, tmpdir } from 'node:os';
 
 // Force Node runtime (not edge) — installPi uses spawnSync which edge lacks.
@@ -32,6 +33,15 @@ export function GET() {
 }
 
 export async function POST() {
+  if (isServerless()) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'pi install is desktop-only — spawnSync is unavailable on serverless runtimes.',
+      },
+      { status: 503 },
+    );
+  }
   try {
     const existing = getPiPath();
     if (existing) {
