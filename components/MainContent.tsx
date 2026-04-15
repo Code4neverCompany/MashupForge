@@ -186,12 +186,13 @@ export function MainContent() {
   const [isAutoTagging, setIsAutoTagging] = useState(false);
 
   const checkApiKey = async () => {
-    if (typeof window !== 'undefined' && (window as any).aistudio) {
-      const has = await (window as any).aistudio.hasSelectedApiKey();
+    const w = window as typeof window & { aistudio?: { hasSelectedApiKey(): Promise<boolean>; openSelectKey(): Promise<void> } };
+    if (typeof window !== 'undefined' && w.aistudio) {
+      const has = await w.aistudio.hasSelectedApiKey();
       setHasApiKey(has);
       if (!has) {
-        await (window as any).aistudio.openSelectKey();
-        const nowHas = await (window as any).aistudio.hasSelectedApiKey();
+        await w.aistudio.openSelectKey();
+        const nowHas = await w.aistudio.hasSelectedApiKey();
         setHasApiKey(nowHas);
       }
     }
