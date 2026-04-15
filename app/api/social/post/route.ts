@@ -325,7 +325,7 @@ export async function POST(req: Request) {
       const firstLine = (caption || '').split('\n')[0] || 'Mashup';
       const title = firstLine.length > 100 ? firstLine.slice(0, 97) + '…' : firstLine;
 
-      const pinBody: Record<string, any> = {
+      const pinBody: Record<string, unknown> = {
         title,
         description: caption || '',
         media_source: { source_type: 'image_url', url: publicUrl },

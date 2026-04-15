@@ -85,7 +85,7 @@ export async function POST(req: Request) {
     const apiModelId = MODEL_ID_MAP[modelId] || modelId;
 
     // ── Build v2 request body ────────────────────────────────────────────
-    const parameters: Record<string, any> = {
+    const parameters: Record<string, unknown> = {
       prompt: String(prompt),
       width: Number(width) || 1024,
       height: Number(height) || 1024,
@@ -101,7 +101,7 @@ export async function POST(req: Request) {
     // Model-specific parameters
     if (modelId === 'gpt-image-1.5') {
       // GPT Image-1.5: max 4 images per request
-      parameters.quantity = Math.min(parameters.quantity, 4);
+      parameters.quantity = Math.min(parameters.quantity as number, 4);
     }
 
     // Nano Banana 2 / Pro: uses style_ids (UUID array)

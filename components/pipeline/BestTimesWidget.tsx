@@ -2,9 +2,18 @@
 
 import { useState } from 'react';
 import { TrendingUp } from 'lucide-react';
+import type { UserSettings } from '@/types/mashup';
 
-export function BestTimesWidget({ settings }: { settings: any }) {
-  const [insights, setInsights] = useState<any>(null);
+interface BestTimesData {
+  success: boolean;
+  source: 'instagram' | 'default' | 'partial' | 'error';
+  postCount?: number;
+  bestTimes?: Array<{ hour: number; weight: number }>;
+  bestDays?: Array<{ day: string; multiplier: number }>;
+}
+
+export function BestTimesWidget({ settings }: { settings: UserSettings }) {
+  const [insights, setInsights] = useState<BestTimesData | null>(null);
   const [loading, setLoading] = useState(false);
 
   const fetchInsights = async () => {
@@ -18,7 +27,7 @@ export function BestTimesWidget({ settings }: { settings: any }) {
           igAccountId: settings.apiKeys?.instagram?.igAccountId,
         }),
       });
-      const data = await res.json();
+      const data = await res.json() as BestTimesData;
       setInsights(data);
     } catch {
       setInsights({ success: false, source: 'error' });
@@ -52,7 +61,7 @@ export function BestTimesWidget({ settings }: { settings: any }) {
                 : 'Research-backed + partial data'}
           </p>
           <div className="grid grid-cols-5 gap-1.5">
-            {insights.bestTimes?.map((t: any, i: number) => (
+            {insights.bestTimes?.map((t, i) => (
               <div
                 key={i}
                 className="flex flex-col items-center px-2 py-1.5 bg-zinc-800/50 border border-[#c5a062]/15 rounded-lg"
@@ -67,9 +76,9 @@ export function BestTimesWidget({ settings }: { settings: any }) {
               </div>
             ))}
           </div>
-          {insights.bestDays?.length > 0 && (
+          {insights.bestDays && insights.bestDays.length > 0 && (
             <div className="flex gap-1.5 mt-1">
-              {insights.bestDays.map((d: any, i: number) => (
+              {insights.bestDays.map((d, i) => (
                 <span key={i} className="text-[10px] px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 rounded">
                   {d.day} ({Math.round((d.multiplier || 0) * 100)}%)
                 </span>

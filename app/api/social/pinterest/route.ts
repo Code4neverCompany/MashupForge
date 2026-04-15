@@ -83,7 +83,7 @@ export async function POST(req: Request) {
     const firstLine = typeof caption === 'string' ? caption.split('\n')[0] : '';
     const title = firstLine.length > 100 ? firstLine.slice(0, 97) + '…' : firstLine || 'Mashup';
 
-    const pinBody: Record<string, any> = {
+    const pinBody: Record<string, unknown> = {
       title,
       description: typeof caption === 'string' ? caption : '',
       media_source: {

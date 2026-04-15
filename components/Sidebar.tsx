@@ -20,7 +20,7 @@ interface Message {
   id: string;
   role: 'user' | 'model';
   text: string;
-  groundingChunks?: any[];
+  groundingChunks?: unknown[];
   recommendations?: string[];
   trendingSources?: TrendSource[];
   ideas?: Array<{ context: string; concept: string }>;
@@ -347,7 +347,8 @@ Return ONLY the JSON array, no prose.`;
             {msg.groundingChunks && msg.groundingChunks.length > 0 && (
               <div className="mt-2 space-y-1 w-full pl-2 border-l-2 border-zinc-700">
                 <p className="text-xs text-zinc-500 font-medium">Sources:</p>
-                {msg.groundingChunks.map((chunk, j) => {
+                {msg.groundingChunks.map((raw, j) => {
+                  const chunk = raw as { web?: { uri?: string; title?: string } };
                   if (chunk.web?.uri) {
                     return (
                       <a

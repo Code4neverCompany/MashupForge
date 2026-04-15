@@ -15,21 +15,17 @@ export async function POST(req: Request) {
       ? 'https://cloud.leonardo.ai/api/rest/v2/generations' 
       : 'https://cloud.leonardo.ai/api/rest/v1/generations-motion-svd';
 
-    let body: any;
+    let body: Record<string, unknown>;
     if (isKling) {
-      body = {
-        model: model === 'kling-video-o-3' ? 'kling-video-o-3' : "kling-3.0",
-        public: false,
-        parameters: {
-          prompt: String(prompt || 'Animate this image'),
-          duration: Number(duration) || 3,
-          mode: "RESOLUTION_1080",
-          motion_has_audio: true,
-        }
+      const parameters: Record<string, unknown> = {
+        prompt: String(prompt || 'Animate this image'),
+        duration: Number(duration) || 3,
+        mode: "RESOLUTION_1080",
+        motion_has_audio: true,
       };
 
       if (imageId) {
-        body.parameters.guidances = {
+        parameters.guidances = {
           start_frame: [
             {
               image: {
@@ -40,9 +36,15 @@ export async function POST(req: Request) {
           ]
         };
       } else {
-        body.parameters.width = 1920;
-        body.parameters.height = 1080;
+        parameters.width = 1920;
+        parameters.height = 1080;
       }
+
+      body = {
+        model: model === 'kling-video-o-3' ? 'kling-video-o-3' : "kling-3.0",
+        public: false,
+        parameters,
+      };
     } else {
       body = {
         imageId: imageId,
