@@ -77,14 +77,22 @@ fn wait_for_port(port: u16, timeout: Duration) -> bool {
 
 /// Resolve a named subdirectory inside the Tauri resources dir.
 ///
-/// Tauri v2's resource bundling semantics vary with the glob pattern used
-/// in `tauri.conf.json`. `"resources/**/*"` can either strip the leading
-/// `resources/` segment (landing files at `<resource_dir>/node/...`) or
-/// preserve it (landing at `<resource_dir>/resources/node/...`).
+/// STORY-110 resolved the long-standing question about how Tauri v2
+/// places globbed resources. Inspection of the signed MSI (msiinfo
+/// export File/Directory tables against commit 5edb4e0) confirmed
+/// that `"resources/**/*"` in array-form produces the NESTED layout:
+/// files land at `<resource_dir>/resources/<name>/...`, preserving
+/// the full relative path via `resource_relpath()` in
+/// tauri-utils-2.8.3/src/resources.rs:216-219. The flat layout
+/// (prefix stripped) only occurs with the map form + glob key, which
+/// we intentionally do not use because it breaks local `cargo check`
+/// on WSL where the gitignored staging dirs are empty.
 ///
-/// STORY-110 fix: rather than guess, try both layouts and return the
-/// first one that exists. `startup.log` records which layout won so the
-/// config can be cleaned up once a definitive answer is captured.
+/// We nevertheless keep the flat-layout probe as insurance: a future
+/// Tauri upgrade could change the default, and the cost of the extra
+/// `exists()` call is ~1µs on Windows. If this ever fires in
+/// production, `log_dir_tree` will have already written the real
+/// layout to `startup.log` so we can re-verify in seconds.
 fn find_resource_subdir(resource_dir: &Path, name: &str) -> Option<PathBuf> {
     let flat = resource_dir.join(name);
     if flat.exists() {
