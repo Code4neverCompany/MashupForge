@@ -13,7 +13,10 @@ export function getErrorMessage(err: unknown): string {
     if (typeof msg === 'string') return msg;
   }
   try {
-    return JSON.stringify(err);
+    // JSON.stringify(undefined) returns undefined (not a string), which
+    // would violate the declared `string` return type. Coalesce to the
+    // generic fallback so undefined input maps to 'Unknown error'.
+    return JSON.stringify(err) ?? 'Unknown error';
   } catch {
     return 'Unknown error';
   }

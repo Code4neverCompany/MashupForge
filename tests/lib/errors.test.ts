@@ -28,13 +28,8 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(null)).toBe('null');
   });
 
-  // KNOWN BUG (DISCOVERY-2026-04-15): JSON.stringify(undefined) returns
-  // undefined (not 'undefined'), so the function returns undefined — a
-  // type-system lie since its declared return is `string`. Filed as a
-  // routine fix; this test pins the current buggy behavior so the fix
-  // commit will surface the change explicitly.
-  it('returns undefined for undefined input (KNOWN BUG)', () => {
-    expect(getErrorMessage(undefined) as unknown).toBe(undefined);
+  it('returns "Unknown error" for undefined input', () => {
+    expect(getErrorMessage(undefined)).toBe('Unknown error');
   });
 
   it('ignores non-string .message fields on object errors', () => {
