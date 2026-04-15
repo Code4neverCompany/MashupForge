@@ -1618,7 +1618,7 @@ export function MainContent() {
                       <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                         {selectedForBatch.size > 0 && (
                           <>
-                            <span className="px-2 py-1 text-[11px] font-medium bg-emerald-500/20 text-emerald-400 rounded-full border border-emerald-500/30">
+                            <span className="px-2 py-1 text-[11px] font-medium bg-[#00e6ff]/15 text-[#00e6ff] rounded-full border border-[#00e6ff]/30">
                               {selectedForBatch.size} selected
                             </span>
                             <button
@@ -1660,7 +1660,7 @@ export function MainContent() {
                         onClick={() => setFilterModel('all')}
                         className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
                           filterModel === 'all'
-                            ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                            ? 'bg-[#00e6ff]/15 text-[#00e6ff] border border-[#00e6ff]/30'
                             : 'text-zinc-500 hover:text-zinc-300 border border-zinc-800/60'
                         }`}
                       >
@@ -1672,7 +1672,7 @@ export function MainContent() {
                           onClick={() => setFilterModel(m.id)}
                           className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
                             filterModel === m.id
-                              ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                              ? 'bg-[#00e6ff]/15 text-[#00e6ff] border border-[#00e6ff]/30'
                               : 'text-zinc-500 hover:text-zinc-300 border border-zinc-800/60'
                           }`}
                         >
@@ -2186,7 +2186,7 @@ export function MainContent() {
                         <p className="text-xs text-zinc-500 mt-1">
                           {captioned.length} / {all.length} captioned
                           {batchProgress && (
-                            <span className="ml-3 text-emerald-400">
+                            <span className="ml-3 text-[#00e6ff]">
                               Batch: {batchProgress.done}/{batchProgress.total}
                             </span>
                           )}
