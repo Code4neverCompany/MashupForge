@@ -5,6 +5,7 @@ import { streamAIToString, extractJsonArrayFromLLM } from '@/lib/aiClient';
 import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import { MASTERPROMPT_INSTRUCTIONS } from '@/lib/masterpromptTemplate';
 import { getErrorMessage } from '@/lib/errors';
+import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import {
   type GeneratedImage,
   type GenerateOptions,
@@ -157,7 +158,7 @@ export type LeonardoGenerationError = Error & {
 };
 
 async function submitLeonardoAndPoll(params: LeonardoSubmitParams): Promise<LeonardoSuccess> {
-  const res = await fetch('/api/leonardo', {
+  const res = await fetchWithRetry('/api/leonardo', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

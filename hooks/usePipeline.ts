@@ -13,6 +13,7 @@ import {
 } from '../types/mashup';
 import { findBestSlot, findBestSlots, fetchInstagramEngagement, loadEngagementData, type CachedEngagement, type EngagementHour, type EngagementDay } from '@/lib/smartScheduler';
 import { getErrorMessage } from '@/lib/errors';
+import { fetchWithRetry } from '@/lib/fetchWithRetry';
 
 interface UsePipelineDeps {
   ideas: Idea[];
@@ -227,7 +228,7 @@ Return ONLY the prompt text, nothing else.`;
     let trendingContext = '';
     setPipelineProgress({ current: index + 1, total, currentStep: 'Researching trending topics', currentIdea: idea.concept, currentIdeaId: idea.id });
     try {
-      const res = await fetch('/api/trending', {
+      const res = await fetchWithRetry('/api/trending', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
