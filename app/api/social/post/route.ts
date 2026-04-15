@@ -324,11 +324,12 @@ export async function POST(req: Request) {
             body: formData,
           });
           if (!uploadRes.ok) throw new Error('uguu upload failed');
-          const uploadData = await uploadRes.json();
-          if (!uploadData?.success || !uploadData?.files?.[0]?.url) {
+          const uploadData = await uploadRes.json() as Record<string, unknown>;
+          const uploadFiles2 = uploadData.files as Array<Record<string, unknown>> | undefined;
+          if (!uploadData?.success || !uploadFiles2?.[0]?.url) {
             throw new Error('uguu returned invalid response');
           }
-          publicUrl = uploadData.files[0].url;
+          publicUrl = uploadFiles2[0].url as string;
         } catch (e: unknown) {
           throw new Error(`Failed to host image for Pinterest: ${getErrorMessage(e)}`);
         }

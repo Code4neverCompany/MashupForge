@@ -64,14 +64,15 @@ export async function POST(req: Request) {
           { status: 502 }
         );
       }
-      const uploadData = await uploadRes.json();
-      if (!uploadData?.success || !uploadData?.files?.[0]?.url) {
+      const uploadData = await uploadRes.json() as Record<string, unknown>;
+      const uploadFiles = uploadData.files as Array<Record<string, unknown>> | undefined;
+      if (!uploadData?.success || !uploadFiles?.[0]?.url) {
         return NextResponse.json(
           { error: 'Temporary host returned an invalid response' },
           { status: 502 }
         );
       }
-      publicUrl = uploadData.files[0].url;
+      publicUrl = uploadFiles[0].url as string;
     }
 
     if (!publicUrl) {
