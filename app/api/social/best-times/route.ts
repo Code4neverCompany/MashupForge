@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getErrorMessage } from '@/lib/errors';
 
+interface IgMediaPost {
+  timestamp?: string;
+  like_count?: number;
+  comments_count?: number;
+}
+
 /**
  * Fetch Instagram engagement insights to determine best posting times.
  * Client calls this to prime the smart scheduler cache.
@@ -44,8 +50,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const data = await res.json();
-    const posts = data.data || [];
+    const data = await res.json() as { data?: IgMediaPost[] };
+    const posts: IgMediaPost[] = data.data ?? [];
 
     if (posts.length < 3) {
       return NextResponse.json({
