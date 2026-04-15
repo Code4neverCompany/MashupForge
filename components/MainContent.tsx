@@ -710,8 +710,8 @@ export function MainContent() {
       setTimeout(() => {
         setCopiedId((current) => (current === feedbackKey ? null : current));
       }, 1500);
-    } catch (err) {
-      console.error('Clipboard write failed', err);
+    } catch {
+      showToast('Failed to copy to clipboard', 'error');
     }
   };
 
@@ -747,8 +747,8 @@ export function MainContent() {
         setPreparingPostId(targets[i].id);
         try {
           await generatePostContent(targets[i]);
-        } catch (err) {
-          console.error('Batch caption failed for', targets[i].id, err);
+        } catch {
+          // individual batch failure — continue to next image
         }
         setBatchProgress({ done: i + 1, total: targets.length });
       }
@@ -947,8 +947,7 @@ export function MainContent() {
         aspectRatio: aspectRatioStr && ['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'].includes(aspectRatioStr) ? aspectRatioStr : '16:9',
         imageSize: imageSizeStr && ['512px', '1K', '2K', '4K'].includes(imageSizeStr) ? imageSizeStr : '1K',
       }));
-    } catch (error) {
-      console.error('Error pushing idea to compare:', error);
+    } catch {
       setComparisonPrompt(prompt);
     } finally {
       setIsPushing(false);
@@ -993,8 +992,8 @@ export function MainContent() {
           setComparisonModels(parsed);
           return;
         }
-      } catch (e) {
-        console.error('Failed to parse stored comparison models', e);
+      } catch {
+        // parse failure — fall through to defaults below
       }
     }
     // Default: all three models selected
@@ -1130,12 +1129,7 @@ export function MainContent() {
               statusPatches.set(gp.id, 'posted');
               processedIds.add(gp.id);
             });
-          } catch (e: unknown) {
-            console.error(
-              'Auto-post carousel failed for group',
-              post.carouselGroupId,
-              getErrorMessage(e)
-            );
+          } catch {
             groupPosts.forEach((gp) => {
               statusPatches.set(gp.id, 'failed');
               processedIds.add(gp.id);
@@ -1168,8 +1162,7 @@ export function MainContent() {
           if (!res.ok) throw new Error(data.error || 'Failed to post');
 
           statusPatches.set(post.id, 'posted');
-        } catch (e: unknown) {
-          console.error('Auto-post failed for', post.id, getErrorMessage(e));
+        } catch {
           statusPatches.set(post.id, 'failed');
         }
       }
@@ -1244,8 +1237,8 @@ export function MainContent() {
     setIsComparing(true);
     try {
       await generateComparison(comparisonPrompt, comparisonModels, comparisonOptions, modelPreviews);
-    } catch (e) {
-      console.error('Comparison failed', e);
+    } catch {
+      // generateComparison already surfaces error via setComparisonError
     } finally {
       setIsComparing(false);
     }
@@ -1289,8 +1282,8 @@ export function MainContent() {
           defaultAnimationDuration: duration as 3 | 5 | 10,
           defaultAnimationStyle: style
         });
-      } catch (e) {
-        console.error('Failed to parse dynamic video settings', e);
+      } catch {
+        // parse failure — use settings defaults for duration/style
       }
 
       let videoPrompt = style === 'Standard' ? img.prompt : `${img.prompt}. Motion style: ${style}`;
@@ -1300,8 +1293,8 @@ export function MainContent() {
           { mode: 'enhance' }
         );
         if (enhanced.trim()) videoPrompt = enhanced.trim();
-      } catch (e) {
-        console.error('Failed to enhance video prompt, using fallback', e);
+      } catch {
+        // enhancement failed — proceed with original videoPrompt
       }
 
       const res = await fetch('/api/leonardo-video', {
@@ -1372,8 +1365,7 @@ export function MainContent() {
               const parsed = extractJsonArrayFromLLM(text);
               const strTags = parsed.filter((t): t is string => typeof t === 'string');
               return strTags.length > 0 ? strTags : ['Mashup'];
-            } catch (e) {
-              console.error('Failed to auto-tag during generation', e);
+            } catch {
               return ['Mashup'];
             }
           };

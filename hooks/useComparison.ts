@@ -50,8 +50,8 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
       try {
         const idbComparisonResults = await get('mashup_comparison_results');
         if (idbComparisonResults) setComparisonResults(idbComparisonResults);
-      } catch (e) {
-        console.error('Failed to load comparison results', e);
+      } catch {
+        // silent — comparison results remain empty, loaded flag still set
       } finally {
         setIsComparisonLoaded(true);
       }
@@ -211,13 +211,11 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
           } else {
             setComparisonResults(prev => prev.filter(img => img.id !== placeholders[i].id));
           }
-        } catch (err) {
-          console.error(`Failed to generate with ${modelName}`, err);
+        } catch {
           setComparisonResults(prev => prev.filter(img => img.id !== placeholders[i].id));
         }
       }
     } catch (e: unknown) {
-      console.error('Comparison failed', e);
       const message = getErrorMessage(e) || 'Comparison failed. Check your API keys.';
       setComparisonError(message);
       setProgress('');
