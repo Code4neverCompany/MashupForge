@@ -13,7 +13,7 @@ import { getErrorMessage } from '@/lib/errors';
  * STORY-133: Instagram posting surfaced that raw parse error with no hint
  * of which endpoint failed or what the server actually said.
  */
-async function parseJsonOrThrow(res: Response, context: string): Promise<any> {
+async function parseJsonOrThrow(res: Response, context: string): Promise<Record<string, unknown>> {
   const raw = await res.text();
   try {
     return raw ? JSON.parse(raw) : {};
@@ -23,6 +23,15 @@ async function parseJsonOrThrow(res: Response, context: string): Promise<any> {
       `${context}: server returned non-JSON (HTTP ${res.status}). First 200 chars: ${snippet || '<empty>'}`,
     );
   }
+}
+
+/** Extract .error.message from a parsed Graph API / uguu response. */
+function apiErrMsg(data: Record<string, unknown>): string {
+  const e = data.error;
+  if (typeof e === 'object' && e !== null) {
+    return ((e as Record<string, unknown>).message as string | undefined) ?? JSON.stringify(e);
+  }
+  return String(e ?? '');
 }
 
 /**
@@ -50,7 +59,7 @@ async function waitForIgContainerReady(
     );
     const statusData = await parseJsonOrThrow(statusRes, `${context} status poll`);
     if (statusData.error) {
-      throw new Error(`${context} status poll error: ${statusData.error.message}`);
+      throw new Error(`${context} status poll error: ${apiErrMsg(statusData)}`);
     }
     const code = statusData.status_code as string | undefined;
     if (code === 'FINISHED' || code === 'PUBLISHED') return;
@@ -199,10 +208,11 @@ export async function POST(req: Request) {
           if (!uploadRes.ok) {
             throw new Error(`uguu upload failed (HTTP ${uploadRes.status}): ${uploadData?.description || uploadData?.error || 'no message'}`);
           }
-          if (!uploadData.success || !uploadData.files || !uploadData.files[0]) {
+          const uploadFiles = uploadData.files as Array<Record<string, unknown>> | undefined;
+          if (!uploadData.success || !uploadFiles || !uploadFiles[0]) {
             throw new Error('uguu returned invalid response (missing files[0].url)');
           }
-          igMediaUrls.push(uploadData.files[0].url);
+          igMediaUrls.push(uploadFiles[0].url as string);
         } catch (e: unknown) {
           throw new Error(`Failed to host image for Instagram: ${getErrorMessage(e)}`);
         }
@@ -216,9 +226,9 @@ export async function POST(req: Request) {
           body: JSON.stringify({ image_url: igMediaUrls[0], caption: caption })
         });
         const containerData = await parseJsonOrThrow(containerRes, 'IG Container');
-        if (containerData.error) throw new Error(`IG Container Error: ${containerData.error.message}`);
+        if (containerData.error) throw new Error(`IG Container Error: ${apiErrMsg(containerData)}`);
 
-        await waitForIgContainerReady(hostUrl, containerData.id, igAccessToken, 'IG Container');
+        await waitForIgContainerReady(hostUrl, containerData.id as string, igAccessToken, 'IG Container');
 
         const publishRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media_publish`, {
           method: 'POST',
@@ -226,7 +236,7 @@ export async function POST(req: Request) {
           body: JSON.stringify({ creation_id: containerData.id })
         });
         const publishData = await parseJsonOrThrow(publishRes, 'IG Publish');
-        if (publishData.error) throw new Error(`IG Publish Error: ${publishData.error.message}`);
+        if (publishData.error) throw new Error(`IG Publish Error: ${apiErrMsg(publishData)}`);
         results.instagram = publishData;
       } else if (igMediaUrls.length > 1) {
         // Carousel post
@@ -238,8 +248,8 @@ export async function POST(req: Request) {
             body: JSON.stringify({ image_url: url, is_carousel_item: true })
           });
           const childData = await parseJsonOrThrow(childRes, 'IG Carousel Item');
-          if (childData.error) throw new Error(`IG Carousel Item Error: ${childData.error.message}`);
-          childrenIds.push(childData.id);
+          if (childData.error) throw new Error(`IG Carousel Item Error: ${apiErrMsg(childData)}`);
+          childrenIds.push(childData.id as string);
         }
 
         // Create Carousel Container
@@ -249,9 +259,9 @@ export async function POST(req: Request) {
           body: JSON.stringify({ media_type: 'CAROUSEL', children: childrenIds, caption: caption })
         });
         const carouselData = await parseJsonOrThrow(carouselRes, 'IG Carousel Container');
-        if (carouselData.error) throw new Error(`IG Carousel Container Error: ${carouselData.error.message}`);
+        if (carouselData.error) throw new Error(`IG Carousel Container Error: ${apiErrMsg(carouselData)}`);
 
-        await waitForIgContainerReady(hostUrl, carouselData.id, igAccessToken, 'IG Carousel Container');
+        await waitForIgContainerReady(hostUrl, carouselData.id as string, igAccessToken, 'IG Carousel Container');
 
         const publishRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media_publish`, {
           method: 'POST',
@@ -259,7 +269,7 @@ export async function POST(req: Request) {
           body: JSON.stringify({ creation_id: carouselData.id })
         });
         const publishData = await parseJsonOrThrow(publishRes, 'IG Carousel Publish');
-        if (publishData.error) throw new Error(`IG Carousel Publish Error: ${publishData.error.message}`);
+        if (publishData.error) throw new Error(`IG Carousel Publish Error: ${apiErrMsg(publishData)}`);
         results.instagram = publishData;
       }
     }
