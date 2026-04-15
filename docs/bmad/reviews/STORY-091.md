@@ -104,12 +104,12 @@ at startup and warn if not ready, or call the install/start flow automatically.
 
 ---
 
-### LOW-1: autoPost in-pipeline does not update ScheduledPost.status
+### ~~LOW-1~~: ✓ RESOLVED — ScheduledPost.status flipped to 'posted' after auto-post
 
-**File:** usePipeline.ts:455-480  
-The in-pipeline immediate auto-post path (`settings.pipelineAutoPost === true`) calls
-`/api/social/post` but never updates the ScheduledPost.status to `'posted'`. The post
-stays in `'pending_approval'` in the calendar view.
+**Updated 2026-04-15 (65a570f):** `scheduledPostId` is now captured when the post is
+created in step f. After step g's fetch succeeds, a functional `updateSettings` call
+walks `scheduledPosts` and sets `status → 'posted'` for that id. Calendar no longer
+shows the entry as `pending_approval` after an in-pipeline auto-post.
 
 ---
 
@@ -120,7 +120,7 @@ stays in `'pending_approval'` in the calendar view.
 | pipelineAutoTag | true | ✓ Working |
 | pipelineAutoCaption | true | ✓ Working (pi required) |
 | pipelineAutoSchedule | true | ✓ Working (smart slot) |
-| pipelineAutoPost | false | ⚠️ Partial — immediate only, not at scheduled time |
+| pipelineAutoPost | false | ✓ Working — immediate post + status update to 'posted' |
 
 ---
 
