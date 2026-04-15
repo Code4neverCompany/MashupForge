@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getErrorMessage } from '@/lib/errors';
 
+// Minimal shapes for external API responses — only the fields we actually use.
+interface SearxResult { title?: string; url?: string; publishedDate?: string; pubdate?: string; date?: string; }
+interface SearxResponse { results?: SearxResult[] }
+
+interface RedditPost { title?: string; score?: number; subreddit?: string; permalink?: string; }
+interface RedditResponse { data?: { children?: Array<{ data?: RedditPost }> } }
+
 /**
  * Trending research endpoint for the content pipeline.
  *
@@ -53,10 +60,10 @@ async function fetchSearxng(query: string): Promise<TrendResult[]> {
       headers: { 'User-Agent': 'MashupForge/1.0' },
     });
     if (!res.ok) return [];
-    const data = await res.json();
+    const data = await res.json() as SearxResponse;
     const items: TrendResult[] = [];
     const now = Date.now();
-    for (const r of data?.results || []) {
+    for (const r of data?.results ?? []) {
       if (!r?.title || !r?.url) continue;
       // Reject anything older than 30 days IF we can parse a date.
       // Many SearXNG engines don't expose publishedDate; skip filter
@@ -98,14 +105,14 @@ async function fetchReddit(
       headers: { 'User-Agent': 'MashupForge/1.0' },
     });
     if (!res.ok) return [];
-    const data = await res.json();
+    const data = await res.json() as RedditResponse;
     const items: TrendResult[] = [];
     // sort=new posts often have low scores because they're fresh;
     // drop the score floor there so genuinely new content surfaces.
     const minScore = sort === 'new' ? 1 : 5;
-    for (const child of data?.data?.children || []) {
+    for (const child of data?.data?.children ?? []) {
       const post = child.data;
-      if (post?.title && post?.score >= minScore) {
+      if (post?.title && (post?.score ?? 0) >= minScore) {
         items.push({
           topic: query,
           headline: `[${post.score}↑] ${post.title}`,
