@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { streamAIToString, extractJsonFromLLM } from '@/lib/aiClient';
+import { streamAIToString, extractJsonArrayFromLLM } from '@/lib/aiClient';
 import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import { MASTERPROMPT_INSTRUCTIONS } from '@/lib/masterpromptTemplate';
 import { getErrorMessage } from '@/lib/errors';
@@ -16,6 +16,35 @@ import {
 
 function getModelName(id: string): string {
   return LEONARDO_MODELS.find(m => m.id === id)?.name || id;
+}
+
+interface GeneratedItem {
+  prompt: string;
+  aspectRatio?: string;
+  tags?: string[];
+  selectedNiches?: string[];
+  selectedGenres?: string[];
+  negativePrompt?: string;
+}
+
+function pickStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const strs = value.filter((v): v is string => typeof v === 'string');
+  return strs.length > 0 ? strs : undefined;
+}
+
+function parseGeneratedItems(raw: string): GeneratedItem[] {
+  return extractJsonArrayFromLLM(raw)
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    .map((item) => ({
+      prompt: typeof item.prompt === 'string' ? item.prompt : '',
+      aspectRatio: typeof item.aspectRatio === 'string' ? item.aspectRatio : undefined,
+      tags: pickStringArray(item.tags),
+      selectedNiches: pickStringArray(item.selectedNiches),
+      selectedGenres: pickStringArray(item.selectedGenres),
+      negativePrompt: typeof item.negativePrompt === 'string' ? item.negativePrompt : undefined,
+    }))
+    .filter((item) => item.prompt.length > 0);
 }
 
 export async function applyWatermark(baseImageSrc: string, settings: WatermarkSettings, channelName?: string): Promise<string> {
@@ -286,18 +315,16 @@ Generate a set of 5-8 fitting tags for a gallery. Include:
 Return ONLY a JSON array of strings, nothing else.`,
         { mode: 'tag' }
       );
-      let tags: unknown = [];
+      let tags: unknown[] = [];
       try {
-        tags = extractJsonFromLLM(text, 'array');
-        if (!Array.isArray(tags) && typeof tags === 'object' && tags !== null) {
-          const obj = tags as Record<string, unknown>;
-          tags = (obj.tags as unknown[]) ?? Object.values(obj).flat();
-        }
+        tags = extractJsonArrayFromLLM(text);
       } catch {
         tags = ['Mashup'];
       }
-      if (Array.isArray(tags)) {
-        const strTags = (tags as string[]).map((t) => t === 'Warhammer 40,000' ? 'Warhammer 40k' : t);
+      const strTags = tags
+        .filter((t): t is string => typeof t === 'string')
+        .map((t) => (t === 'Warhammer 40,000' ? 'Warhammer 40k' : t));
+      if (strTags.length > 0) {
         updateImageTags(id, strTags);
       }
     } catch (error) {
@@ -359,8 +386,9 @@ Keep it under 100 words. Return ONLY the negative prompt text, nothing else.`,
             `Analyze this image prompt: "${prompt}". Generate 5-8 fitting tags (universe, character, style, theme). Return ONLY a JSON array of strings.`,
             { mode: 'tag' }
           );
-          const parsed = extractJsonFromLLM(text, 'array');
-          return Array.isArray(parsed) ? parsed : (parsed?.tags || ['Mashup']);
+          const parsed = extractJsonArrayFromLLM(text);
+          const strTags = parsed.filter((t): t is string => typeof t === 'string');
+          return strTags.length > 0 ? strTags : ['Mashup'];
         } catch (e) {
           console.error('Failed to auto-tag during generation', e);
           return ['Mashup'];
@@ -401,7 +429,7 @@ Random Seed: ${Math.random()}`,
         );
 
         try {
-          itemsToGenerate = extractJsonFromLLM(promptText, 'array');
+          itemsToGenerate = parseGeneratedItems(promptText);
         } catch (e) {
           console.error('Failed to parse prompts:', e, 'Raw:', promptText?.slice(0, 200));
           itemsToGenerate = [
@@ -441,7 +469,7 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
         );
 
         try {
-          itemsToGenerate = extractJsonFromLLM(promptText2, 'array');
+          itemsToGenerate = parseGeneratedItems(promptText2);
         } catch (e) {
           console.error('Failed to parse enhanced prompts:', e, 'Raw:', promptText2?.slice(0, 200));
           itemsToGenerate = customPrompts.map(p => ({ prompt: p, aspectRatio: options?.aspectRatio }));
@@ -616,8 +644,9 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
             `Analyze this image prompt: "${prompt}". Generate 5-8 fitting tags (universe, character, style, theme). Return ONLY a JSON array of strings.`,
             { mode: 'tag' }
           );
-          const parsed = extractJsonFromLLM(text, 'array');
-          return Array.isArray(parsed) ? parsed : (parsed?.tags || ['Mashup']);
+          const parsed = extractJsonArrayFromLLM(text);
+          const strTags = parsed.filter((t): t is string => typeof t === 'string');
+          return strTags.length > 0 ? strTags : ['Mashup'];
         } catch (e) {
           console.error('Failed to auto-tag during generation', e);
           return ['Mashup'];
