@@ -117,7 +117,7 @@ export function Sidebar() {
               ideaConcept: userMsg,
             }),
           });
-          const trendData = await trendRes.json();
+          const trendData = await trendRes.json() as { success?: boolean; summary?: string; results?: TrendSource[] };
           if (trendData.success && trendData.summary) {
             trendingSummary = trendData.summary;
           }

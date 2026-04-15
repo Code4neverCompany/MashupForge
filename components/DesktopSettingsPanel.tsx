@@ -120,7 +120,7 @@ export function DesktopSettingsPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keys: snapshot }),
       });
-      const data = await res.json();
+      const data = await res.json() as DesktopConfigResponse & { success?: boolean };
       if (!res.ok || data.success === false) {
         setSaveState('error');
         setSaveError(data.error ?? 'Save failed.');
@@ -130,7 +130,7 @@ export function DesktopSettingsPanel() {
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
       savedTimerRef.current = setTimeout(() => setSaveState('idle'), 2500);
       // Refresh config so configPath / savedKeys reflect the write.
-      const refreshed = await fetch('/api/desktop/config').then((r) => r.json());
+      const refreshed = await fetch('/api/desktop/config').then((r) => r.json() as Promise<DesktopConfigResponse>);
       setConfig(refreshed);
     } catch (e) {
       setSaveState('error');
