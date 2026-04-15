@@ -54,40 +54,25 @@ AUTO-POST
 
 ## Findings
 
-### CRITICAL-1: No scheduled post executor
+### ~~CRITICAL-1~~: ✓ RESOLVED — Scheduled post executor exists
 
-**Problem:** Posts moved to `status: 'scheduled'` via the approval UI have no execution path.
-Nobody ever looks at `scheduledPosts`, finds ones past their `date+time`, and calls `/api/social/post`.
-
-The code comment at usePipeline.ts:379 says:
-```
-// carousels publish through the pending_approval → scheduled → auto-poster path
-```
-But that auto-poster path does not exist. `pipelineAutoPost` only fires immediately inside
-`processIdea()` — it does not run against the post queue at scheduled times.
-
-**`status: 'posted'` and `status: 'failed'` are dead enum values — nothing ever sets them.**
-
-**Impact:** Auto-scheduled posts never fire. The entire scheduling UX (calendar, approval flow,
-time slots) is front-end-only. This is the single biggest gap in the pipeline.
-
-**Suggested fix:** A `useEffect` or interval in MashupContext (or a dedicated hook) that
-runs every ~60s, checks `scheduledPosts` for items with `status === 'scheduled'` and
-`new Date(post.date + 'T' + post.time) <= Date.now()`, then POSTs to `/api/social/post`
-and updates status to `'posted'` or `'failed'`.
+**Updated 2026-04-15 (follow-up verification):** The auto-post executor IS fully
+implemented at `components/MainContent.tsx:1044-1183`. A `setInterval` runs every 60s,
+scans `scheduledPosts` for items with `status === 'scheduled'` past their scheduled
+time, calls `/api/social/post`, and updates status to `'posted'` / `'failed'` via
+functional `updateSettings` to prevent race conditions. Carousel groups are fanned out
+correctly (all member posts share the first post's platforms and get posted in one call
+with `mediaUrls[]`). Finding retracted.
 
 ---
 
-### CRITICAL-2: Image timeout proceeds to scheduling
+### ~~CRITICAL-2~~: ✓ RESOLVED — Image timeout already skips scheduling
 
-**File:** usePipeline.ts:283-302  
-After 90 attempts (~4.5 min) `readyImages.length === 0` is logged as an error, but
-the carousel branch still executes with an empty array, producing a scheduled post
-with no images. The single-image branch silently skips scheduling when empty — no log,
-no status update to 'failed'.
-
-**Fix:** Add `if (readyImages.length === 0) { updateIdeaStatus(idea.id, 'failed'); return; }`
-before both branches.
+**Updated 2026-04-15 (follow-up verification):** When `readyImages.length === 0` at
+`usePipeline.ts:300`, the code enters the `if` block (logs error), then falls through
+the entire if-else-if-else chain without touching the carousel or single-image scheduling
+branches. Only `updateIdeaStatus(idea.id, 'done')` is called — no scheduling, no empty
+posts. Finding retracted.
 
 ---
 

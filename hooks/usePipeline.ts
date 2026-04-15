@@ -247,7 +247,7 @@ Return ONLY the prompt text, nothing else.`;
         addLog('trending', idea.id, 'success', 'No trending data found — proceeding without');
       }
     } catch (e: unknown) {
-      addLog('trending', idea.id, 'success', `Trending research skipped: ${getErrorMessage(e)}`);
+      addLog('trending', idea.id, 'error', `Trending research failed: ${getErrorMessage(e)}`);
     }
 
     // Step c: Expand idea to prompt (with trending context)
