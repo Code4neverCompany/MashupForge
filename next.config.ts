@@ -6,6 +6,12 @@ const projectDir = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Expose the CI commit SHA so the desktop Settings panel can show the
+  // exact build. Falls back to 'dev' in local dev. GITHUB_SHA is set by
+  // GitHub Actions automatically on every push/PR run.
+  env: {
+    NEXT_PUBLIC_BUILD_SHA: (process.env.GITHUB_SHA ?? 'dev').slice(0, 7),
+  },
   // Emit `.next/standalone/server.js` + a minimal `node_modules` subset so
   // the Tauri desktop bundle can ship a self-contained Next runtime. Vercel
   // ignores `output: 'standalone'` and uses its own adapter, so this is

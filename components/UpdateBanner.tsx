@@ -41,6 +41,8 @@ type State =
   | { kind: 'available'; info: VersionCheckResponse }
   | { kind: 'error'; current: string | null; message: string };
 
+const BUILD_SHA = process.env.NEXT_PUBLIC_BUILD_SHA ?? 'dev';
+
 export function UpdateBanner() {
   const [state, setState] = useState<State>({ kind: 'checking' });
   const [openError, setOpenError] = useState<string | null>(null);
@@ -109,7 +111,9 @@ export function UpdateBanner() {
     return (
       <div className="flex items-center gap-2 text-[11px] text-emerald-500/80 py-2">
         <CheckCircle2 className="w-3 h-3" />
-        MashupForge v{state.current} — up to date
+        MashupForge v{state.current}
+        <span className="text-zinc-600 font-mono">({BUILD_SHA})</span>
+        — up to date
       </div>
     );
   }
@@ -120,7 +124,9 @@ export function UpdateBanner() {
         <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
         <span>
           Update check failed
-          {state.current ? ` (running v${state.current})` : ''}: {state.message}
+          {state.current ? ` (running v${state.current}` : ''}
+          {state.current ? <span className="text-zinc-600 font-mono ml-1">({BUILD_SHA})</span> : null}
+          {state.current ? ')' : ''}: {state.message}
         </span>
       </div>
     );
