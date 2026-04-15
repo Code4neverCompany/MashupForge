@@ -88,6 +88,11 @@ export function Toast() {
   };
 
   useEffect(() => {
+    // Capture the ref's current value at effect-run time so cleanup
+    // clears the same map that this effect-instance populated, even if
+    // the ref is later swapped to a new object.
+    const timersMap = timers.current;
+
     const handler = (e: Event) => {
       const { message, type } = (e as CustomEvent<{ message: string; type: ToastType }>).detail;
       const id = `t-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -98,13 +103,13 @@ export function Toast() {
         return next.length > MAX_STACK ? next.slice(next.length - MAX_STACK) : next;
       });
 
-      timers.current[id] = setTimeout(() => dismiss(id), DISMISS_MS);
+      timersMap[id] = setTimeout(() => dismiss(id), DISMISS_MS);
     };
 
     window.addEventListener('mashup:toast', handler);
     return () => {
       window.removeEventListener('mashup:toast', handler);
-      Object.values(timers.current).forEach(clearTimeout);
+      Object.values(timersMap).forEach(clearTimeout);
     };
   }, []);
 
