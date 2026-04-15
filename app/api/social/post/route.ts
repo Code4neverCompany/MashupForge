@@ -26,6 +26,45 @@ async function parseJsonOrThrow(res: Response, context: string): Promise<any> {
 }
 
 /**
+ * Poll IG container status until FINISHED (or ERROR/EXPIRED). Replaces a
+ * blind 5-second sleep that flaked on slow uploads and wasted 5s on fast ones.
+ *
+ * FIX-101: Graph API exposes `GET /{container-id}?fields=status_code` which
+ * returns IN_PROGRESS, FINISHED, ERROR, EXPIRED, or PUBLISHED. Poll every
+ * 1.5s up to 60s. Throws on terminal failure states.
+ */
+async function waitForIgContainerReady(
+  hostUrl: string,
+  containerId: string,
+  accessToken: string,
+  context: string,
+): Promise<void> {
+  const intervalMs = 1500;
+  const timeoutMs = 60_000;
+  const started = Date.now();
+
+  while (true) {
+    const statusRes = await fetch(
+      `https://${hostUrl}/v19.0/${containerId}?fields=status_code`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    const statusData = await parseJsonOrThrow(statusRes, `${context} status poll`);
+    if (statusData.error) {
+      throw new Error(`${context} status poll error: ${statusData.error.message}`);
+    }
+    const code = statusData.status_code as string | undefined;
+    if (code === 'FINISHED' || code === 'PUBLISHED') return;
+    if (code === 'ERROR' || code === 'EXPIRED') {
+      throw new Error(`${context} container ${code.toLowerCase()} before publish`);
+    }
+    if (Date.now() - started > timeoutMs) {
+      throw new Error(`${context} container not ready after ${timeoutMs / 1000}s (last status=${code ?? 'unknown'})`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
+
+/**
  * Pad an image to fit Instagram's accepted aspect ratio range (4:5 → 1.91:1).
  *
  * Instagram center-crops any image outside this range on upload, which was
@@ -179,7 +218,7 @@ export async function POST(req: Request) {
         const containerData = await parseJsonOrThrow(containerRes, 'IG Container');
         if (containerData.error) throw new Error(`IG Container Error: ${containerData.error.message}`);
 
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await waitForIgContainerReady(hostUrl, containerData.id, igAccessToken, 'IG Container');
 
         const publishRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media_publish`, {
           method: 'POST',
@@ -212,7 +251,7 @@ export async function POST(req: Request) {
         const carouselData = await parseJsonOrThrow(carouselRes, 'IG Carousel Container');
         if (carouselData.error) throw new Error(`IG Carousel Container Error: ${carouselData.error.message}`);
 
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await waitForIgContainerReady(hostUrl, carouselData.id, igAccessToken, 'IG Carousel Container');
 
         const publishRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media_publish`, {
           method: 'POST',
