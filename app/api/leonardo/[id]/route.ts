@@ -54,12 +54,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       );
     }
 
-    const getData = await getRes.json();
+    const getData = await getRes.json() as Record<string, unknown>;
     // v1 wraps in `generations_by_pk`; v2 may return the generation flat or under
     // `generation` / `generations_by_pk`. Handle all known shapes.
     const generation =
-      getData.generations_by_pk ||
-      getData.generation ||
+      (getData.generations_by_pk as Record<string, unknown> | undefined) ||
+      (getData.generation as Record<string, unknown> | undefined) ||
       (getData.id ? getData : null);
 
     if (!generation) {
@@ -93,7 +93,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     };
 
     if (generation.status === 'COMPLETE') {
-      const images = generation.generated_images || generation.images || [];
+      const images = (generation.generated_images || generation.images || []) as Array<Record<string, unknown>>;
       if (images.length > 0) {
         const imageUrl = images[0].motionMP4URL || images[0].url;
         return NextResponse.json({ status: 'COMPLETE', url: imageUrl, imageId: images[0].id });
