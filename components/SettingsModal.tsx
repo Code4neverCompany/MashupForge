@@ -20,7 +20,7 @@ import {
   type Collection,
   type GeneratedImage,
 } from './MashupContext';
-import type { UserSettings } from '@/types/mashup';
+import type { UserSettings, WatermarkSettings } from '@/types/mashup';
 import { DesktopSettingsPanel } from './DesktopSettingsPanel';
 
 // FIX-100 slice A: extracted from MainContent.tsx (~714 LOC).
@@ -168,14 +168,14 @@ export function SettingsModal({
                   <input
                     type="text"
                     value={settings.apiKeys.instagram?.igAccountId || ''}
-                    onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, instagram: { ...settings.apiKeys.instagram, igAccountId: e.target.value } as any } })}
+                    onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, instagram: { accessToken: settings.apiKeys.instagram?.accessToken ?? '', igAccountId: e.target.value } } })}
                     placeholder="Instagram Business Account ID"
                     className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                   />
                   <input
                     type="password"
                     value={settings.apiKeys.instagram?.accessToken || ''}
-                    onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, instagram: { ...settings.apiKeys.instagram, accessToken: e.target.value } as any } })}
+                    onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, instagram: { accessToken: e.target.value, igAccountId: settings.apiKeys.instagram?.igAccountId ?? '' } } })}
                     placeholder="Long-lived Page Access Token"
                     className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                   />
@@ -190,14 +190,14 @@ export function SettingsModal({
                   <input
                     type="password"
                     value={settings.apiKeys.pinterest?.accessToken || ''}
-                    onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, pinterest: { ...settings.apiKeys.pinterest, accessToken: e.target.value } as any } })}
+                    onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, pinterest: { accessToken: e.target.value, boardId: settings.apiKeys.pinterest?.boardId } } })}
                     placeholder="Pinterest Access Token"
                     className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                   />
                   <input
                     type="text"
                     value={settings.apiKeys.pinterest?.boardId || ''}
-                    onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, pinterest: { ...settings.apiKeys.pinterest, boardId: e.target.value } as any } })}
+                    onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, pinterest: { accessToken: settings.apiKeys.pinterest?.accessToken ?? '', boardId: e.target.value } } })}
                     placeholder="Board ID (optional — defaults to account's first board)"
                     className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                   />
@@ -340,7 +340,7 @@ export function SettingsModal({
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm text-zinc-300">Enable Watermark</span>
               <button
-                onClick={() => updateSettings({ watermark: { ...settings.watermark, enabled: !settings.watermark?.enabled } as any })}
+                onClick={() => updateSettings({ watermark: { ...settings.watermark, enabled: !settings.watermark?.enabled } as WatermarkSettings })}
                 className={`w-12 h-6 rounded-full transition-colors ${settings.watermark?.enabled ? 'bg-[#00e6ff]' : 'bg-zinc-700'} relative`}
               >
                 <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${settings.watermark?.enabled ? 'translate-x-6' : ''}`} />
@@ -360,7 +360,7 @@ export function SettingsModal({
                       if (file) {
                         const reader = new FileReader();
                         reader.onload = (event) => {
-                          updateSettings({ watermark: { ...settings.watermark, image: event.target?.result as string } as any });
+                          updateSettings({ watermark: { ...settings.watermark, image: event.target?.result as string } as WatermarkSettings });
                         };
                         reader.readAsDataURL(file);
                       }
@@ -384,7 +384,7 @@ export function SettingsModal({
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Visual Preview</span>
                         <button
-                          onClick={() => updateSettings({ watermark: { ...settings.watermark, image: null } as any })}
+                          onClick={() => updateSettings({ watermark: { ...settings.watermark, image: null } as WatermarkSettings })}
                           className="text-xs text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
                         >
                           <Trash2 className="w-3 h-3" /> Remove
@@ -491,7 +491,7 @@ export function SettingsModal({
                     <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">Position</label>
                     <select
                       value={settings.watermark.position || 'bottom-right'}
-                      onChange={(e) => updateSettings({ watermark: { ...settings.watermark, position: e.target.value as any } as any })}
+                      onChange={(e) => updateSettings({ watermark: { ...settings.watermark, position: e.target.value as WatermarkSettings['position'] } as WatermarkSettings })}
                       className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 cursor-pointer"
                     >
                       <option value="bottom-right">Bottom Right</option>
@@ -506,7 +506,7 @@ export function SettingsModal({
                     <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">Opacity</label>
                     <select
                       value={settings.watermark.opacity || 0.8}
-                      onChange={(e) => updateSettings({ watermark: { ...settings.watermark, opacity: parseFloat(e.target.value) } as any })}
+                      onChange={(e) => updateSettings({ watermark: { ...settings.watermark, opacity: parseFloat(e.target.value) } as WatermarkSettings })}
                       className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 cursor-pointer"
                     >
                       {[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0].map((val) => (
@@ -520,7 +520,7 @@ export function SettingsModal({
                   <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">Size (Relative to Image)</label>
                   <select
                     value={settings.watermark.scale || 0.15}
-                    onChange={(e) => updateSettings({ watermark: { ...settings.watermark, scale: parseFloat(e.target.value) } as any })}
+                    onChange={(e) => updateSettings({ watermark: { ...settings.watermark, scale: parseFloat(e.target.value) } as WatermarkSettings })}
                     className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 cursor-pointer"
                   >
                     {[0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5].map((val) => (
