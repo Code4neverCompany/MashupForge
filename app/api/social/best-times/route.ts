@@ -14,7 +14,12 @@ interface IgMediaPost {
 
 export async function POST(req: NextRequest) {
   try {
-    const { accessToken, igAccountId } = await req.json();
+    const body = await req.json() as { accessToken?: string; igAccountId?: string };
+    // INSTAGRAM-CRED-FIX: prefer env vars (config.json-hydrated on desktop)
+    // over request body so desktop installs work even when the client-side
+    // IndexedDB settings tree was wiped by a webview origin drift.
+    const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN ?? body.accessToken;
+    const igAccountId = process.env.INSTAGRAM_ACCOUNT_ID ?? body.igAccountId;
 
     if (!accessToken || !igAccountId) {
       return NextResponse.json({

@@ -163,11 +163,20 @@ export async function POST(req: Request) {
     }
 
     if (platforms.includes('instagram')) {
-      if (!credentials?.instagram?.accessToken || !credentials?.instagram?.igAccountId) {
+      // INSTAGRAM-CRED-FIX: on desktop, env vars come from config.json
+      // (hydrated by scripts/tauri-server-wrapper.js and kept live by
+      // /api/desktop/config PATCH). These survive webview origin drift.
+      // Fall back to the request body creds for web deployments that
+      // still pass credentials from the client-side settings tree.
+      const igAccountIdRaw =
+        process.env.INSTAGRAM_ACCOUNT_ID ?? credentials?.instagram?.igAccountId ?? '';
+      const igAccessTokenRaw =
+        process.env.INSTAGRAM_ACCESS_TOKEN ?? credentials?.instagram?.accessToken ?? '';
+      if (!igAccessTokenRaw || !igAccountIdRaw) {
         throw new Error('Instagram credentials incomplete');
       }
-      const igAccountId = credentials.instagram.igAccountId.trim().replace(/[^0-9]/g, '');
-      const igAccessToken = credentials.instagram.accessToken.trim();
+      const igAccountId = igAccountIdRaw.trim().replace(/[^0-9]/g, '');
+      const igAccessToken = igAccessTokenRaw.trim();
 
       if (igAccessToken.startsWith('IGQ')) {
         throw new Error('You are using an Instagram Basic Display token (starts with IGQ). To publish posts, you MUST use the Instagram Graph API with a Facebook Page Access Token (starts with EAA). The Basic Display API does not support posting.');

@@ -187,26 +187,35 @@ export function SettingsModal({
             <div className="space-y-4 pt-4 border-t border-zinc-800">
               <h4 className="text-sm font-bold text-white">Free Social Posting Setup</h4>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Instagram Graph API (Free)</label>
-                <div className="grid grid-cols-1 gap-2">
-                  <input
-                    type="text"
-                    value={settings.apiKeys.instagram?.igAccountId || ''}
-                    onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, instagram: { accessToken: settings.apiKeys.instagram?.accessToken ?? '', igAccountId: e.target.value } } })}
-                    placeholder="Instagram Business Account ID"
-                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
-                  />
-                  <input
-                    type="password"
-                    value={settings.apiKeys.instagram?.accessToken || ''}
-                    onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, instagram: { accessToken: e.target.value, igAccountId: settings.apiKeys.instagram?.igAccountId ?? '' } } })}
-                    placeholder="Long-lived Page Access Token"
-                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
-                  />
+              {/*
+                INSTAGRAM-CRED-FIX: In desktop mode IG creds are owned by
+                DesktopSettingsPanel (writes to config.json, stable on-disk
+                location). Rendering a second input here persisted to
+                origin-scoped IndexedDB silently lost data on webview origin
+                drift (STORY-121 fallback path). Hide in desktop.
+              */}
+              {isDesktop === false && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Instagram Graph API (Free)</label>
+                  <div className="grid grid-cols-1 gap-2">
+                    <input
+                      type="text"
+                      value={settings.apiKeys.instagram?.igAccountId || ''}
+                      onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, instagram: { accessToken: settings.apiKeys.instagram?.accessToken ?? '', igAccountId: e.target.value } } })}
+                      placeholder="Instagram Business Account ID"
+                      className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
+                    />
+                    <input
+                      type="password"
+                      value={settings.apiKeys.instagram?.accessToken || ''}
+                      onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, instagram: { accessToken: e.target.value, igAccountId: settings.apiKeys.instagram?.igAccountId ?? '' } } })}
+                      placeholder="Long-lived Page Access Token"
+                      className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
+                    />
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-1">Requires a Facebook Developer App linked to an Instagram Business account.</p>
                 </div>
-                <p className="text-[10px] text-zinc-500 mt-1">Requires a Facebook Developer App linked to an Instagram Business account.</p>
-              </div>
+              )}
 
               {/* Pinterest */}
               <div className="space-y-2 pt-3 border-t border-zinc-800/60">
