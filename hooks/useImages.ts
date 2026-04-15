@@ -22,8 +22,7 @@ export function useImages() {
             await set('mashup_saved_images', images);
             localStorage.removeItem('mashup_saved_images');
             setSavedImages(images);
-          } catch (e) {
-            console.error('Failed to migrate from localStorage', e);
+          } catch {
             const idbImages = await get('mashup_saved_images');
             if (idbImages) {
               const cleanedImages = idbImages.map((img: GeneratedImage) => ({
@@ -43,8 +42,8 @@ export function useImages() {
             setSavedImages(cleanedImages);
           }
         }
-      } catch (e) {
-        console.error('Failed to load saved images', e);
+      } catch {
+        // silent — savedImages remains empty, isImagesLoaded still fires
       } finally {
         setIsImagesLoaded(true);
       }
@@ -61,7 +60,7 @@ export function useImages() {
       } else {
         next = [{ ...img, savedAt: Date.now() }, ...prev];
       }
-      set('mashup_saved_images', next).catch(err => console.error('Failed to save to IndexedDB', err));
+      set('mashup_saved_images', next).catch(() => {});
       return next;
     });
   };
@@ -70,7 +69,7 @@ export function useImages() {
     if (fromSaved) {
       setSavedImages(prev => {
         const next = prev.filter(i => i.id !== id);
-        set('mashup_saved_images', next).catch(err => console.error('Failed to save to IndexedDB', err));
+        set('mashup_saved_images', next).catch(() => {});
         return next;
       });
     }
@@ -81,7 +80,7 @@ export function useImages() {
   const updateImageTags = (id: string, tags: string[]) => {
     setSavedImages(prev => {
       const next = prev.map(img => img.id === id ? { ...img, tags } : img);
-      set('mashup_saved_images', next).catch(err => console.error('Failed to save to IndexedDB', err));
+      set('mashup_saved_images', next).catch(() => {});
       return next;
     });
   };
@@ -99,7 +98,7 @@ export function useImages() {
         }
         return img;
       });
-      set('mashup_saved_images', next).catch(err => console.error('Failed to save to IndexedDB', err));
+      set('mashup_saved_images', next).catch(() => {});
       return next;
     });
   };
@@ -107,7 +106,7 @@ export function useImages() {
   const toggleApproveImage = (id: string) => {
     setSavedImages(prev => {
       const next = prev.map(img => img.id === id ? { ...img, approved: !img.approved } : img);
-      set('mashup_saved_images', next).catch(err => console.error('Failed to save to IndexedDB', err));
+      set('mashup_saved_images', next).catch(() => {});
       return next;
     });
   };
@@ -119,7 +118,7 @@ export function useImages() {
   const updateSavedImageCollectionId = (imageId: string, collectionId: string | undefined) => {
     setSavedImages(prev => {
       const next = prev.map(img => img.id === imageId ? { ...img, collectionId } : img);
-      set('mashup_saved_images', next).catch(err => console.error('Failed to save to IndexedDB', err));
+      set('mashup_saved_images', next).catch(() => {});
       return next;
     });
   };
@@ -127,7 +126,7 @@ export function useImages() {
   const clearCollectionFromImages = (collectionId: string) => {
     setSavedImages(prev => {
       const next = prev.map(img => img.collectionId === collectionId ? { ...img, collectionId: undefined } : img);
-      set('mashup_saved_images', next).catch(err => console.error('Failed to save to IndexedDB', err));
+      set('mashup_saved_images', next).catch(() => {});
       return next;
     });
   };

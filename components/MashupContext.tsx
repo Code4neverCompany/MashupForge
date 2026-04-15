@@ -133,9 +133,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     // Pass the saved image directly so autoTagImage doesn't need to
     // look it up in the ephemeral `images` array (which may have been
     // cleared by now).
-    autoTagImage(needsTagging.id, needsTagging).catch((err) => {
-      console.warn('[gallery auto-tag] failed for', needsTagging.id, err);
-    });
+    autoTagImage(needsTagging.id, needsTagging).catch(() => {});
   }, [savedImages, autoTagImage]);
 
   const pipelineHook = usePipeline({

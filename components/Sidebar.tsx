@@ -81,8 +81,7 @@ export function Sidebar() {
             )
           );
         }
-      } catch (error) {
-        console.error('Chat error:', error);
+      } catch {
         setChatMessages((prev) =>
           prev.map((m) =>
             m.id === modelMsgId
@@ -173,8 +172,8 @@ Return ONLY the JSON array, no prose.`;
               ideaCount++;
             }
           }
-        } catch (e) {
-          console.error('Failed to parse ideas JSON', e);
+        } catch {
+          // parse failed — ideaCount stays 0, fallback message shown below
         }
 
         setContentMessages((prev) =>
@@ -191,8 +190,7 @@ Return ONLY the JSON array, no prose.`;
               : m
           )
         );
-      } catch (error) {
-        console.error('Content Generator error:', error);
+      } catch {
         setContentMessages((prev) =>
           prev.map((m) =>
             m.id === modelMsgId
