@@ -36,16 +36,70 @@ fn wait_for_port(port: u16, timeout: Duration) -> bool {
     false
 }
 
+/// Resolve a named subdirectory inside the Tauri resources dir.
+///
+/// Tauri v2's resource bundling semantics vary with the glob pattern used
+/// in `tauri.conf.json`. `"resources/**/*"` can either strip the leading
+/// `resources/` segment (landing files at `<resource_dir>/node/...`) or
+/// preserve it (landing at `<resource_dir>/resources/node/...`).
+///
+/// STORY-110 fix: rather than guess, try both layouts and return the
+/// first one that exists. `startup.log` records which layout won so the
+/// config can be cleaned up once a definitive answer is captured.
+fn find_resource_subdir(resource_dir: &Path, name: &str) -> Option<PathBuf> {
+    let flat = resource_dir.join(name);
+    if flat.exists() {
+        return Some(flat);
+    }
+    let nested = resource_dir.join("resources").join(name);
+    if nested.exists() {
+        return Some(nested);
+    }
+    None
+}
+
 /// Resolve the bundled Node.js binary inside the Tauri resources dir.
 /// Build scripts place the Windows `node.exe` at `resources/node/node.exe`
 /// and a Unix `node` (used only for Linux validation builds from WSL)
-/// at `resources/node/bin/node`.
-fn node_binary_path(resource_dir: &Path) -> PathBuf {
+/// at `resources/node/bin/node`. `node_root` is the directory returned by
+/// `find_resource_subdir(&resource_dir, "node")`.
+fn node_binary_path(node_root: &Path) -> PathBuf {
     if cfg!(target_os = "windows") {
-        resource_dir.join("node").join("node.exe")
+        node_root.join("node.exe")
     } else {
-        resource_dir.join("node").join("bin").join("node")
+        node_root.join("bin").join("node")
     }
+}
+
+/// Walk `dir` up to `max_depth` levels and append every entry to
+/// startup.log. Used on the first boot after a fresh install so we
+/// have an authoritative record of the on-disk resource layout
+/// regardless of how Tauri v2 decides to place globbed files.
+fn log_dir_tree(log_dir: &Path, root: &Path, label: &str, max_depth: usize) {
+    startup_log_line(log_dir, &format!("---- {} tree ({}) ----", label, root.display()));
+    fn walk(log_dir: &Path, dir: &Path, depth: usize, max_depth: usize) {
+        if depth > max_depth {
+            return;
+        }
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(e) => {
+                startup_log_line(log_dir, &format!("  read_dir({}) failed: {}", dir.display(), e));
+                return;
+            }
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let indent = "  ".repeat(depth + 1);
+            let kind = if path.is_dir() { "dir " } else { "file" };
+            startup_log_line(log_dir, &format!("{}{} {}", indent, kind, path.display()));
+            if path.is_dir() {
+                walk(log_dir, &path, depth + 1, max_depth);
+            }
+        }
+    }
+    walk(log_dir, root, 0, max_depth);
+    startup_log_line(log_dir, "---- end tree ----");
 }
 
 /// Resolve the per-user log directory. Returns the app_data_dir joined with
@@ -142,7 +196,11 @@ fn show_error_dialog(_title: &str, _body: &str) {
 
 /// Validate that every resource the sidecar needs is present on disk.
 /// Returns a human-readable error with the first missing path.
-fn preflight_resources(resource_dir: &Path, node_bin: &Path, start_js: &Path) -> Result<(), String> {
+fn preflight_resources(
+    resource_dir: &Path,
+    node_bin: &Path,
+    start_js: &Path,
+) -> Result<(), String> {
     if !resource_dir.exists() {
         return Err(format!(
             "resource_dir missing at {} — the installer may be corrupted",
@@ -225,15 +283,66 @@ pub fn run() {
                     return Err(e.into());
                 }
             };
-            let node_bin = node_binary_path(&resource_dir);
-            let app_dir = resource_dir.join("app");
+            startup_log_line(&log_dir, &format!("resource_dir = {}", resource_dir.display()));
+            startup_log_line(&log_dir, &format!("log_dir      = {}", log_dir.display()));
+
+            // Dump the full resource_dir tree on every launch so we have
+            // an authoritative record of what the installer actually
+            // shipped. Cheap (<1ms for a few hundred entries) and
+            // priceless after a crash.
+            log_dir_tree(&log_dir, &resource_dir, "resource_dir", 2);
+
+            // Tauri v2 globbing may or may not strip the `resources/`
+            // segment from `"resources/**/*"`. Probe both layouts.
+            let node_root = match find_resource_subdir(&resource_dir, "node") {
+                Some(p) => {
+                    startup_log_line(&log_dir, &format!("node_root    = {}", p.display()));
+                    p
+                }
+                None => {
+                    let msg = format!(
+                        "bundled Node.js dir not found under {} (checked /node and /resources/node) — installer is missing resources, rerun build-windows.ps1",
+                        resource_dir.display()
+                    );
+                    startup_log_line(&log_dir, &format!("PREFLIGHT FAIL: {}", msg));
+                    show_error_dialog(
+                        "MashupForge — missing resource",
+                        &format!(
+                            "{}\n\nFull log: {}",
+                            msg,
+                            log_dir.join("startup.log").display()
+                        ),
+                    );
+                    return Err(msg.into());
+                }
+            };
+            let app_dir = match find_resource_subdir(&resource_dir, "app") {
+                Some(p) => {
+                    startup_log_line(&log_dir, &format!("app_dir      = {}", p.display()));
+                    p
+                }
+                None => {
+                    let msg = format!(
+                        "Next standalone app dir not found under {} (checked /app and /resources/app) — installer is missing resources, rerun build-windows.ps1",
+                        resource_dir.display()
+                    );
+                    startup_log_line(&log_dir, &format!("PREFLIGHT FAIL: {}", msg));
+                    show_error_dialog(
+                        "MashupForge — missing resource",
+                        &format!(
+                            "{}\n\nFull log: {}",
+                            msg,
+                            log_dir.join("startup.log").display()
+                        ),
+                    );
+                    return Err(msg.into());
+                }
+            };
+            let node_bin = node_binary_path(&node_root);
             let start_js = app_dir.join("start.js");
 
-            startup_log_line(&log_dir, &format!("resource_dir = {}", resource_dir.display()));
             startup_log_line(&log_dir, &format!("node_bin     = {}", node_bin.display()));
-            startup_log_line(&log_dir, &format!("app_dir      = {}", app_dir.display()));
             startup_log_line(&log_dir, &format!("start_js     = {}", start_js.display()));
-            startup_log_line(&log_dir, &format!("log_dir      = {}", log_dir.display()));
 
             // ---- step 2: pre-flight existence checks
             if let Err(msg) = preflight_resources(&resource_dir, &node_bin, &start_js) {
