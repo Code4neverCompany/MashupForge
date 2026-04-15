@@ -1,9 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Save, Monitor, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { DESKTOP_CONFIG_KEYS } from '@/lib/desktop-config-keys';
 import { UpdateBanner } from './UpdateBanner';
+
+// STORY-131: debounce window between the last keystroke and the auto-PATCH.
+// 800 ms is long enough that rapid typing doesn't thrash the file system but
+// short enough that closing the modal after a single edit almost always
+// finishes the write before the panel unmounts.
+const AUTOSAVE_DEBOUNCE_MS = 800;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +83,10 @@ export function DesktopSettingsPanel() {
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [saveError, setSaveError] = useState('');
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Skip the initial save trigger when `draft` is first seeded from the GET
+  // response — otherwise we'd PATCH on mount and race with the initial read.
+  const seededRef = useRef(false);
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -91,6 +101,7 @@ export function DesktopSettingsPanel() {
           seed[key] = data.keys[key] ?? '';
         }
         setDraft(seed);
+        seededRef.current = true;
       })
       .catch(() => {
         // Not desktop — silently show nothing
@@ -100,14 +111,14 @@ export function DesktopSettingsPanel() {
 
   // ── Save ──────────────────────────────────────────────────────────────────
 
-  const handleSave = useCallback(async () => {
+  const persist = useCallback(async (snapshot: Record<string, string>) => {
     setSaveState('saving');
     setSaveError('');
     try {
       const res = await fetch('/api/desktop/config', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keys: draft }),
+        body: JSON.stringify({ keys: snapshot }),
       });
       const data = await res.json();
       if (!res.ok || data.success === false) {
@@ -118,17 +129,35 @@ export function DesktopSettingsPanel() {
       setSaveState('saved');
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
       savedTimerRef.current = setTimeout(() => setSaveState('idle'), 2500);
-      // Refresh config so configPath / savedKeys are up to date
+      // Refresh config so configPath / savedKeys reflect the write.
       const refreshed = await fetch('/api/desktop/config').then((r) => r.json());
       setConfig(refreshed);
     } catch (e) {
       setSaveState('error');
       setSaveError((e as Error).message ?? 'Network error.');
     }
-  }, [draft]);
+  }, []);
+
+  // STORY-131 — auto-save. Debounce keystroke-level edits and PATCH when
+  // the draft differs from the last-known config. No manual button needed.
+  useEffect(() => {
+    if (!seededRef.current || !config?.isDesktop) return;
+    const dirty = DESKTOP_CONFIG_KEYS.some(
+      ({ key }) => (draft[key] ?? '') !== (config.keys[key] ?? '')
+    );
+    if (!dirty) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      void persist(draft);
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, [draft, config, persist]);
 
   useEffect(() => () => {
     if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
   }, []);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -145,10 +174,6 @@ export function DesktopSettingsPanel() {
 
   // Web / serverless — render nothing
   if (!config.isDesktop) return null;
-
-  const isDirty = DESKTOP_CONFIG_KEYS.some(
-    ({ key }) => (draft[key] ?? '') !== (config.keys[key] ?? '')
-  );
 
   return (
     <div className="space-y-5 pt-4 border-t border-[#c5a062]/20">
@@ -182,36 +207,29 @@ export function DesktopSettingsPanel() {
         ))}
       </div>
 
-      {/* Save row */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={handleSave}
-          disabled={saveState === 'saving' || !isDirty}
-          className={`
-            inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold
-            transition-all duration-200
-            ${saveState === 'saving' || !isDirty
-              ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-              : 'bg-[#c5a062] hover:bg-[#d4b278] text-[#050505] shadow-[0_0_12px_rgba(197,160,98,0.25)] hover:shadow-[0_0_18px_rgba(197,160,98,0.4)]'
-            }
-          `}
-        >
-          {saveState === 'saving'
-            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</>
-            : <><Save className="w-3.5 h-3.5" /> Save to disk</>
-          }
-        </button>
-
+      {/* Auto-save status row (STORY-131) */}
+      <div className="flex items-center gap-2 min-h-[1.25rem]" aria-live="polite">
+        {saveState === 'saving' && (
+          <span className="flex items-center gap-1 text-[11px] text-zinc-500">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Saving…
+          </span>
+        )}
         {saveState === 'saved' && (
-          <span className="flex items-center gap-1 text-xs text-[#00e6ff]">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Saved — restart not required
+          <span className="flex items-center gap-1 text-[11px] text-[#00e6ff]">
+            <CheckCircle2 className="w-3 h-3" />
+            Saved to config.json
           </span>
         )}
         {saveState === 'error' && (
-          <span className="flex items-center gap-1 text-xs text-red-400">
-            <AlertCircle className="w-3.5 h-3.5" />
-            {saveError}
+          <span className="flex items-center gap-1 text-[11px] text-red-400">
+            <AlertCircle className="w-3 h-3" />
+            {saveError || 'Save failed.'}
+          </span>
+        )}
+        {saveState === 'idle' && (
+          <span className="text-[11px] text-zinc-600">
+            Changes are saved automatically.
           </span>
         )}
       </div>
