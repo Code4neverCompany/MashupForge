@@ -117,6 +117,8 @@ export function SettingsModal({
 }: SettingsModalProps) {
   const [showSaved, setShowSaved] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Inline personality-save input — replaces the blocking prompt() dialog.
+  const [personalityName, setPersonalityName] = useState<string | null>(null);
 
   // Wrapper that triggers the "Saved" indicator on every settings write.
   const updateSettings: typeof updateSettingsProp = (patch) => {
@@ -723,27 +725,72 @@ export function SettingsModal({
               <div className="space-y-4 pt-4 border-t border-zinc-800/50">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">Saved Personalities</label>
-                  <button
-                    onClick={() => {
-                      const name = prompt('Enter a name for this personality:');
-                      if (name) {
-                        const newPersonality = {
-                          id: `p-${Date.now()}`,
-                          name,
-                          prompt: settings.agentPrompt || '',
-                          niches: settings.agentNiches || [],
-                          genres: settings.agentGenres || [],
-                        };
-                        updateSettings({
-                          savedPersonalities: [...(settings.savedPersonalities || []), newPersonality],
-                        });
-                      }
-                    }}
-                    className="text-[10px] text-[#00e6ff] hover:text-[#33eaff] flex items-center gap-1 transition-colors"
-                  >
-                    <Save className="w-3 h-3" />
-                    Save Current
-                  </button>
+                  {personalityName === null ? (
+                    <button
+                      onClick={() => setPersonalityName('')}
+                      className="text-[10px] text-[#00e6ff] hover:text-[#33eaff] flex items-center gap-1 transition-colors"
+                    >
+                      <Save className="w-3 h-3" />
+                      Save Current
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={personalityName}
+                        onChange={(e) => setPersonalityName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && personalityName.trim()) {
+                            updateSettings({
+                              savedPersonalities: [
+                                ...(settings.savedPersonalities || []),
+                                {
+                                  id: `p-${Date.now()}`,
+                                  name: personalityName.trim(),
+                                  prompt: settings.agentPrompt || '',
+                                  niches: settings.agentNiches || [],
+                                  genres: settings.agentGenres || [],
+                                },
+                              ],
+                            });
+                            setPersonalityName(null);
+                          }
+                          if (e.key === 'Escape') setPersonalityName(null);
+                        }}
+                        placeholder="Personality name…"
+                        className="text-[10px] bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-zinc-200 w-28 focus:outline-none focus:ring-1 focus:ring-[#00e6ff]/40"
+                      />
+                      <button
+                        disabled={!personalityName.trim()}
+                        onClick={() => {
+                          if (!personalityName.trim()) return;
+                          updateSettings({
+                            savedPersonalities: [
+                              ...(settings.savedPersonalities || []),
+                              {
+                                id: `p-${Date.now()}`,
+                                name: personalityName.trim(),
+                                prompt: settings.agentPrompt || '',
+                                niches: settings.agentNiches || [],
+                                genres: settings.agentGenres || [],
+                              },
+                            ],
+                          });
+                          setPersonalityName(null);
+                        }}
+                        className="text-[10px] text-emerald-400 hover:text-emerald-300 disabled:opacity-40 transition-colors"
+                      >
+                        <Check className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => setPersonalityName(null)}
+                        className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
