@@ -1791,7 +1791,13 @@ export function MainContent() {
                         <div
                           key={status}
                           className="flex-1 card p-4 flex flex-col gap-4"
-                          onDragOver={(e) => e.preventDefault()}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            // STORY-132: explicit move effect — without
+                            // this Chromium shows a no-entry cursor and
+                            // refuses the drop even with a handler bound.
+                            e.dataTransfer.dropEffect = 'move';
+                          }}
                           onDrop={(e) => {
                             e.preventDefault();
                             const ideaId = e.dataTransfer.getData('ideaId');
@@ -1814,7 +1820,10 @@ export function MainContent() {
                               <div
                                 key={idea.id}
                                 draggable
-                                onDragStart={(e) => e.dataTransfer.setData('ideaId', idea.id)}
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData('ideaId', idea.id);
+                                  e.dataTransfer.effectAllowed = 'move';
+                                }}
                                 className={`card p-4 flex flex-col gap-3 cursor-grab active:cursor-grabbing transition-all duration-200 ${statusCfg.hoverBorder}`}
                               >
                                 {idea.context && <h4 className="text-sm font-bold text-amber-400">{idea.context}</h4>}
@@ -4865,7 +4874,7 @@ export function MainContent() {
                     <a
                       href={selectedImage.url || `data:image/jpeg;base64,${selectedImage.base64}`}
                       download={selectedImage.isVideo ? `mashup-video.mp4` : `mashup-detail.jpg`}
-                      className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 uppercase tracking-widest text-xs"
+                      className="flex-1 py-4 bg-[#00e6ff] hover:bg-[#33eaff] active:bg-[#00b8cc] text-[#050505] rounded-2xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#00e6ff]/20 uppercase tracking-widest text-xs"
                       target={selectedImage.url ? "_blank" : undefined}
                       rel={selectedImage.url ? "noopener noreferrer" : undefined}
                     >
@@ -5748,7 +5757,7 @@ export function MainContent() {
                       setSelectedForBatch(new Set());
                     }
                   }}
-                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/20"
+                  className="flex-1 py-3 bg-[#00e6ff] hover:bg-[#33eaff] active:bg-[#00b8cc] text-[#050505] rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-lg shadow-[#00e6ff]/20"
                 >
                   Apply Tags
                 </button>
