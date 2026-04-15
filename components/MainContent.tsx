@@ -2330,7 +2330,7 @@ export function MainContent() {
                                       </div>
                                     ))}
                                   </div>
-                                  <span className="absolute top-3 left-3 inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-600/90 text-[10px] font-medium text-white rounded-full">
+                                  <span className="absolute top-3 left-3 inline-flex items-center gap-1 px-2 py-0.5 bg-[#00e6ff]/15 border border-[#00e6ff]/30 text-[10px] font-medium text-[#00e6ff] rounded-full">
                                     <LayoutGrid className="w-3 h-3" /> Carousel · {entry.images.length} images
                                   </span>
                                   {isExplicit && (
@@ -2387,7 +2387,7 @@ export function MainContent() {
                                 </div>
 
                                 {/* Footer actions */}
-                                <div className="border-t border-zinc-800/60 p-3 flex items-center gap-2">
+                                <div className="border-t border-[#c5a062]/15 p-3 flex items-center gap-2">
                                   <button
                                     disabled={isWorking || batchCaptioning}
                                     onClick={async () => {
@@ -3464,7 +3464,7 @@ export function MainContent() {
                                       />
                                     ))}
                                   </div>
-                                  <span className="absolute top-3 left-3 inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-600/90 text-[10px] font-medium text-white rounded-full">
+                                  <span className="absolute top-3 left-3 inline-flex items-center gap-1 px-2 py-0.5 bg-[#00e6ff]/15 border border-[#00e6ff]/30 text-[10px] font-medium text-[#00e6ff] rounded-full">
                                     <LayoutGrid className="w-3 h-3" /> Carousel · {item.images.length} images
                                   </span>
                                   {isExplicit && (
@@ -3475,7 +3475,7 @@ export function MainContent() {
                                 </div>
 
                                 {/* Shared caption (anchor image's) */}
-                                <div className="p-4 space-y-3 border-b border-zinc-800/60">
+                                <div className="p-4 space-y-3 border-b border-[#c5a062]/15">
                                   <div className="space-y-1">
                                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                                       Shared caption
@@ -3616,7 +3616,7 @@ export function MainContent() {
                                           setPreparingPostId(null);
                                         }
                                       }}
-                                      className="px-2 py-1.5 text-[10px] bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-1 transition-colors"
+                                      className="px-2 py-1.5 text-[10px] bg-[#00e6ff]/15 hover:bg-[#00e6ff]/25 border border-[#00e6ff]/30 disabled:opacity-50 text-[#00e6ff] rounded-xl flex items-center justify-center gap-1 transition-colors"
                                     >
                                       {isCarouselRegen ? (
                                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -3649,7 +3649,7 @@ export function MainContent() {
                                     ) : (
                                       <button
                                         onClick={() => persistCarouselGroup(`manual-${anchor.id}`, item.images.map((i) => i.id))}
-                                        className="flex-1 px-2 py-1.5 text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                                        className="flex-1 px-2 py-1.5 text-[10px] bg-[#00e6ff]/15 hover:bg-[#00e6ff]/25 border border-[#00e6ff]/30 text-[#00e6ff] rounded-xl flex items-center justify-center gap-1.5 transition-colors"
                                         title="Save this auto-detected grouping"
                                       >
                                         <LayoutGrid className="w-3 h-3" /> Lock Group
@@ -3688,7 +3688,7 @@ export function MainContent() {
                           return (
                             <div
                               key={img.id}
-                              className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60 rounded-2xl overflow-hidden flex flex-col md:flex-row"
+                              className="bg-zinc-900/80 backdrop-blur-sm border border-[#c5a062]/20 rounded-2xl overflow-hidden flex flex-col md:flex-row hover:border-[#c5a062]/40 transition-all duration-300"
                             >
                               {/* Image */}
                               <div className="relative md:w-48 md:shrink-0 aspect-square bg-zinc-950">
@@ -3734,7 +3734,7 @@ export function MainContent() {
                               {/* Right column */}
                               <div className="flex-1 flex flex-col">
                                 {/* Caption + hashtags */}
-                                <div className="flex-1 p-4 space-y-3 border-b border-zinc-800">
+                                <div className="flex-1 p-4 space-y-3 border-b border-[#c5a062]/15">
                                   <div className="space-y-1">
                                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                                       Caption
@@ -3881,7 +3881,7 @@ export function MainContent() {
                                           setPreparingPostId(null);
                                         }
                                       }}
-                                      className="px-2 py-1.5 text-[10px] bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-1 transition-colors"
+                                      className="px-2 py-1.5 text-[10px] bg-[#00e6ff]/15 hover:bg-[#00e6ff]/25 border border-[#00e6ff]/30 disabled:opacity-50 text-[#00e6ff] rounded-xl flex items-center justify-center gap-1 transition-colors"
                                     >
                                       {isRegen ? (
                                         <Loader2 className="w-3 h-3 animate-spin" />
