@@ -104,11 +104,11 @@ export async function POST(req: Request) {
       body: JSON.stringify(pinBody),
     });
 
-    const pinData = await pinRes.json().catch(() => ({}));
+    const pinData = await (pinRes.json() as Promise<Record<string, unknown>>).catch((): Record<string, unknown> => ({}));
     if (!pinRes.ok) {
       const msg =
-        pinData?.message ||
-        pinData?.error ||
+        (pinData?.message as string | undefined) ||
+        (pinData?.error as string | undefined) ||
         `Pinterest API returned ${pinRes.status}`;
       return NextResponse.json({ error: `Pinterest: ${msg}` }, { status: pinRes.status });
     }
