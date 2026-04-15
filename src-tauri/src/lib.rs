@@ -286,6 +286,11 @@ pub fn run() {
         // debug-only, which meant Release crashes were completely silent
         // (no console thanks to `windows_subsystem = "windows"`, no log
         // file, no error dialog) — see STORY-080.
+        // STORY-122 followup: opener plugin lets the UpdateBanner open the
+        // GitHub release URL in the user's default browser instead of
+        // asking them to copy-paste a text input. No capability churn
+        // beyond the default permission set (see capabilities/default.json).
+        .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(log::LevelFilter::Info)

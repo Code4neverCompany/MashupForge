@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Download, CheckCircle2, Copy, Check, Loader2, AlertCircle } from 'lucide-react';
+import { Download, CheckCircle2, ExternalLink, Loader2, AlertCircle } from 'lucide-react';
 
 /**
- * STORY-122 — lightweight auto-update detection.
+ * STORY-122 — auto-update detection with system-browser open.
  *
  * Polls `/api/app/version-check` on mount, compares the running app
  * version against the latest GitHub release of Code4neverCompany/
@@ -12,16 +12,16 @@ import { Download, CheckCircle2, Copy, Check, Loader2, AlertCircle } from 'lucid
  *
  *   - checking     → spinner
  *   - up-to-date   → muted green checkmark
- *   - available    → prominent callout with release URL + copy button
+ *   - available    → prominent callout with "Open in browser" button
  *   - error        → amber warning, shows the underlying error
  *
- * No Tauri plugin dependencies: the update URL is displayed as
- * copyable text rather than opened automatically, because Tauri v2's
- * default webview doesn't reliably route `window.open` to the system
- * browser without the opener plugin. Adding that plugin is a followup
- * (STORY-123) — this story is scoped to detection only per Maurice's
- * brief ("need update button or detection ... or simple version
- * check via API").
+ * The "Open in browser" button uses `@tauri-apps/plugin-opener` to
+ * hand the release URL to the user's default browser. The plugin
+ * import is dynamic so the web/Vercel build doesn't fail at bundle
+ * time — it falls back to `navigator.clipboard` there (the web deploy
+ * doesn't reach this component anyway because DesktopSettingsPanel
+ * short-circuits on `!isDesktop`, but the dynamic import keeps this
+ * file portable).
  */
 
 interface VersionCheckResponse {
@@ -43,7 +43,7 @@ type State =
 
 export function UpdateBanner() {
   const [state, setState] = useState<State>({ kind: 'checking' });
-  const [copied, setCopied] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,13 +74,25 @@ export function UpdateBanner() {
     };
   }, []);
 
-  const handleCopy = useCallback(async (url: string) => {
+  const handleOpen = useCallback(async (url: string) => {
+    setOpenError(null);
+    // Prefer the Tauri opener plugin — hands the URL to the user's
+    // default browser. Dynamic import so web builds don't fail to
+    // bundle when @tauri-apps/plugin-opener isn't Tauri-runtime-backed.
     try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    } catch {
-      // clipboard blocked — user can still manually select the text
+      const mod = await import('@tauri-apps/plugin-opener');
+      await mod.openUrl(url);
+      return;
+    } catch (e: unknown) {
+      // Tauri plugin unavailable or user denied capability — fall
+      // back to clipboard copy so the user can still reach the URL.
+      const detail = e instanceof Error ? e.message : String(e);
+      try {
+        await navigator.clipboard.writeText(url);
+        setOpenError(`Opener unavailable (${detail}). URL copied to clipboard.`);
+      } catch {
+        setOpenError(`Opener unavailable (${detail}). Copy the URL manually.`);
+      }
     }
   }, []);
 
@@ -130,35 +142,30 @@ export function UpdateBanner() {
       </div>
 
       <p className="text-[10px] text-zinc-500 leading-relaxed">
-        A newer build of MashupForge is available on GitHub. Copy the link below
-        and open it in your browser to download the installer.
+        A newer build of MashupForge is available on GitHub.
       </p>
 
       <div className="flex items-center gap-2">
-        <input
-          type="text"
-          readOnly
-          value={target}
-          onFocus={(e) => e.currentTarget.select()}
-          className="flex-1 bg-[#050505] border border-zinc-800/60 rounded-md px-2 py-1.5 text-[10px] text-zinc-300 font-mono focus:outline-none focus:border-[#c5a062]/40"
-        />
         <button
           type="button"
-          onClick={() => handleCopy(target)}
-          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[10px] font-semibold bg-[#c5a062] hover:bg-[#d4b278] text-[#050505] transition-colors"
-          aria-label="Copy release URL"
+          onClick={() => handleOpen(target)}
+          disabled={!target}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-[#c5a062] hover:bg-[#d4b278] disabled:opacity-40 disabled:cursor-not-allowed text-[#050505] transition-colors"
+          aria-label="Open release page in browser"
         >
-          {copied ? (
-            <>
-              <Check className="w-3 h-3" /> Copied
-            </>
-          ) : (
-            <>
-              <Copy className="w-3 h-3" /> Copy
-            </>
-          )}
+          <ExternalLink className="w-3 h-3" />
+          Open in browser
         </button>
+        <span className="text-[10px] text-zinc-600 font-mono truncate" title={target}>
+          {target}
+        </span>
       </div>
+
+      {openError && (
+        <p className="text-[10px] text-amber-500/80 leading-relaxed">
+          {openError}
+        </p>
+      )}
 
       {info.notes && (
         <details className="text-[10px] text-zinc-500 pt-1">
