@@ -181,9 +181,33 @@ fn chrono_like_timestamp() -> String {
     }
 }
 
-/// Install a panic hook that writes the panic payload to startup.log so
-/// Release builds (no console) leave a breadcrumb on crash.
+/// Prune old crash logs — keep the N most-recent files, delete the rest.
+/// Called once on startup so crash dirs don't grow unbounded.
+fn prune_crash_logs(crash_dir: &Path, keep: usize) {
+    let Ok(entries) = std::fs::read_dir(crash_dir) else { return };
+    let mut files: Vec<(std::time::SystemTime, PathBuf)> = entries
+        .flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            let meta = std::fs::metadata(&p).ok()?;
+            if meta.is_file() { Some((meta.modified().unwrap_or(std::time::UNIX_EPOCH), p)) } else { None }
+        })
+        .collect();
+    if files.len() <= keep { return }
+    files.sort_by_key(|(t, _)| *t);
+    for (_, path) in files.iter().take(files.len() - keep) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+/// Install a panic hook that writes the panic payload to startup.log AND a
+/// dedicated crash file so Release builds leave a breadcrumb on crash.
+/// `crash_dir` is `<log_dir>/crashes/`.
 fn install_panic_hook(log_dir: PathBuf) {
+    let crash_dir = log_dir.join("crashes");
+    let _ = std::fs::create_dir_all(&crash_dir);
+    prune_crash_logs(&crash_dir, 50);
+
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
@@ -197,7 +221,24 @@ fn install_panic_hook(log_dir: PathBuf) {
             .location()
             .map(|l| format!("{}:{}", l.file(), l.line()))
             .unwrap_or_else(|| "unknown location".to_string());
+
+        // Write to startup.log (existing behaviour)
         startup_log_line(&log_dir, &format!("PANIC at {}: {}", loc, payload));
+
+        // Write a dedicated timestamped crash file
+        let ts = chrono_like_timestamp();
+        let crash_path = crash_dir.join(format!("crash-{}.log", ts));
+        if let Ok(mut f) = std::fs::File::create(&crash_path) {
+            let bt = std::backtrace::Backtrace::force_capture();
+            let _ = writeln!(f, "MashupForge crash report");
+            let _ = writeln!(f, "version: {}", env!("CARGO_PKG_VERSION"));
+            let _ = writeln!(f, "os: {} {}", std::env::consts::OS, std::env::consts::ARCH);
+            let _ = writeln!(f, "timestamp: {}", ts);
+            let _ = writeln!(f, "location: {}", loc);
+            let _ = writeln!(f, "panic: {}", payload);
+            let _ = writeln!(f, "---backtrace---\n{}", bt);
+        }
+
         default_hook(info);
     }));
 }
@@ -480,6 +521,7 @@ pub fn run() {
                 .env("MASHUPFORGE_RESOURCES_DIR", &resource_dir)
                 .env("MASHUPFORGE_PI_DIR", &pi_install_dir)
                 .env("MASHUPFORGE_LOG_DIR", &log_dir)
+                .env("MASHUPFORGE_CRASH_DIR", log_dir.join("crashes"))
                 .env("MASHUPFORGE_DESKTOP", "1")
                 .stdout(Stdio::from(sidecar_log_file))
                 .stderr(Stdio::from(sidecar_log_file_err));

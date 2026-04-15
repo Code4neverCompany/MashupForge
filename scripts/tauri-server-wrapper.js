@@ -25,6 +25,44 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+// ── PROP-006: crash reporter — install BEFORE any other require() ──────────
+// Writes a timestamped crash log to MASHUPFORGE_CRASH_DIR so unhandled
+// Node exceptions leave a breadcrumb even when the console is hidden.
+(function installCrashHandler() {
+  const crashDir = process.env.MASHUPFORGE_CRASH_DIR;
+  if (!crashDir) return; // not running inside Tauri — skip
+  try { fs.mkdirSync(crashDir, { recursive: true }); } catch (_) {}
+
+  function writeCrashLog(type, errOrReason, promise) {
+    try {
+      const ts = Date.now();
+      const msg = errOrReason instanceof Error
+        ? errOrReason.stack || errOrReason.message
+        : String(errOrReason);
+      const lines = [
+        'MashupForge sidecar crash report',
+        `type: ${type}`,
+        `pid: ${process.pid}`,
+        `timestamp: ${new Date(ts).toISOString()}`,
+        promise ? `promise: ${String(promise)}` : null,
+        '---',
+        msg,
+      ].filter(Boolean).join('\n');
+      fs.writeFileSync(path.join(crashDir, `crash-node-${ts}.log`), lines);
+    } catch (_) {}
+  }
+
+  process.on('uncaughtException', (err) => {
+    writeCrashLog('uncaughtException', err, null);
+    // Let Node exit naturally after logging
+  });
+  process.on('unhandledRejection', (reason, promise) => {
+    writeCrashLog('unhandledRejection', reason, promise);
+    // unhandledRejection is not fatal by default — just log and continue
+  });
+})();
+// ── end crash reporter ──────────────────────────────────────────────────────
+
 function getDesktopConfigPath() {
   const override = process.env.MASHUPFORGE_CONFIG_DIR;
   if (override) return path.join(override, 'config.json');
