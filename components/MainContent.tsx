@@ -1800,7 +1800,16 @@ export function MainContent() {
                           }}
                           onDrop={(e) => {
                             e.preventDefault();
-                            const ideaId = e.dataTransfer.getData('ideaId');
+                            // STORY-132 followup: WebView2 and some sandboxed
+                            // Chromium contexts strip non-MIME type keys on
+                            // drop, so getData('ideaId') returned empty even
+                            // when dragstart set it. Read 'text/plain' with a
+                            // prefix and fall back to the legacy key for any
+                            // cached old build still in someone's DOM.
+                            const raw =
+                              e.dataTransfer.getData('text/plain') ||
+                              e.dataTransfer.getData('ideaId');
+                            const ideaId = raw.startsWith('idea:') ? raw.slice(5) : raw;
                             if (ideaId) updateIdeaStatus(ideaId, status);
                           }}
                         >
@@ -1821,6 +1830,11 @@ export function MainContent() {
                                 key={idea.id}
                                 draggable
                                 onDragStart={(e) => {
+                                  // STORY-132 followup: use 'text/plain' with
+                                  // a prefix so WebView2 doesn't strip the
+                                  // payload on drop. Keep the legacy key for
+                                  // one release as a belt-and-suspenders.
+                                  e.dataTransfer.setData('text/plain', `idea:${idea.id}`);
                                   e.dataTransfer.setData('ideaId', idea.id);
                                   e.dataTransfer.effectAllowed = 'move';
                                 }}
