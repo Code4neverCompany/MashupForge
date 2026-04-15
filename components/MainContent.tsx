@@ -4342,10 +4342,15 @@ export function MainContent() {
                         </button>
                       </div>
 
-                      {/* Bottom Overlay — prompt + download.
+                      {/* Bottom Overlay — model badge + prompt + download.
                           The card itself is clickable to open the image,
                           so no explicit "View Details" button. */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 pointer-events-none">
+                        {img.modelInfo?.modelName && (
+                          <span className="self-start mb-1.5 px-2 py-0.5 text-[9px] font-semibold tracking-wide uppercase bg-[#c5a062]/20 text-[#c5a062] border border-[#c5a062]/30 rounded-full pointer-events-none select-none">
+                            {img.modelInfo.modelName}
+                          </span>
+                        )}
                         <p className="text-xs text-zinc-200 line-clamp-2 mb-3 font-medium leading-relaxed shadow-sm pointer-events-auto">
                           {img.prompt}
                         </p>
@@ -4379,7 +4384,7 @@ export function MainContent() {
                         {img.tags.slice(0, 5).map((tag) => (
                           <span
                             key={tag}
-                            className="px-1.5 py-0.5 text-[9px] bg-zinc-800/80 text-zinc-400 rounded-full"
+                            className="px-1.5 py-0.5 text-[9px] bg-[#c5a062]/10 text-[#c5a062]/80 border border-[#c5a062]/20 rounded-full"
                           >
                             {tag}
                           </span>
