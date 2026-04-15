@@ -332,6 +332,10 @@ pub fn run() {
         // asking them to copy-paste a text input. No capability churn
         // beyond the default permission set (see capabilities/default.json).
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(log::LevelFilter::Info)

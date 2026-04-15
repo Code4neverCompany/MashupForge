@@ -1,9 +1,56 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power } from 'lucide-react';
 import { DESKTOP_CONFIG_KEYS } from '@/lib/desktop-config-keys';
 import { UpdateBanner } from './UpdateBanner';
+
+// ── PROP-005: Tauri auto-launch toggle ────────────────────────────────────────
+// Dynamically imported so the web build (no Tauri) never bundles the plugin.
+async function getAutostartPlugin() {
+  try {
+    return await import('@tauri-apps/plugin-autostart');
+  } catch {
+    return null;
+  }
+}
+
+function useAutolaunch(isDesktop: boolean) {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    let cancelled = false;
+    getAutostartPlugin().then(async (plugin) => {
+      if (!plugin || cancelled) return;
+      try {
+        const on = await plugin.isEnabled();
+        if (!cancelled) setEnabled(on);
+      } catch { /* not available */ }
+    });
+    return () => { cancelled = true; };
+  }, [isDesktop]);
+
+  const toggle = useCallback(async () => {
+    const plugin = await getAutostartPlugin();
+    if (!plugin) return;
+    setLoading(true);
+    try {
+      if (enabled) {
+        await plugin.disable();
+        setEnabled(false);
+      } else {
+        await plugin.enable();
+        setEnabled(true);
+      }
+    } catch { /* ignore */ } finally {
+      setLoading(false);
+    }
+  }, [enabled]);
+
+  return { enabled, loading, toggle };
+}
 
 // STORY-131: debounce window between the last keystroke and the auto-PATCH.
 // 800 ms is long enough that rapid typing doesn't thrash the file system but
@@ -84,6 +131,7 @@ export function DesktopSettingsPanel() {
   const [saveError, setSaveError] = useState('');
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autolaunch = useAutolaunch(config?.isDesktop ?? false);
   // Skip the initial save trigger when `draft` is first seeded from the GET
   // response — otherwise we'd PATCH on mount and race with the initial read.
   const seededRef = useRef(false);
@@ -193,6 +241,33 @@ export function DesktopSettingsPanel() {
 
       {/* Update check (STORY-122) */}
       <UpdateBanner />
+
+      {/* PROP-005: Auto-launch at startup toggle */}
+      {autolaunch.enabled !== null && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Power className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+            <div>
+              <p className="text-xs text-zinc-300">Launch at startup</p>
+              <p className="text-[10px] text-zinc-600">Start MashupForge when Windows boots</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void autolaunch.toggle()}
+            disabled={autolaunch.loading}
+            aria-pressed={autolaunch.enabled}
+            aria-label={autolaunch.enabled ? 'Disable launch at startup' : 'Enable launch at startup'}
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent
+              transition-colors focus:outline-none focus:ring-2 focus:ring-[#c5a062]/40
+              ${autolaunch.enabled ? 'bg-[#c5a062]' : 'bg-zinc-700'}
+              ${autolaunch.loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform
+              ${autolaunch.enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+          </button>
+        </div>
+      )}
 
       {/* Key fields */}
       <div className="space-y-4">
