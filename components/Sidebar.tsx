@@ -220,10 +220,13 @@ Return ONLY the JSON array, no prose.`;
       )}
       
       <aside aria-label="Sidebar" className={`fixed md:static inset-y-0 left-0 z-50 w-[85vw] sm:w-80 glass-panel flex flex-col h-full shrink-0 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="flex p-2 gap-1.5 border-b border-[#c5a062]/15">
+        <div role="tablist" aria-label="Sidebar panels" className="flex p-2 gap-1.5 border-b border-[#c5a062]/15">
           <button
+            role="tab"
+            aria-selected={activeTab === 'content'}
+            aria-controls="sidebar-content-panel"
             onClick={() => setActiveTab('content')}
-            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 ${
+            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e6ff]/50 ${
               activeTab === 'content'
                 ? 'bg-[#00e6ff]/10 text-[#00e6ff] border border-[#00e6ff]/20'
                 : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border border-transparent'
@@ -233,8 +236,11 @@ Return ONLY the JSON array, no prose.`;
             Content
           </button>
           <button
+            role="tab"
+            aria-selected={activeTab === 'chat'}
+            aria-controls="sidebar-chat-panel"
             onClick={() => setActiveTab('chat')}
-            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 ${
+            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e6ff]/50 ${
               activeTab === 'chat'
                 ? 'bg-[#00e6ff]/10 text-[#00e6ff] border border-[#00e6ff]/20'
                 : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border border-transparent'
@@ -244,8 +250,11 @@ Return ONLY the JSON array, no prose.`;
             Chat
           </button>
           <button
+            role="tab"
+            aria-selected={activeTab === 'history'}
+            aria-controls="sidebar-history-panel"
             onClick={() => setActiveTab('history')}
-            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 ${
+            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e6ff]/50 ${
               activeTab === 'history'
                 ? 'bg-[#00e6ff]/10 text-[#00e6ff] border border-[#00e6ff]/20'
                 : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border border-transparent'
