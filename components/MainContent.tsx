@@ -1800,6 +1800,12 @@ export function MainContent() {
                             </span>
                           </h3>
                           <div className="flex flex-col gap-3 overflow-y-auto hide-scrollbar flex-1">
+                            {ideas.filter((i) => i.status === status).length === 0 && (
+                              <div className="flex-1 flex flex-col items-center justify-center py-10 border-2 border-dashed border-zinc-800/60 rounded-xl text-zinc-600 text-xs gap-2 select-none">
+                                <StatusIcon className={`w-6 h-6 ${statusCfg.iconColor} opacity-30`} />
+                                {status === 'idea' ? 'No ideas yet — generate some in the sidebar' : `Drag cards here`}
+                              </div>
+                            )}
                             {ideas.filter((i) => i.status === status).map((idea) => (
                               <div
                                 key={idea.id}
