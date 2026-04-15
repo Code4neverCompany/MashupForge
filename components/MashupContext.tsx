@@ -144,7 +144,6 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     updateSettings,
     updateIdeaStatus,
     addIdea,
-    generateImages,
     generateComparison,
     generatePostContent,
     saveImage,
