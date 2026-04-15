@@ -127,7 +127,13 @@ export function UpdateBanner() {
   }
 
   const { info } = state;
-  const target = info.downloadUrl || info.releaseUrl || '';
+  // STORY-134: "Update Now" targets the .msi asset directly so the browser
+  // starts downloading the installer immediately instead of landing on the
+  // release page. If the release has no .msi (edge case before CI finishes
+  // uploading assets), fall back to the release page.
+  const installerUrl = info.downloadUrl;
+  const releasePage = info.releaseUrl;
+  const primaryTarget = installerUrl || releasePage || '';
 
   return (
     <div className="rounded-lg border border-[#c5a062]/40 bg-[#c5a062]/5 p-3 space-y-2">
@@ -142,23 +148,33 @@ export function UpdateBanner() {
       </div>
 
       <p className="text-[10px] text-zinc-500 leading-relaxed">
-        A newer build of MashupForge is available on GitHub.
+        {installerUrl
+          ? 'Click Update Now to download the installer in your browser, then run it to apply the update.'
+          : 'A newer build of MashupForge is available on GitHub — the installer asset is not yet attached to this release.'}
       </p>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button
           type="button"
-          onClick={() => handleOpen(target)}
-          disabled={!target}
+          onClick={() => handleOpen(primaryTarget)}
+          disabled={!primaryTarget}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-[#c5a062] hover:bg-[#d4b278] disabled:opacity-40 disabled:cursor-not-allowed text-[#050505] transition-colors"
-          aria-label="Open release page in browser"
+          aria-label={installerUrl ? 'Download installer now' : 'Open release page in browser'}
         >
-          <ExternalLink className="w-3 h-3" />
-          Open in browser
+          <Download className="w-3 h-3" />
+          {installerUrl ? 'Update Now' : 'Open release page'}
         </button>
-        <span className="text-[10px] text-zinc-600 font-mono truncate" title={target}>
-          {target}
-        </span>
+        {installerUrl && releasePage && (
+          <button
+            type="button"
+            onClick={() => handleOpen(releasePage)}
+            className="inline-flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors underline underline-offset-2"
+            aria-label="View release notes in browser"
+          >
+            <ExternalLink className="w-2.5 h-2.5" />
+            View release page
+          </button>
+        )}
       </div>
 
       {openError && (
