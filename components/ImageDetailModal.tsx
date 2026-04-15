@@ -318,9 +318,10 @@ export function ImageDetailModal({
                     <span>Duration</span>
                     <select
                       value={settings.defaultAnimationDuration || 5}
-                      onChange={(e) => updateSettings({ defaultAnimationDuration: Number(e.target.value) as 5 | 10 })}
+                      onChange={(e) => updateSettings({ defaultAnimationDuration: Number(e.target.value) as 3 | 5 | 10 })}
                       className="bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-white focus:outline-none"
                     >
+                      <option value={3}>3s</option>
                       <option value={5}>5s</option>
                       <option value={10}>10s</option>
                     </select>

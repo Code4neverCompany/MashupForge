@@ -3709,7 +3709,7 @@ export function MainContent() {
                                       else next.delete(img.id);
                                       setPostReadySelected(next);
                                     }}
-                                    className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                                    className="w-4 h-4 accent-[#00e6ff] cursor-pointer"
                                   />
                                 </label>
                               </div>
