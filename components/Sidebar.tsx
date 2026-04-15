@@ -421,14 +421,14 @@ Return ONLY the JSON array, no prose.`;
               {activeTab === 'chat' ? (
                 <>
                   <span className="inline-flex gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse [animation-delay:0ms]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse [animation-delay:200ms]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse [animation-delay:400ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00e6ff] animate-pulse [animation-delay:0ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00e6ff] animate-pulse [animation-delay:200ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00e6ff] animate-pulse [animation-delay:400ms]" />
                   </span>
                 </>
               ) : (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#00e6ff]" />
                   <span>Generating…</span>
                 </>
               )}

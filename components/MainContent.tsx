@@ -3954,7 +3954,7 @@ export function MainContent() {
                                       <div className="flex-1" />
                                       <div className="w-20 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
                                         <div
-                                          className="h-full bg-indigo-500 rounded-full"
+                                          className="h-full bg-[#00e6ff] rounded-full"
                                           style={{ width: `${pct}%` }}
                                         />
                                       </div>
