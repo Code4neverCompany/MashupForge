@@ -16,3 +16,4 @@ src-tauri/gen/schemas/
 src-tauri/resources/node/
 src-tauri/resources/app/
 src-tauri/resources/pi/
+dist/
