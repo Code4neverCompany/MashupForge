@@ -144,21 +144,27 @@ export async function POST(req: Request) {
       }, { status: createRes.status });
     }
 
-    const createData = await createRes.json();
+    const createData = await createRes.json() as Record<string, unknown>;
 
-    // Check for GraphQL-style errors
-    if (Array.isArray(createData) && createData.length > 0 && createData[0].extensions) {
-      console.error('Leonardo GraphQL error:', JSON.stringify(createData));
-      return NextResponse.json({ 
-        error: `Leonardo API Error: ${createData[0].message || 'Validation failed'}` 
-      }, { status: 400 });
+    // Check for GraphQL-style errors (Leonardo returns an array on validation failure)
+    if (Array.isArray(createData)) {
+      const errs = createData as Array<Record<string, unknown>>;
+      if (errs.length > 0 && errs[0].extensions) {
+        console.error('Leonardo GraphQL error:', JSON.stringify(errs));
+        return NextResponse.json({
+          error: `Leonardo API Error: ${String(errs[0].message ?? 'Validation failed')}`
+        }, { status: 400 });
+      }
     }
 
-    const generationId = createData.sdGenerationJob?.generationId 
-      || createData.generationId 
-      || createData.id 
-      || createData.generation?.id 
-      || createData.generate?.generationId;
+    const job = createData.sdGenerationJob as Record<string, unknown> | undefined;
+    const gen = createData.generation as Record<string, unknown> | undefined;
+    const generate = createData.generate as Record<string, unknown> | undefined;
+    const generationId = job?.generationId
+      || createData.generationId
+      || createData.id
+      || gen?.id
+      || generate?.generationId;
 
     if (!generationId) {
       console.error('Leonardo unexpected response:', createData);

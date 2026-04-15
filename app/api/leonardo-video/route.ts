@@ -69,23 +69,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `Failed to start Leonardo video generation: ${err}` }, { status: 500 });
     }
 
-    const createData = await createRes.json();
-    
-    if (Array.isArray(createData) && createData.length > 0 && createData[0].extensions) {
-      console.error('Leonardo GraphQL error:', JSON.stringify(createData));
-      return NextResponse.json({ error: `Leonardo API Error: ${createData[0].message || 'Validation failed'}` }, { status: 400 });
+    const createData = await createRes.json() as Record<string, unknown>;
+
+    if (Array.isArray(createData)) {
+      const errs = createData as Array<Record<string, unknown>>;
+      if (errs.length > 0 && errs[0].extensions) {
+        console.error('Leonardo GraphQL error:', JSON.stringify(errs));
+        return NextResponse.json({ error: `Leonardo API Error: ${String(errs[0].message ?? 'Validation failed')}` }, { status: 400 });
+      }
     }
 
-    let generationId = createData.generationId || createData.id || createData.generation?.id || createData.generate?.generationId;
-    
+    const gen = createData.generation as Record<string, unknown> | undefined;
+    const generate = createData.generate as Record<string, unknown> | undefined;
+    let generationId = createData.generationId || createData.id || gen?.id || generate?.generationId;
+
     if (!generationId) {
       for (const key in createData) {
-        if (createData[key] && typeof createData[key] === 'object') {
-          if (createData[key].generationId) {
-            generationId = createData[key].generationId;
+        const val = createData[key];
+        if (val && typeof val === 'object') {
+          const obj = val as Record<string, unknown>;
+          if (obj.generationId) {
+            generationId = obj.generationId;
             break;
-          } else if (createData[key].id) {
-            generationId = createData[key].id;
+          } else if (obj.id) {
+            generationId = obj.id;
             break;
           }
         }
