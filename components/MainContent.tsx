@@ -125,6 +125,7 @@ function AutoTextarea({ minRows = 2, className, value, ...rest }: AutoTextareaPr
 
 import { useAuth } from '@/hooks/useAuth';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { showToast } from '@/components/Toast';
 
 export function MainContent() {
   const { logout } = useAuth();
@@ -1229,11 +1230,11 @@ export function MainContent() {
 
   const handleCompare = async () => {
     if (comparisonModels.length < 2) {
-      alert('Please select at least 2 models to compare.');
+      showToast('Please select at least 2 models to compare.', 'error');
       return;
     }
     if (!comparisonPrompt.trim()) {
-      alert('Please enter a prompt for comparison.');
+      showToast('Please enter a prompt for comparison.', 'error');
       return;
     }
 
@@ -1249,7 +1250,7 @@ export function MainContent() {
 
   const handleAnimate = async (img: GeneratedImage, isBatch: boolean = false) => {
     if (!img.imageId) {
-      if (!isBatch) alert('Only images generated with Leonardo.AI can be animated currently.');
+      if (!isBatch) showToast('Only images generated with Leonardo.AI can be animated currently.', 'error');
       return;
     }
     
@@ -1390,12 +1391,11 @@ export function MainContent() {
             }
           };
           saveImage(newImg);
-          if (!isBatch) alert('Video generated and saved to gallery!');
+          if (!isBatch) showToast('Video generated and saved to gallery!', 'success');
         }
       }
     } catch (e: unknown) {
-      console.error('Animation error:', e);
-      if (!isBatch) alert(`Animation failed: ${getErrorMessage(e)}`);
+      if (!isBatch) showToast(`Animation failed: ${getErrorMessage(e)}`, 'error');
     } finally {
       setImageStatus(img.id, 'ready');
     }
@@ -1404,7 +1404,7 @@ export function MainContent() {
   const handleBatchAnimate = async () => {
     const imagesToAnimate = savedImages.filter(img => selectedForBatch.has(img.id) && img.imageId && !img.isVideo);
     if (imagesToAnimate.length === 0) {
-      alert('No valid Leonardo images selected for animation.');
+      showToast('No valid Leonardo images selected for animation.', 'error');
       return;
     }
     setSelectedForBatch(new Set());
