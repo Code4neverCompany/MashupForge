@@ -4,6 +4,28 @@ import sharp from 'sharp';
 import { getErrorMessage } from '@/lib/errors';
 
 /**
+ * Parse a response body as JSON, or throw a readable error that includes
+ * HTTP status + a snippet of the raw body. Graph API and uguu both return
+ * HTML error pages on some failure modes (rate limits, 502s, maintenance
+ * windows); calling plain `res.json()` on those bodies throws the generic
+ * "Unexpected token < in JSON at position 0" that users can't action.
+ *
+ * STORY-133: Instagram posting surfaced that raw parse error with no hint
+ * of which endpoint failed or what the server actually said.
+ */
+async function parseJsonOrThrow(res: Response, context: string): Promise<any> {
+  const raw = await res.text();
+  try {
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    const snippet = raw.slice(0, 200).replace(/\s+/g, ' ').trim();
+    throw new Error(
+      `${context}: server returned non-JSON (HTTP ${res.status}). First 200 chars: ${snippet || '<empty>'}`,
+    );
+  }
+}
+
+/**
  * Pad an image to fit Instagram's accepted aspect ratio range (4:5 → 1.91:1).
  *
  * Instagram center-crops any image outside this range on upload, which was
@@ -134,9 +156,13 @@ export async function POST(req: Request) {
             body: formData,
           });
 
-          if (!uploadRes.ok) throw new Error('Failed to upload image to temporary host');
-          const uploadData = await uploadRes.json();
-          if (!uploadData.success || !uploadData.files || !uploadData.files[0]) throw new Error('Temporary host returned invalid response');
+          const uploadData = await parseJsonOrThrow(uploadRes, 'uguu image upload');
+          if (!uploadRes.ok) {
+            throw new Error(`uguu upload failed (HTTP ${uploadRes.status}): ${uploadData?.description || uploadData?.error || 'no message'}`);
+          }
+          if (!uploadData.success || !uploadData.files || !uploadData.files[0]) {
+            throw new Error('uguu returned invalid response (missing files[0].url)');
+          }
           igMediaUrls.push(uploadData.files[0].url);
         } catch (e: unknown) {
           throw new Error(`Failed to host image for Instagram: ${getErrorMessage(e)}`);
@@ -150,7 +176,7 @@ export async function POST(req: Request) {
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
           body: JSON.stringify({ image_url: igMediaUrls[0], caption: caption })
         });
-        const containerData = await containerRes.json();
+        const containerData = await parseJsonOrThrow(containerRes, 'IG Container');
         if (containerData.error) throw new Error(`IG Container Error: ${containerData.error.message}`);
 
         await new Promise(resolve => setTimeout(resolve, 5000));
@@ -160,7 +186,7 @@ export async function POST(req: Request) {
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
           body: JSON.stringify({ creation_id: containerData.id })
         });
-        const publishData = await publishRes.json();
+        const publishData = await parseJsonOrThrow(publishRes, 'IG Publish');
         if (publishData.error) throw new Error(`IG Publish Error: ${publishData.error.message}`);
         results.instagram = publishData;
       } else if (igMediaUrls.length > 1) {
@@ -172,7 +198,7 @@ export async function POST(req: Request) {
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
             body: JSON.stringify({ image_url: url, is_carousel_item: true })
           });
-          const childData = await childRes.json();
+          const childData = await parseJsonOrThrow(childRes, 'IG Carousel Item');
           if (childData.error) throw new Error(`IG Carousel Item Error: ${childData.error.message}`);
           childrenIds.push(childData.id);
         }
@@ -183,7 +209,7 @@ export async function POST(req: Request) {
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
           body: JSON.stringify({ media_type: 'CAROUSEL', children: childrenIds, caption: caption })
         });
-        const carouselData = await carouselRes.json();
+        const carouselData = await parseJsonOrThrow(carouselRes, 'IG Carousel Container');
         if (carouselData.error) throw new Error(`IG Carousel Container Error: ${carouselData.error.message}`);
 
         await new Promise(resolve => setTimeout(resolve, 5000));
@@ -193,7 +219,7 @@ export async function POST(req: Request) {
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
           body: JSON.stringify({ creation_id: carouselData.id })
         });
-        const publishData = await publishRes.json();
+        const publishData = await parseJsonOrThrow(publishRes, 'IG Carousel Publish');
         if (publishData.error) throw new Error(`IG Carousel Publish Error: ${publishData.error.message}`);
         results.instagram = publishData;
       }
