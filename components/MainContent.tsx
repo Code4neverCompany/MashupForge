@@ -2314,6 +2314,7 @@ export function MainContent() {
                                         <img
                                           src={ci.url}
                                           alt={ci.prompt}
+                                          loading="lazy"
                                           onClick={() => setSelectedImage(ci)}
                                           className="h-32 w-32 object-cover rounded-lg cursor-zoom-in"
                                         />
@@ -2469,6 +2470,7 @@ export function MainContent() {
                                   <img
                                     src={img.url}
                                     alt={img.prompt}
+                                    loading="lazy"
                                     className="w-full h-full object-cover"
                                   />
                                 ) : (
@@ -3303,6 +3305,7 @@ export function MainContent() {
                                             <img
                                               src={img.url}
                                               alt={img.prompt}
+                                              loading="lazy"
                                               className="w-full h-full object-cover"
                                             />
                                           ) : (
@@ -3461,6 +3464,7 @@ export function MainContent() {
                                         key={ci.id}
                                         src={ci.url}
                                         alt={ci.prompt}
+                                        loading="lazy"
                                         onClick={() => setSelectedImage(ci)}
                                         className="h-36 w-36 object-cover rounded-lg cursor-zoom-in shrink-0"
                                       />
@@ -3699,6 +3703,7 @@ export function MainContent() {
                                   <img
                                     src={img.url}
                                     alt={img.prompt}
+                                    loading="lazy"
                                     onClick={() => setSelectedImage(img)}
                                     className="w-full h-full object-cover cursor-zoom-in"
                                   />
@@ -4149,6 +4154,7 @@ export function MainContent() {
                                     <img
                                       src={img.url}
                                       alt={img.prompt}
+                                      loading="lazy"
                                       className="w-full h-full object-cover"
                                     />
                                   ) : (
