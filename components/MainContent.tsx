@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
@@ -526,7 +526,7 @@ export function MainContent() {
    * Persist a manual carousel group. If imageIds has fewer than 2
    * entries we auto-ungroup instead (a carousel of 1 is just a post).
    */
-  const persistCarouselGroup = (id: string, imageIds: string[], patch?: Partial<CarouselGroup>) => {
+  const persistCarouselGroup = useCallback((id: string, imageIds: string[], patch?: Partial<CarouselGroup>) => {
     const groups = settings.carouselGroups || [];
     if (imageIds.length < 2) {
       updateSettings({ carouselGroups: groups.filter((g) => g.id !== id) });
@@ -542,7 +542,7 @@ export function MainContent() {
         carouselGroups: [...groups, { id, imageIds, status: 'draft', ...patch }],
       });
     }
-  };
+  }, [settings.carouselGroups, updateSettings]);
 
   /** Separate a carousel — drop the explicit group and its images revert to singles. */
   const separateCarousel = (groupId: string) => {
@@ -966,7 +966,7 @@ export function MainContent() {
       comparisonResults.map((i) => i.id),
       { status: 'draft' },
     );
-  }, [comparisonResults, settings.pipelineCarouselMode]);
+  }, [comparisonResults, settings.pipelineCarouselMode, persistCarouselGroup]);
 
   useEffect(() => {
     const storedModels = localStorage.getItem('mashup_comparison_models');

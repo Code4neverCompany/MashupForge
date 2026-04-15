@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { get, set } from 'idb-keyval';
 import { type UserSettings, defaultSettings } from '../types/mashup';
 
@@ -49,14 +49,19 @@ export function useSettings() {
     );
   }, [settings, isSettingsLoaded]);
 
-  const updateSettings = (
+  // Stable identity across renders — useState's setSettings is itself
+  // stable, so this useCallback can have an empty dep array. Stable
+  // updateSettings lets downstream consumers safely include it in
+  // useEffect/useCallback dep arrays without triggering re-runs every
+  // render. PROP-014 needed this for persistCarouselGroup.
+  const updateSettings = useCallback((
     newSettings: Partial<UserSettings> | ((prev: UserSettings) => Partial<UserSettings>),
   ) => {
     setSettings((prev) => {
       const patch = typeof newSettings === 'function' ? newSettings(prev) : newSettings;
       return { ...prev, ...patch };
     });
-  };
+  }, []);
 
   return { settings, updateSettings, isSettingsLoaded };
 }
