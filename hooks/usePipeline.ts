@@ -486,7 +486,7 @@ Return ONLY the prompt text, nothing else.`;
     // Step h: Mark done
     updateIdeaStatus(idea.id, 'done');
     addLog('complete', idea.id, 'success', `"${idea.concept}" pipeline complete`);
-  }, [expandIdeaToPrompt, generateImages, generatePostContent, updateIdeaStatus, updateSettings, settings, addLog, findNextAvailableSlot]);
+  }, [expandIdeaToPrompt, generateComparison, generatePostContent, saveImage, updateIdeaStatus, updateSettings, settings, addLog, findNextAvailableSlot]);
 
   /**
    * Ask pi to generate `count` fresh content ideas aligned to the
