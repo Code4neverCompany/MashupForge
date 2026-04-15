@@ -1,19 +1,15 @@
 /**
  * Pi installation and status helpers. Server-side only — uses node:fs and
- * node:child_process which aren't available in the browser.
+ * node:child_process which aren't available in the browser. Meant to run
+ * under the Tauri desktop sidecar; the `tmpdir()` fallbacks exist solely
+ * to keep `next dev` runnable on a dev box where MASHUPFORGE_PI_DIR isn't
+ * set.
  */
 
 import { spawnSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir, tmpdir, platform } from 'node:os';
 import { dirname, join } from 'node:path';
-
-/**
- * Deploy-cache buster. Bump this string when you suspect Vercel is serving
- * stale lib code — a fresh build will return the new value in the install
- * diagnostics payload, an old cached one won't.
- */
-export const BUILD_MARKER = 'pi-install-debug-2026-04-14T14:00-v4-runtime-install';
 
 const isWindows = platform() === 'win32';
 
@@ -86,12 +82,8 @@ function humanizeWindowsError(e: unknown, context: 'mkdir' | 'write' | 'spawn' |
  * APPDATA subdirectory (e.g. `%APPDATA%\MashupForge\pi`). That's where pi
  * gets installed on first launch and where it's found on subsequent launches.
  *
- * Vercel / serverless: no env var, fall back to `/tmp`. Read-only `/var/task`
- * makes `tmpdir()` the only writable location in the sandbox.
- *
- * Lazy-evaluated inside a function so Turbopack's file tracer doesn't see
- * `process.cwd()` as a top-level side effect and drag the whole project
- * into the serverless bundle.
+ * Dev (`next dev`, no launcher): no env var, fall back to `tmpdir()` so
+ * the install still lands somewhere writable.
  */
 function getLocalPrefix(): string {
   const override = process.env.MASHUPFORGE_PI_DIR;
@@ -110,9 +102,9 @@ function getLocalBin(): string {
 }
 
 /**
- * Writable HOME for spawned npm. If the process HOME doesn't exist (e.g. Vercel
- * sandbox user `sbx_user1051` with no homedir), npm fails to create its cache
- * before it can even fetch a package. Point HOME at a tmpdir we know exists.
+ * Writable HOME for spawned npm. If the process HOME doesn't exist or
+ * isn't writable, npm fails to create its cache before it can even fetch
+ * a package. Point HOME at a tmpdir we know exists.
  */
 function ensureWritableHome(): string {
   const currentHome = process.env.HOME || homedir();
@@ -247,26 +239,23 @@ export interface InstallPiResult {
 }
 
 /**
- * Install pi via npm into a project-local prefix. We avoid `-g` because in
- * sandboxed environments (Vercel, Docker, CI) the default global prefix isn't
- * writable and HOME may not exist, which makes npm fail before it can even
- * fetch the package. Installing to `<cwd>/.pi-install` with an explicit HOME
- * sidesteps both problems and leaves the binary at a known candidate path.
+ * Install pi via npm into an app-owned prefix. We avoid `-g` because the
+ * default global prefix isn't writable under the Tauri sidecar (APPDATA
+ * instead of Program Files). Installing into `MASHUPFORGE_PI_DIR` with an
+ * explicit HOME keeps the binary at a known candidate path and makes it
+ * visible across launches without touching machine-wide state.
  */
 export function installPi(): InstallPiResult {
   const localPrefix = getLocalPrefix();
   const diagnostics: Record<string, unknown> = {
-    buildMarker: BUILD_MARKER,
     cwd: process.cwd(),
     localPrefix,
     processEnvHome: process.env.HOME ?? null,
     osHomedir: (() => { try { return homedir(); } catch (e) { return `error:${(e as Error).message}`; } })(),
     tmpdir: tmpdir(),
-    vercel: process.env.VERCEL ?? null,
-    vercelRegion: process.env.VERCEL_REGION ?? null,
     nodeVersion: process.version,
   };
-  console.log('[pi-install]', BUILD_MARKER, 'starting', diagnostics);
+  console.log('[pi-install] starting', diagnostics);
 
   try {
     mkdirSync(localPrefix, { recursive: true });

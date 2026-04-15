@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getPiPath, installPi, BUILD_MARKER } from '@/lib/pi-setup';
+import { getPiPath, installPi } from '@/lib/pi-setup';
 import { getErrorMessage } from '@/lib/errors';
 import { homedir, tmpdir } from 'node:os';
 
@@ -11,19 +11,13 @@ export const revalidate = 0;
 
 /**
  * GET /api/pi/install
- * Cheap deploy-verification probe. Returns the current BUILD_MARKER plus a
- * small amount of sandbox info. If this endpoint doesn't reflect a recent
- * marker bump after a deploy, Vercel is serving stale code.
+ * Sandbox probe. Reports the resolved paths installPi will use — handy
+ * when triaging install failures in the desktop shell.
  */
 export function GET() {
   return NextResponse.json({
     route: 'pi/install',
-    buildMarker: BUILD_MARKER,
     cwd: process.cwd(),
-    vercel: process.env.VERCEL ?? null,
-    vercelRegion: process.env.VERCEL_REGION ?? null,
-    vercelDeploymentId: process.env.VERCEL_DEPLOYMENT_ID ?? null,
-    vercelGitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
     nodeVersion: process.version,
     processEnvHome: process.env.HOME ?? null,
     osHomedir: (() => { try { return homedir(); } catch (e) { return `error:${(e as Error).message}`; } })(),
@@ -39,12 +33,11 @@ export async function POST() {
         success: true,
         alreadyInstalled: true,
         piPath: existing,
-        buildMarker: BUILD_MARKER,
       });
     }
     const result = installPi();
     return NextResponse.json(
-      { ...result, buildMarker: BUILD_MARKER },
+      result,
       { status: result.success ? 200 : 500 },
     );
   } catch (e: unknown) {
@@ -56,7 +49,6 @@ export async function POST() {
         stdout: '',
         stderr: '',
         error: `installPi threw: ${getErrorMessage(e)}`,
-        buildMarker: BUILD_MARKER,
         uncaught: true,
       },
       { status: 500 },
