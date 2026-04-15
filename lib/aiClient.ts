@@ -139,3 +139,24 @@ export function extractJsonFromLLM(raw: string, kind: 'array' | 'object' = 'arra
   }
   return JSON.parse(text);
 }
+
+/**
+ * Typed siblings of `extractJsonFromLLM` (PROP-015 phase 1).
+ *
+ * The original returns `any` for legacy reasons — flipping it to
+ * `unknown[]` / `Record<string, unknown>` cascades to ~16 type errors
+ * across 3 files that each need bespoke narrowing. These two helpers
+ * give new code a typed entry point without breaking existing
+ * callers; PROP-015 phases 2-4 migrate callers one batch at a time
+ * and then delete the `any` version.
+ *
+ * Both delegate to the same parsing logic — they're not duplicating
+ * work, just providing a tighter return type.
+ */
+export function extractJsonArrayFromLLM(raw: string): unknown[] {
+  return extractJsonFromLLM(raw, 'array') as unknown[];
+}
+
+export function extractJsonObjectFromLLM(raw: string): Record<string, unknown> {
+  return extractJsonFromLLM(raw, 'object') as Record<string, unknown>;
+}
