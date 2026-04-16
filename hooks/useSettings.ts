@@ -8,7 +8,7 @@ import { type UserSettings, defaultSettings } from '../types/mashup';
 // for any fields that are missing or explicitly undefined in the payload.
 // Nested objects (watermark, apiKeys) are merged one level deep so a partial
 // save doesn't clobber defaults for fields that were never written.
-function mergeSettings(prev: UserSettings, patch: Partial<UserSettings>): UserSettings {
+export function mergeSettings(prev: UserSettings, patch: Partial<UserSettings>): UserSettings {
   // Strip top-level undefined values so they don't override existing defaults.
   const clean = Object.fromEntries(
     Object.entries(patch).filter(([, v]) => v !== undefined),
