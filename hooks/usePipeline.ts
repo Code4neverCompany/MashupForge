@@ -145,7 +145,7 @@ export function usePipeline(deps: UsePipelineDeps) {
       continuous: pipelineContinuous,
       interval: pipelineInterval,
       targetDays: pipelineTargetDays,
-      log: pipelineLog.slice(-100).map(e => ({
+      log: pipelineLog.slice(-50).map(e => ({
         ...e,
         timestamp: e.timestamp.toISOString(),
       })),
@@ -153,7 +153,10 @@ export function usePipeline(deps: UsePipelineDeps) {
   }, [pipelineEnabled, pipelineDelay, pipelineContinuous, pipelineInterval, pipelineTargetDays, pipelineLog]);
 
   const addLog = useCallback((step: string, ideaId: string, status: 'success' | 'error', message: string) => {
-    setPipelineLog(prev => [...prev, { timestamp: new Date(), step, ideaId, status, message }]);
+    setPipelineLog(prev => {
+      const next = [...prev, { timestamp: new Date(), step, ideaId, status, message }];
+      return next.length > 50 ? next.slice(-50) : next;
+    });
   }, []);
 
   const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
