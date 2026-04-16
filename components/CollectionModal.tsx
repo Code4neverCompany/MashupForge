@@ -35,7 +35,7 @@ export function CollectionModal({
       >
         <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
           <h3 className="text-lg font-bold text-white">Create New Collection</h3>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
+          <button type="button" onClick={onClose} className="text-zinc-500 hover:text-white transition-colors" aria-label="Close collection dialog">
             <X className="w-5 h-5" />
           </button>
         </div>

@@ -1411,9 +1411,11 @@ export function MainContent() {
       {/* Header */}
       <header className="h-16 glass-panel header-line relative flex items-center justify-between px-4 md:px-6 shrink-0 z-10">
         <div className="flex items-center gap-2 md:gap-3">
-          <button 
+          <button
+            type="button"
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="md:hidden p-2 -ml-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+            aria-label="Toggle sidebar"
           >
             <Menu className="w-5 h-5" />
           </button>

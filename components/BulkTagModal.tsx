@@ -74,7 +74,7 @@ export function BulkTagModal({
             <Tag className="w-5 h-5 text-[#00e6ff]" />
             Bulk Tagging ({selectedForBatch.size} Images)
           </h3>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white">
+          <button type="button" onClick={onClose} className="text-zinc-500 hover:text-white" aria-label="Close bulk tagging dialog">
             <X className="w-5 h-5" />
           </button>
         </div>

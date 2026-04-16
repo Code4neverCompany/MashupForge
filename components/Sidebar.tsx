@@ -269,7 +269,8 @@ Return ONLY the JSON array, no prose.`;
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Recent Generations</h3>
               {images.length > 0 && (
-                <button 
+                <button
+                  type="button"
                   onClick={clearComparison}
                   className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors"
                 >
