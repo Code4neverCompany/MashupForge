@@ -76,7 +76,7 @@ export function useSettings() {
   ) => {
     setSettings((prev) => {
       const patch = typeof newSettings === 'function' ? newSettings(prev) : newSettings;
-      return { ...prev, ...patch };
+      return mergeSettings(prev, patch);
     });
   }, []);
 
