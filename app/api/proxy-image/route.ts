@@ -40,10 +40,16 @@ export async function GET(req: Request) {
     }
     
     const blob = await response.blob();
-    
+
+    const SAFE_IMAGE_TYPES = new Set([
+      'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif',
+    ]);
+    const upstreamType = response.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase() ?? '';
+    const contentType = SAFE_IMAGE_TYPES.has(upstreamType) ? upstreamType : 'application/octet-stream';
+
     return new NextResponse(blob, {
       headers: {
-        'Content-Type': response.headers.get('Content-Type') || 'image/jpeg',
+        'Content-Type': contentType,
         'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'public, max-age=86400',
       },
