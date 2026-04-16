@@ -2,20 +2,43 @@
 
 import { useEffect, useState } from 'react';
 
+export interface DesktopCredentialFlags {
+  hasInstagramToken: boolean;
+  hasInstagramAccountId: boolean;
+  hasLeonardoKey: boolean;
+  hasZaiKey: boolean;
+}
+
 export interface DesktopConfig {
   isDesktop: boolean | null;
-  configKeys: Record<string, string>;
+  credentials: DesktopCredentialFlags;
+}
+
+const EMPTY_FLAGS: DesktopCredentialFlags = {
+  hasInstagramToken: false,
+  hasInstagramAccountId: false,
+  hasLeonardoKey: false,
+  hasZaiKey: false,
+};
+
+function toFlags(keys: Record<string, string>): DesktopCredentialFlags {
+  return {
+    hasInstagramToken: Boolean(keys.INSTAGRAM_ACCESS_TOKEN),
+    hasInstagramAccountId: Boolean(keys.INSTAGRAM_ACCOUNT_ID),
+    hasLeonardoKey: Boolean(keys.LEONARDO_API_KEY),
+    hasZaiKey: Boolean(keys.ZAI_API_KEY),
+  };
 }
 
 /**
- * Fetches desktop config (isDesktop flag + config.json keys) once on mount.
- * Superset of useIsDesktop — also exposes config keys so client-side code
- * can check credentials stored in config.json (e.g. INSTAGRAM_ACCESS_TOKEN).
+ * Fetches desktop config once on mount and exposes boolean credential-presence
+ * flags — raw token values never enter React state.  DesktopSettingsPanel
+ * reads the full GET response directly; this hook is for UI gating only.
  */
 export function useDesktopConfig(): DesktopConfig {
   const [config, setConfig] = useState<DesktopConfig>({
     isDesktop: null,
-    configKeys: {},
+    credentials: EMPTY_FLAGS,
   });
 
   useEffect(() => {
@@ -26,12 +49,14 @@ export function useDesktopConfig(): DesktopConfig {
         if (!cancelled) {
           setConfig({
             isDesktop: Boolean(data?.isDesktop),
-            configKeys: data?.keys && typeof data.keys === 'object' ? data.keys : {},
+            credentials: data?.keys && typeof data.keys === 'object'
+              ? toFlags(data.keys)
+              : EMPTY_FLAGS,
           });
         }
       })
       .catch(() => {
-        if (!cancelled) setConfig({ isDesktop: false, configKeys: {} });
+        if (!cancelled) setConfig({ isDesktop: false, credentials: EMPTY_FLAGS });
       });
     return () => {
       cancelled = true;

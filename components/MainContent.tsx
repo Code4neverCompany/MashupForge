@@ -129,7 +129,7 @@ import { showToast } from '@/components/Toast';
 
 export function MainContent() {
   const { logout } = useAuth();
-  const { isDesktop, configKeys: desktopConfigKeys } = useDesktopConfig();
+  const { isDesktop, credentials: desktopCreds } = useDesktopConfig();
   const { 
     images, 
     savedImages, 
@@ -277,7 +277,7 @@ export function MainContent() {
     switch (p) {
       case 'instagram':
         if (settings.apiKeys.instagram?.accessToken && settings.apiKeys.instagram?.igAccountId) return true;
-        if (isDesktop && desktopConfigKeys.INSTAGRAM_ACCESS_TOKEN && desktopConfigKeys.INSTAGRAM_ACCOUNT_ID) return true;
+        if (isDesktop && desktopCreds.hasInstagramToken && desktopCreds.hasInstagramAccountId) return true;
         return false;
       case 'pinterest':
         return !!settings.apiKeys.pinterest?.accessToken;
@@ -302,8 +302,8 @@ export function MainContent() {
     postCount: 1,                          // updated per-call via trigger options
     scheduledPosts: settings.scheduledPosts || [],
     defaultPlatforms: availablePlatforms(),
-    igAccessToken: settings.apiKeys?.instagram?.accessToken || desktopConfigKeys.INSTAGRAM_ACCESS_TOKEN,
-    igAccountId: settings.apiKeys?.instagram?.igAccountId || desktopConfigKeys.INSTAGRAM_ACCOUNT_ID,
+    igAccessToken: settings.apiKeys?.instagram?.accessToken,
+    igAccountId: settings.apiKeys?.instagram?.igAccountId,
   });
 
   /** Return the per-card selection, initialising to "all available" on first access. */
@@ -337,11 +337,7 @@ export function MainContent() {
   };
 
   const buildCredentialsPayload = () => ({
-    instagram: settings.apiKeys.instagram?.accessToken
-      ? settings.apiKeys.instagram
-      : isDesktop
-        ? { accessToken: desktopConfigKeys.INSTAGRAM_ACCESS_TOKEN || '', igAccountId: desktopConfigKeys.INSTAGRAM_ACCOUNT_ID || '' }
-        : settings.apiKeys.instagram,
+    instagram: settings.apiKeys.instagram,
     twitter: settings.apiKeys.twitter,
     pinterest: settings.apiKeys.pinterest,
     discord: { webhookUrl: settings.apiKeys.discordWebhook },
@@ -1063,11 +1059,7 @@ export function MainContent() {
       // postImageNow so the /api/social/post route doesn't care whether
       // the publish was triggered manually or by the worker.
       const credentials = {
-        instagram: settings.apiKeys.instagram?.accessToken
-          ? settings.apiKeys.instagram
-          : isDesktop
-            ? { accessToken: desktopConfigKeys.INSTAGRAM_ACCESS_TOKEN || '', igAccountId: desktopConfigKeys.INSTAGRAM_ACCOUNT_ID || '' }
-            : settings.apiKeys.instagram,
+        instagram: settings.apiKeys.instagram,
         twitter: settings.apiKeys.twitter,
         pinterest: settings.apiKeys.pinterest,
         discord: { webhookUrl: settings.apiKeys.discordWebhook },
