@@ -4220,14 +4220,22 @@ export function MainContent() {
                           )}
                         </div>
                       ) : (
-                        <Image
-                          src={img.url || `data:image/jpeg;base64,${img.base64}`}
-                          alt={img.prompt}
-                          fill
-                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                          className="object-cover transition-transform duration-700 group-hover:scale-110"
-                          referrerPolicy="no-referrer"
-                        />
+                        <>
+                          {/* CDN-expiry fallback — sits behind Image at z-0;
+                              revealed automatically when onError hides the img */}
+                          <div className="absolute inset-0 flex items-center justify-center z-0">
+                            <ImageIcon className="w-8 h-8 text-zinc-700" />
+                          </div>
+                          <Image
+                            src={img.url || `data:image/jpeg;base64,${img.base64}`}
+                            alt={img.prompt}
+                            fill
+                            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                            className="object-cover transition-transform duration-700 group-hover:scale-110"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          />
+                        </>
                       )}
                       
                       {/* Hover glow overlay — warm-gold from below, cool-blue at top edge */}
