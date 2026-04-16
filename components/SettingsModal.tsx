@@ -18,7 +18,9 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
+  Copy,
 } from 'lucide-react';
+import { showToast } from '@/components/Toast';
 import {
   LEONARDO_MODELS,
   type Collection,
@@ -129,6 +131,11 @@ export function SettingsModal({
       next.has(field) ? next.delete(field) : next.add(field);
       return next;
     });
+  const copyField = (value: string) =>
+    navigator.clipboard.writeText(value).then(
+      () => showToast('Copied to clipboard', 'success'),
+      () => showToast('Failed to copy', 'error'),
+    );
 
   // Wrapper that triggers the "Saved" indicator on every settings write.
   const updateSettings: typeof updateSettingsProp = (patch) => {
@@ -190,16 +197,18 @@ export function SettingsModal({
                     value={settings.apiKeys.leonardo || ''}
                     onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, leonardo: e.target.value } })}
                     placeholder="••••••••••••••••"
-                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 pr-9 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
+                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 pr-16 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                   />
-                  <button
-                    type="button"
-                    onClick={() => toggleReveal('leonardo')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
-                    aria-label={revealedFields.has('leonardo') ? 'Hide API key' : 'Show API key'}
-                  >
-                    {revealedFields.has('leonardo') ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    {settings.apiKeys.leonardo && (
+                      <button type="button" onClick={() => copyField(settings.apiKeys.leonardo!)} className="text-zinc-500 hover:text-zinc-300 transition-colors" aria-label="Copy API key">
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button type="button" onClick={() => toggleReveal('leonardo')} className="text-zinc-500 hover:text-zinc-300 transition-colors" aria-label={revealedFields.has('leonardo') ? 'Hide API key' : 'Show API key'}>
+                      {revealedFields.has('leonardo') ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -231,16 +240,18 @@ export function SettingsModal({
                         value={settings.apiKeys.instagram?.accessToken || ''}
                         onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, instagram: { accessToken: e.target.value, igAccountId: settings.apiKeys.instagram?.igAccountId ?? '' } } })}
                         placeholder="Long-lived Page Access Token"
-                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 pr-9 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
+                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 pr-16 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                       />
-                      <button
-                        type="button"
-                        onClick={() => toggleReveal('ig-token')}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
-                        aria-label={revealedFields.has('ig-token') ? 'Hide token' : 'Show token'}
-                      >
-                        {revealedFields.has('ig-token') ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </button>
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                        {settings.apiKeys.instagram?.accessToken && (
+                          <button type="button" onClick={() => copyField(settings.apiKeys.instagram!.accessToken)} className="text-zinc-500 hover:text-zinc-300 transition-colors" aria-label="Copy access token">
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button type="button" onClick={() => toggleReveal('ig-token')} className="text-zinc-500 hover:text-zinc-300 transition-colors" aria-label={revealedFields.has('ig-token') ? 'Hide token' : 'Show token'}>
+                          {revealedFields.has('ig-token') ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
                     </div>
                   </div>
                   <p className="text-[10px] text-zinc-500 mt-1">Requires a Facebook Developer App linked to an Instagram Business account.</p>
@@ -257,16 +268,18 @@ export function SettingsModal({
                       value={settings.apiKeys.pinterest?.accessToken || ''}
                       onChange={(e) => updateSettings({ apiKeys: { ...settings.apiKeys, pinterest: { accessToken: e.target.value, boardId: settings.apiKeys.pinterest?.boardId } } })}
                       placeholder="Pinterest Access Token"
-                      className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 pr-9 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
+                      className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 pr-16 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
                     />
-                    <button
-                      type="button"
-                      onClick={() => toggleReveal('pinterest-token')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
-                      aria-label={revealedFields.has('pinterest-token') ? 'Hide token' : 'Show token'}
-                    >
-                      {revealedFields.has('pinterest-token') ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      {settings.apiKeys.pinterest?.accessToken && (
+                        <button type="button" onClick={() => copyField(settings.apiKeys.pinterest!.accessToken)} className="text-zinc-500 hover:text-zinc-300 transition-colors" aria-label="Copy access token">
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button type="button" onClick={() => toggleReveal('pinterest-token')} className="text-zinc-500 hover:text-zinc-300 transition-colors" aria-label={revealedFields.has('pinterest-token') ? 'Hide token' : 'Show token'}>
+                        {revealedFields.has('pinterest-token') ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
                   </div>
                   <input
                     type="text"
