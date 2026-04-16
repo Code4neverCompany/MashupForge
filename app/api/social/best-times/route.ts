@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getErrorMessage } from '@/lib/errors';
+import { resolveInstagramCredentials } from '@/lib/instagram-credentials';
 
 interface IgMediaPost {
   timestamp?: string;
@@ -15,11 +16,8 @@ interface IgMediaPost {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as { accessToken?: string; igAccountId?: string };
-    // INSTAGRAM-CRED-FIX: prefer env vars (config.json-hydrated on desktop)
-    // over request body so desktop installs work even when the client-side
-    // IndexedDB settings tree was wiped by a webview origin drift.
-    const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN ?? body.accessToken;
-    const igAccountId = process.env.INSTAGRAM_ACCOUNT_ID ?? body.igAccountId;
+    const { igAccountId, igAccessToken: accessToken } =
+      resolveInstagramCredentials(process.env, body);
 
     if (!accessToken || !igAccountId) {
       return NextResponse.json({

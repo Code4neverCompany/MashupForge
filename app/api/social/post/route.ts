@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { TwitterApi } from 'twitter-api-v2';
 import sharp from 'sharp';
 import { getErrorMessage } from '@/lib/errors';
+import { resolveInstagramCredentials } from '@/lib/instagram-credentials';
 
 /**
  * Parse a response body as JSON, or throw a readable error that includes
@@ -163,15 +164,8 @@ export async function POST(req: Request) {
     }
 
     if (platforms.includes('instagram')) {
-      // INSTAGRAM-CRED-FIX: on desktop, env vars come from config.json
-      // (hydrated by scripts/tauri-server-wrapper.js and kept live by
-      // /api/desktop/config PATCH). These survive webview origin drift.
-      // Fall back to the request body creds for web deployments that
-      // still pass credentials from the client-side settings tree.
-      const igAccountIdRaw =
-        process.env.INSTAGRAM_ACCOUNT_ID ?? credentials?.instagram?.igAccountId ?? '';
-      const igAccessTokenRaw =
-        process.env.INSTAGRAM_ACCESS_TOKEN ?? credentials?.instagram?.accessToken ?? '';
+      const { igAccountId: igAccountIdRaw, igAccessToken: igAccessTokenRaw } =
+        resolveInstagramCredentials(process.env, credentials?.instagram);
       if (!igAccessTokenRaw || !igAccountIdRaw) {
         throw new Error('Instagram credentials incomplete');
       }
