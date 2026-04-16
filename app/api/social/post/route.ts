@@ -4,6 +4,8 @@ import sharp from 'sharp';
 import { getErrorMessage } from '@/lib/errors';
 import { resolveInstagramCredentials } from '@/lib/instagram-credentials';
 
+const IG_GRAPH_API_VERSION = 'v21.0';
+
 /**
  * Parse a response body as JSON, or throw a readable error that includes
  * HTTP status + a snippet of the raw body. Graph API and uguu both return
@@ -55,7 +57,7 @@ async function waitForIgContainerReady(
 
   while (true) {
     const statusRes = await fetch(
-      `https://${hostUrl}/v19.0/${containerId}?fields=status_code`,
+      `https://${hostUrl}/${IG_GRAPH_API_VERSION}/${containerId}?fields=status_code`,
       { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(10000) },
     );
     const statusData = await parseJsonOrThrow(statusRes, `${context} status poll`);
@@ -224,7 +226,7 @@ export async function POST(req: Request) {
 
       if (igMediaUrls.length === 1) {
         // Single image post
-        const containerRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media`, {
+        const containerRes = await fetch(`https://${hostUrl}/${IG_GRAPH_API_VERSION}/${igAccountId}/media`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
           body: JSON.stringify({ image_url: igMediaUrls[0], caption: caption }),
@@ -235,7 +237,7 @@ export async function POST(req: Request) {
 
         await waitForIgContainerReady(hostUrl, containerData.id as string, igAccessToken, 'IG Container');
 
-        const publishRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media_publish`, {
+        const publishRes = await fetch(`https://${hostUrl}/${IG_GRAPH_API_VERSION}/${igAccountId}/media_publish`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
           body: JSON.stringify({ creation_id: containerData.id }),
@@ -248,7 +250,7 @@ export async function POST(req: Request) {
         // Carousel post
         const childrenIds: string[] = [];
         for (const url of igMediaUrls) {
-          const childRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media`, {
+          const childRes = await fetch(`https://${hostUrl}/${IG_GRAPH_API_VERSION}/${igAccountId}/media`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
             body: JSON.stringify({ image_url: url, is_carousel_item: true }),
@@ -260,7 +262,7 @@ export async function POST(req: Request) {
         }
 
         // Create Carousel Container
-        const carouselRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media`, {
+        const carouselRes = await fetch(`https://${hostUrl}/${IG_GRAPH_API_VERSION}/${igAccountId}/media`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
           body: JSON.stringify({ media_type: 'CAROUSEL', children: childrenIds, caption: caption }),
@@ -271,7 +273,7 @@ export async function POST(req: Request) {
 
         await waitForIgContainerReady(hostUrl, carouselData.id as string, igAccessToken, 'IG Carousel Container');
 
-        const publishRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media_publish`, {
+        const publishRes = await fetch(`https://${hostUrl}/${IG_GRAPH_API_VERSION}/${igAccountId}/media_publish`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
           body: JSON.stringify({ creation_id: carouselData.id }),
