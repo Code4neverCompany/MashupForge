@@ -393,6 +393,13 @@ export async function POST(req: Request) {
       if (!discordWebhookUrl) {
         throw new Error('Discord webhook URL missing');
       }
+      const DISCORD_WEBHOOK_PREFIXES = [
+        'https://discord.com/api/webhooks/',
+        'https://discordapp.com/api/webhooks/',
+      ];
+      if (!DISCORD_WEBHOOK_PREFIXES.some((p) => discordWebhookUrl.startsWith(p))) {
+        throw new Error('Discord webhook URL must start with https://discord.com/api/webhooks/ or https://discordapp.com/api/webhooks/');
+      }
 
       const formData = new FormData();
       formData.append('payload_json', JSON.stringify({ content: caption }));
