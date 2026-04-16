@@ -86,6 +86,7 @@ export async function GET() {
           Accept: 'application/vnd.github+json',
           'User-Agent': 'MashupForge-UpdateCheck',
         },
+        signal: AbortSignal.timeout(10000),
       }
     );
 

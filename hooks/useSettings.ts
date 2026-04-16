@@ -4,6 +4,25 @@ import { useState, useEffect, useCallback } from 'react';
 import { get, set } from 'idb-keyval';
 import { type UserSettings, defaultSettings } from '../types/mashup';
 
+// Deep-merge a loaded payload into the current settings, preserving defaults
+// for any fields that are missing or explicitly undefined in the payload.
+// Nested objects (watermark, apiKeys) are merged one level deep so a partial
+// save doesn't clobber defaults for fields that were never written.
+function mergeSettings(prev: UserSettings, patch: Partial<UserSettings>): UserSettings {
+  // Strip top-level undefined values so they don't override existing defaults.
+  const clean = Object.fromEntries(
+    Object.entries(patch).filter(([, v]) => v !== undefined),
+  ) as Partial<UserSettings>;
+  const merged = { ...prev, ...clean };
+  if (clean.watermark && typeof clean.watermark === 'object') {
+    merged.watermark = { ...prev.watermark, ...clean.watermark };
+  }
+  if (clean.apiKeys && typeof clean.apiKeys === 'object') {
+    merged.apiKeys = { ...prev.apiKeys, ...clean.apiKeys };
+  }
+  return merged;
+}
+
 export function useSettings() {
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false);
@@ -19,11 +38,11 @@ export function useSettings() {
           const parsed = JSON.parse(storedSettings);
           await set('mashup_settings', parsed);
           localStorage.removeItem('mashup_settings');
-          setSettings(prev => ({ ...prev, ...parsed }));
+          setSettings(prev => mergeSettings(prev, parsed as Partial<UserSettings>));
         } else {
           const idbSettings = await get('mashup_settings');
           if (idbSettings && typeof idbSettings === 'object') {
-            setSettings(prev => ({ ...prev, ...idbSettings }));
+            setSettings(prev => mergeSettings(prev, idbSettings as Partial<UserSettings>));
           }
         }
       } catch {

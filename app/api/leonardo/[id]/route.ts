@@ -20,10 +20,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     // Generations created via /api/rest/v2/generations are not queryable via the
     // v1 GET (the Hasura auth hook for v1 returns "Invalid response from authorization
     // hook"). Try v2 first; fall back to v1 for legacy generations.
-    let getRes = await fetch(`https://cloud.leonardo.ai/api/rest/v2/generations/${id}`, { headers });
+    let getRes = await fetch(`https://cloud.leonardo.ai/api/rest/v2/generations/${id}`, { headers, signal: AbortSignal.timeout(10000) });
     let usedV2 = true;
     if (!getRes.ok && (getRes.status === 404 || getRes.status === 405)) {
-      getRes = await fetch(`https://cloud.leonardo.ai/api/rest/v1/generations/${id}`, { headers });
+      getRes = await fetch(`https://cloud.leonardo.ai/api/rest/v1/generations/${id}`, { headers, signal: AbortSignal.timeout(10000) });
       usedV2 = false;
     }
 

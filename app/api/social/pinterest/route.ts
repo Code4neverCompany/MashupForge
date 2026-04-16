@@ -57,6 +57,7 @@ export async function POST(req: Request) {
       const uploadRes = await fetch('https://uguu.se/upload.php', {
         method: 'POST',
         body: formData,
+        signal: AbortSignal.timeout(30000),
       });
       if (!uploadRes.ok) {
         return NextResponse.json(
@@ -103,6 +104,7 @@ export async function POST(req: Request) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(pinBody),
+      signal: AbortSignal.timeout(15000),
     });
 
     const pinData = await (pinRes.json() as Promise<Record<string, unknown>>).catch((): Record<string, unknown> => ({}));

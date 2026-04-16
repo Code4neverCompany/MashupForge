@@ -56,7 +56,7 @@ async function waitForIgContainerReady(
   while (true) {
     const statusRes = await fetch(
       `https://${hostUrl}/v19.0/${containerId}?fields=status_code`,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
+      { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(10000) },
     );
     const statusData = await parseJsonOrThrow(statusRes, `${context} status poll`);
     if (statusData.error) {
@@ -205,6 +205,7 @@ export async function POST(req: Request) {
           const uploadRes = await fetch('https://uguu.se/upload.php', {
             method: 'POST',
             body: formData,
+            signal: AbortSignal.timeout(30000),
           });
 
           const uploadData = await parseJsonOrThrow(uploadRes, 'uguu image upload');
@@ -226,7 +227,8 @@ export async function POST(req: Request) {
         const containerRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
-          body: JSON.stringify({ image_url: igMediaUrls[0], caption: caption })
+          body: JSON.stringify({ image_url: igMediaUrls[0], caption: caption }),
+          signal: AbortSignal.timeout(15000),
         });
         const containerData = await parseJsonOrThrow(containerRes, 'IG Container');
         if (containerData.error) throw new Error(`IG Container Error: ${apiErrMsg(containerData)}`);
@@ -236,7 +238,8 @@ export async function POST(req: Request) {
         const publishRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media_publish`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
-          body: JSON.stringify({ creation_id: containerData.id })
+          body: JSON.stringify({ creation_id: containerData.id }),
+          signal: AbortSignal.timeout(15000),
         });
         const publishData = await parseJsonOrThrow(publishRes, 'IG Publish');
         if (publishData.error) throw new Error(`IG Publish Error: ${apiErrMsg(publishData)}`);
@@ -248,7 +251,8 @@ export async function POST(req: Request) {
           const childRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
-            body: JSON.stringify({ image_url: url, is_carousel_item: true })
+            body: JSON.stringify({ image_url: url, is_carousel_item: true }),
+            signal: AbortSignal.timeout(15000),
           });
           const childData = await parseJsonOrThrow(childRes, 'IG Carousel Item');
           if (childData.error) throw new Error(`IG Carousel Item Error: ${apiErrMsg(childData)}`);
@@ -259,7 +263,8 @@ export async function POST(req: Request) {
         const carouselRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
-          body: JSON.stringify({ media_type: 'CAROUSEL', children: childrenIds, caption: caption })
+          body: JSON.stringify({ media_type: 'CAROUSEL', children: childrenIds, caption: caption }),
+          signal: AbortSignal.timeout(15000),
         });
         const carouselData = await parseJsonOrThrow(carouselRes, 'IG Carousel Container');
         if (carouselData.error) throw new Error(`IG Carousel Container Error: ${apiErrMsg(carouselData)}`);
@@ -269,7 +274,8 @@ export async function POST(req: Request) {
         const publishRes = await fetch(`https://${hostUrl}/v19.0/${igAccountId}/media_publish`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
-          body: JSON.stringify({ creation_id: carouselData.id })
+          body: JSON.stringify({ creation_id: carouselData.id }),
+          signal: AbortSignal.timeout(15000),
         });
         const publishData = await parseJsonOrThrow(publishRes, 'IG Carousel Publish');
         if (publishData.error) throw new Error(`IG Carousel Publish Error: ${apiErrMsg(publishData)}`);
@@ -325,6 +331,7 @@ export async function POST(req: Request) {
           const uploadRes = await fetch('https://uguu.se/upload.php', {
             method: 'POST',
             body: formData,
+            signal: AbortSignal.timeout(30000),
           });
           if (!uploadRes.ok) throw new Error('uguu upload failed');
           const uploadData = await uploadRes.json() as Record<string, unknown>;
@@ -357,6 +364,7 @@ export async function POST(req: Request) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(pinBody),
+        signal: AbortSignal.timeout(15000),
       });
       const pinData = await (pinRes.json() as Promise<Record<string, unknown>>).catch((): Record<string, unknown> => ({}));
       if (!pinRes.ok) {
@@ -381,7 +389,8 @@ export async function POST(req: Request) {
 
       const discordRes = await fetch(credentials.discord.webhookUrl, {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal: AbortSignal.timeout(10000),
       });
 
       if (!discordRes.ok) {
