@@ -1185,8 +1185,6 @@ export function MainContent() {
     return () => clearInterval(interval);
   }, [settings.scheduledPosts, settings.apiKeys, savedImages, updateSettings]);
 
-  const ALL_MODELS = useMemo(() => [...LEONARDO_MODELS], []);
-
   const allTags = useMemo(
     () => Array.from(new Set(savedImages.flatMap(img => img.tags || []))).sort(),
     [savedImages],
@@ -1231,6 +1229,16 @@ export function MainContent() {
     () => savedImages.filter((i) => i.isPostReady === true),
     [savedImages],
   );
+
+  const galleryStats = useMemo(() => {
+    let tagged = 0;
+    let captioned = 0;
+    for (const img of savedImages) {
+      if (img.tags && img.tags.length > 0) tagged++;
+      if (img.postCaption) captioned++;
+    }
+    return { total: savedImages.length, tagged, captioned };
+  }, [savedImages]);
 
   const handlePushToCompare = (prompt: string, options: GenerateOptions) => {
     setComparisonPrompt(prompt);
@@ -1574,15 +1582,15 @@ export function MainContent() {
                       </div>
                       <div>
                         <h2 className="type-title">Gallery</h2>
-                        <p className="type-muted">{savedImages.length} saved images</p>
+                        <p className="type-muted">{galleryStats.total} saved images</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4 text-xs text-zinc-500">
-                      <span>{savedImages.length} images</span>
+                      <span>{galleryStats.total} images</span>
                       <span className="text-zinc-700">·</span>
-                      <span>{savedImages.filter((i) => i.tags && i.tags.length > 0).length} tagged</span>
+                      <span>{galleryStats.tagged} tagged</span>
                       <span className="text-zinc-700">·</span>
-                      <span>{savedImages.filter((i) => i.postCaption).length} captioned</span>
+                      <span>{galleryStats.captioned} captioned</span>
                       <span className="text-zinc-700">·</span>
                       <span>{postReadyImages.length} post-ready</span>
                     </div>
@@ -1652,7 +1660,7 @@ export function MainContent() {
                       >
                         All
                       </button>
-                      {ALL_MODELS.map((m) => (
+                      {LEONARDO_MODELS.map((m) => (
                         <button
                           key={m.id}
                           onClick={() => setFilterModel(m.id)}
@@ -1919,7 +1927,7 @@ export function MainContent() {
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-zinc-300">Select Models</label>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                          {ALL_MODELS.map(model => (
+                          {LEONARDO_MODELS.map(model => (
                             <button
                               key={model.id}
                               onClick={() => {
