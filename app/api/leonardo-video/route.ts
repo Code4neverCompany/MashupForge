@@ -60,7 +60,8 @@ export async function POST(req: Request) {
         'Authorization': `Bearer ${apiKey}`,
         'Accept': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30000),
     });
 
     if (!createRes.ok) {
