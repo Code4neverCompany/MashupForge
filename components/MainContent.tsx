@@ -480,11 +480,10 @@ export function MainContent() {
    * auto-grouped when 2+ share the same prompt and were saved within
    * CAROUSEL_AUTO_WINDOW_MS of each other.
    */
-  const computeCarouselView = (ready: GeneratedImage[]): PostItem[] => {
+  const computeCarouselView = useCallback((ready: GeneratedImage[]): PostItem[] => {
     const items: PostItem[] = [];
     const handled = new Set<string>();
 
-    // Explicit groups first — respect the user's manual grouping decisions.
     const explicitGroups = settings.carouselGroups || [];
     for (const g of explicitGroups) {
       const imgs = g.imageIds
@@ -495,9 +494,7 @@ export function MainContent() {
       for (const i of imgs) handled.add(i.id);
     }
 
-    // Auto-group the remaining by prompt + savedAt proximity.
     const remaining = ready.filter((i) => !handled.has(i.id));
-    // Stable sort by savedAt so proximity grouping is deterministic.
     remaining.sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0));
     for (let i = 0; i < remaining.length; i++) {
       if (handled.has(remaining[i].id)) continue;
@@ -526,14 +523,13 @@ export function MainContent() {
       }
     }
 
-    // Preserve original order (newest-first for a better UX — savedAt desc).
     items.sort((a, b) => {
       const aT = a.kind === 'single' ? a.img.savedAt || 0 : Math.max(...a.images.map((i) => i.savedAt || 0));
       const bT = b.kind === 'single' ? b.img.savedAt || 0 : Math.max(...b.images.map((i) => i.savedAt || 0));
       return bT - aT;
     });
     return items;
-  };
+  }, [settings.carouselGroups]);
 
   /**
    * Persist a manual carousel group. If imageIds has fewer than 2
@@ -1189,24 +1185,25 @@ export function MainContent() {
     return () => clearInterval(interval);
   }, [settings.scheduledPosts, settings.apiKeys, savedImages, updateSettings]);
 
-  const ALL_MODELS = [...LEONARDO_MODELS];
+  const ALL_MODELS = useMemo(() => [...LEONARDO_MODELS], []);
 
-  const allTags = Array.from(new Set(savedImages.flatMap(img => img.tags || []))).sort();
+  const allTags = useMemo(
+    () => Array.from(new Set(savedImages.flatMap(img => img.tags || []))).sort(),
+    [savedImages],
+  );
 
-  const displayedImages = (view === 'studio' ? images : savedImages)
+  const displayedImages = useMemo(() => (view === 'studio' ? images : savedImages)
     .filter(img => {
-      const matchesSearch = img.prompt.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      const matchesSearch = img.prompt.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            img.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchesModel = filterModel === 'all' || img.modelInfo?.modelId === filterModel;
       const matchesUniverse = filterUniverse === 'all' || img.universe === filterUniverse;
       const matchesCollection = selectedCollectionId === 'all' || img.collectionId === selectedCollectionId;
-      
+
       const matchesTag = !tagQuery.trim() || (() => {
         const query = tagQuery.toLowerCase();
-        // Split by OR (comma or 'or')
         const orParts = query.split(/\s+or\s+|,/i);
         return orParts.some(part => {
-          // Split by AND (semicolon or 'and')
           const andParts = part.trim().split(/\s+and\s+|;/i);
           return andParts.every(term => {
             term = term.trim();
@@ -1219,14 +1216,21 @@ export function MainContent() {
           });
         });
       })();
-      
+
       return matchesSearch && matchesModel && matchesUniverse && matchesCollection && matchesTag;
     })
     .sort((a, b) => {
       const timeA = a.savedAt || 0;
       const timeB = b.savedAt || 0;
       return sortBy === 'newest' ? timeB - timeA : timeA - timeB;
-    });
+    }),
+    [view, images, savedImages, searchQuery, filterModel, filterUniverse, selectedCollectionId, tagQuery, sortBy],
+  );
+
+  const postReadyImages = useMemo(
+    () => savedImages.filter((i) => i.isPostReady === true),
+    [savedImages],
+  );
 
   const handlePushToCompare = (prompt: string, options: GenerateOptions) => {
     setComparisonPrompt(prompt);
@@ -1580,7 +1584,7 @@ export function MainContent() {
                       <span className="text-zinc-700">·</span>
                       <span>{savedImages.filter((i) => i.postCaption).length} captioned</span>
                       <span className="text-zinc-700">·</span>
-                      <span>{savedImages.filter((i) => i.isPostReady).length} post-ready</span>
+                      <span>{postReadyImages.length} post-ready</span>
                     </div>
                   </div>
 
@@ -2626,8 +2630,7 @@ export function MainContent() {
                 );
               })()}
               {view === 'post-ready' && (() => {
-                const all = savedImages;
-                const ready = all.filter((i) => i.isPostReady === true);
+                const ready = postReadyImages;
                 // Carousel-aware view used by Smart Schedule so grouped
                 // posts consume one slot each instead of N individual slots.
                 const postItems = computeCarouselView(ready);
@@ -2667,7 +2670,7 @@ export function MainContent() {
                         <div>
                           <h2 className="type-title">Post Ready</h2>
                           <p className="text-xs text-zinc-500 mt-1">
-                            {ready.length} posts ready / {all.length} total saved images
+                            {ready.length} posts ready / {savedImages.length} total saved images
                           </p>
                         </div>
                       </div>
@@ -3204,9 +3207,8 @@ export function MainContent() {
                     {/* Click-to-schedule modal */}
                     {calendarSlotClick && (() => {
                       const slot = calendarSlotClick;
-                      const postReady = savedImages.filter((i) => i.isPostReady === true);
                       const selectedImageId =
-                        slot.imageId || (postReady.length === 1 ? postReady[0].id : undefined);
+                        slot.imageId || (postReadyImages.length === 1 ? postReadyImages[0].id : undefined);
                       const selectedImage = selectedImageId
                         ? savedImages.find((i) => i.id === selectedImageId)
                         : undefined;
@@ -3274,14 +3276,14 @@ export function MainContent() {
                                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                                   Image
                                 </label>
-                                {postReady.length === 0 ? (
+                                {postReadyImages.length === 0 ? (
                                   <p className="text-xs text-amber-400">
                                     No post-ready images yet. Go to the Gallery and click
                                     &quot;Prepare for Post&quot; on an image first.
                                   </p>
                                 ) : (
                                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-48 overflow-y-auto">
-                                    {postReady.map((img) => {
+                                    {postReadyImages.map((img) => {
                                       const isSel = img.id === selectedImageId;
                                       return (
                                         <motion.button
