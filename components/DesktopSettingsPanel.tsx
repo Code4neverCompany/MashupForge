@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power } from 'lucide-react';
 import { DESKTOP_CONFIG_KEYS } from '@/lib/desktop-config-keys';
 import { UpdateBanner } from './UpdateBanner';
+import { PortConflictBanner } from './PortConflictBanner';
 
 // ── PROP-005: Tauri auto-launch toggle ────────────────────────────────────────
 // Dynamically imported so the web build (no Tauri) never bundles the plugin.
@@ -238,6 +239,9 @@ export function DesktopSettingsPanel() {
         API keys stored in <code className="text-zinc-400">config.json</code> on your machine — never sent to any server.
         Injected into the sidecar process at launch.
       </p>
+
+      {/* PORT-001: Warn when ephemeral-port fallback fired */}
+      <PortConflictBanner />
 
       {/* Update check (STORY-122) */}
       <UpdateBanner />
