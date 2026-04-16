@@ -25,6 +25,28 @@ import { STAGES } from './pipeline/stages';
 
 type PipelinePlatform = 'instagram' | 'pinterest' | 'twitter' | 'discord';
 
+const STEP_LABELS: Record<string, string> = {
+  'status-update':   'Status',
+  'trending':        'Trending',
+  'prompt-expand':   'Prompt',
+  'image-gen':       'Image Gen',
+  'image-ready':     'Ready',
+  'auto-generate':   'Auto-Gen',
+  'caption':         'Caption',
+  'schedule':        'Schedule',
+  'post':            'Post',
+  'engagement':      'Engagement',
+  'daemon':          'Daemon',
+  'pi-precheck':     'Pre-Check',
+  'pipeline-start':  'Start',
+  'pipeline-stop':   'Stop',
+  'pipeline-skip':   'Skip',
+  'pipeline-cycle':  'Cycle',
+  'pipeline-end':    'End',
+  'pipeline-error':  'Error',
+  'complete':        'Complete',
+};
+
 export function PipelinePanel() {
   const {
     pipelineEnabled,
@@ -571,7 +593,7 @@ export function PipelinePanel() {
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono text-zinc-500">{entry.step}</span>
+                        <span className="text-xs font-mono text-zinc-500">{STEP_LABELS[entry.step] ?? entry.step}</span>
                         <span className="text-xs text-zinc-500">
                           {entry.timestamp.toLocaleTimeString()}
                         </span>
