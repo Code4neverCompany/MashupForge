@@ -1,11 +1,11 @@
 # build-windows.ps1
 #
 # MashupForge Windows desktop build orchestrator. Runs the full Phase 1
-# build pipeline and emits .msi / setup.exe installers at
-# src-tauri\target\<release|debug>\bundle\.
+# build pipeline and emits a .msi installer at
+# src-tauri\target\<release|debug>\bundle\msi\.
 #
 # Usage:
-#   .\build-windows.ps1                 # release build (unsigned .msi + setup.exe)
+#   .\build-windows.ps1                 # release build (unsigned .msi)
 #   .\build-windows.ps1 -Dev             # debug build (faster, keeps assertions)
 #   .\build-windows.ps1 -SkipToolchainCheck  # bypass the upfront tool check
 #
@@ -134,21 +134,16 @@ $BundleRoot = if ($Dev) {
 }
 
 $Msi = Get-ChildItem -Path $BundleRoot -Filter '*.msi' -Recurse -ErrorAction SilentlyContinue
-$Nsis = Get-ChildItem -Path $BundleRoot -Filter '*-setup.exe' -Recurse -ErrorAction SilentlyContinue
 
 if ($Msi) {
     Write-Host "MSI:      $($Msi.FullName)"
-}
-if ($Nsis) {
-    Write-Host "NSIS EXE: $($Nsis.FullName)"
-}
-if (-not $Msi -and -not $Nsis) {
-    Write-Warning "No installer artifacts found under $BundleRoot"
+} else {
+    Write-Warning "No .msi installer found under $BundleRoot"
 }
 
 Write-Host ""
 Write-Host "Next steps:"
-Write-Host "  1. Double-click the .msi (or setup.exe) to install."
+Write-Host "  1. Double-click the .msi to install."
 Write-Host "  2. Click past the SmartScreen warning (unsigned — Phase 3 will add a cert)."
 Write-Host "  3. On first launch, create %APPDATA%\MashupForge\config.json with your API keys."
 Write-Host "     See docs/WINDOWS-BUILD.md section 'Runtime configuration' for the schema."
