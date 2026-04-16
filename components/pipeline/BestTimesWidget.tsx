@@ -45,6 +45,8 @@ export function BestTimesWidget({ settings }: { settings: UserSettings }) {
         <button
           onClick={fetchInsights}
           disabled={loading}
+          aria-busy={loading}
+          aria-label={loading ? 'Analysing best posting times…' : insights ? 'Refresh best posting times' : 'Analyse best posting times'}
           className="text-[11px] px-2 py-1 bg-[#00e6ff]/10 text-[#00e6ff] rounded-xl hover:bg-[#00e6ff]/20 transition-colors disabled:opacity-50"
         >
           {loading ? 'Analyzing...' : insights ? 'Refresh' : 'Analyze'}
