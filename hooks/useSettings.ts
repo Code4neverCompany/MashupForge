@@ -20,6 +20,9 @@ export function mergeSettings(prev: UserSettings, patch: Partial<UserSettings>):
   if (clean.apiKeys && typeof clean.apiKeys === 'object') {
     merged.apiKeys = { ...prev.apiKeys, ...clean.apiKeys };
   }
+  // TODO: if UserSettings gains additional nested-object fields beyond
+  // watermark and apiKeys, add explicit deep-merge cases above — otherwise
+  // they will silently shallow-merge and partial saves will clobber defaults.
   return merged;
 }
 
