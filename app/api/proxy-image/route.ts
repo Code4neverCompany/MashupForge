@@ -33,7 +33,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
     
     if (!response.ok) {
       return new NextResponse(`Failed to fetch image: ${response.statusText}`, { status: response.status });

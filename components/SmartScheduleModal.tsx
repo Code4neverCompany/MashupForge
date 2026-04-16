@@ -58,7 +58,7 @@ export function SmartScheduleModal({
             <TrendingUp className="w-5 h-5 text-amber-400" />
             Smart Schedule ({postCount} posts)
           </h3>
-          <button onClick={onClose} className="p-1 text-zinc-400 hover:text-white">
+          <button onClick={onClose} className="p-1 text-zinc-400 hover:text-white" aria-label="Close smart schedule dialog">
             <X className="w-4 h-4" />
           </button>
         </div>

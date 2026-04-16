@@ -147,7 +147,7 @@ export async function POST(req: Request) {
           mimeType = url.split(';')[0].split(':')[1] || 'image/jpeg';
         }
       } else {
-        const imgRes = await fetch(url);
+        const imgRes = await fetch(url, { signal: AbortSignal.timeout(15000) });
         const arrayBuffer = await imgRes.arrayBuffer();
         buffer = Buffer.from(arrayBuffer);
         mimeType = imgRes.headers.get('content-type') || 'image/jpeg';

@@ -125,6 +125,7 @@ export async function POST(req: Request) {
         'Accept': 'application/json',
       },
       body,
+      signal: AbortSignal.timeout(30000),
     });
 
     if (!createRes.ok) {

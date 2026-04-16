@@ -1698,6 +1698,7 @@ export function MainContent() {
                           <button
                             onClick={() => setTagQuery('')}
                             className="p-1 text-zinc-500 hover:text-white"
+                            aria-label="Clear search query"
                           >
                             <XCircle className="w-3 h-3" />
                           </button>
