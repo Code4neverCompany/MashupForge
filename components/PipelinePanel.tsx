@@ -57,9 +57,12 @@ export function PipelinePanel() {
 
   const [logExpanded, setLogExpanded] = useState(true);
   const [queueExpanded, setQueueExpanded] = useState(true);
+  const [logErrorsOnly, setLogErrorsOnly] = useState(false);
 
   const pendingIdeas = ideas.filter((i) => i.status === 'idea');
   const reversedLog = [...pipelineLog].reverse();
+  const errorCount = pipelineLog.filter((e) => e.status === 'error').length;
+  const displayLog = logErrorsOnly ? reversedLog.filter((e) => e.status === 'error') : reversedLog;
 
   const autoTag = settings.pipelineAutoTag ?? true;
   const autoCaption = settings.pipelineAutoCaption ?? true;
@@ -516,11 +519,23 @@ export function PipelinePanel() {
         >
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-zinc-300">
-              Pipeline Log ({pipelineLog.length})
+              Pipeline Log ({logErrorsOnly ? `${errorCount} error${errorCount !== 1 ? 's' : ''}` : pipelineLog.length})
             </span>
+            {errorCount > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setLogErrorsOnly((v) => !v); }}
+                className={`text-[10px] px-2 py-0.5 rounded-xl transition-colors ${
+                  logErrorsOnly
+                    ? 'bg-red-600/30 text-red-300 border border-red-500/40'
+                    : 'bg-zinc-800 text-zinc-400 hover:bg-red-600/20 hover:text-red-400'
+                }`}
+              >
+                {logErrorsOnly ? 'All' : `Errors (${errorCount})`}
+              </button>
+            )}
             {pipelineLog.length > 0 && (
               <button
-                onClick={(e) => { e.stopPropagation(); clearPipelineLog(); }}
+                onClick={(e) => { e.stopPropagation(); clearPipelineLog(); setLogErrorsOnly(false); }}
                 className="text-[10px] px-2 py-0.5 bg-zinc-800 text-zinc-400 rounded-xl hover:bg-red-600/20 hover:text-red-400 transition-colors"
               >
                 Clear
@@ -535,11 +550,13 @@ export function PipelinePanel() {
         </div>
         {logExpanded && (
           <div className="border-t border-[#c5a062]/15 max-h-80 overflow-y-auto hide-scrollbar">
-            {reversedLog.length === 0 ? (
-              <p className="p-4 text-sm text-zinc-500 text-center">No log entries yet</p>
+            {displayLog.length === 0 ? (
+              <p className="p-4 text-sm text-zinc-500 text-center">
+                {logErrorsOnly ? 'No errors in log' : 'No log entries yet'}
+              </p>
             ) : (
               <AnimatePresence initial={false}>
-                {reversedLog.map((entry) => (
+                {displayLog.map((entry) => (
                   <motion.div
                     key={`${entry.step}-${entry.timestamp.getTime()}`}
                     initial={{ opacity: 0, y: -8 }}
