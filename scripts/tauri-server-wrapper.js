@@ -105,7 +105,6 @@ function hydrateDesktopEnv() {
 const result = hydrateDesktopEnv();
 if (result.loaded) {
   console.log(`[tauri-wrapper] hydrated ${result.keys.length} env vars from ${result.path}`);
-  console.log(`[tauri-wrapper] keys: ${result.keys.join(', ')}`);
 } else if (result.error) {
   console.warn(`[tauri-wrapper] config load error at ${result.path}: ${result.error}`);
 } else {
@@ -125,7 +124,7 @@ if (result.loaded) {
 const LOOPBACK = '127.0.0.1';
 for (const key of ['HOSTNAME', 'HOST']) {
   if (process.env[key] && process.env[key] !== LOOPBACK) {
-    console.warn(
+    console.log(
       `[tauri-wrapper] overriding ${key}=${process.env[key]} -> ${LOOPBACK} ` +
       '(desktop mode pins loopback to avoid Windows Firewall prompts)'
     );

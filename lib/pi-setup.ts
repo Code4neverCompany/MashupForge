@@ -255,8 +255,6 @@ export function installPi(): InstallPiResult {
     tmpdir: tmpdir(),
     nodeVersion: process.version,
   };
-  console.log('[pi-install] starting', diagnostics);
-
   try {
     mkdirSync(localPrefix, { recursive: true });
     diagnostics.localPrefixMkdir = 'ok';
@@ -339,8 +337,6 @@ export function installPi(): InstallPiResult {
     diagnostics.npmVersion = `error:${(e as Error).message}`;
   }
 
-  console.log('[pi-install] spawning npm install', diagnostics);
-
   const result = spawnSync(
     npmCmd,
     [
@@ -355,9 +351,6 @@ export function installPi(): InstallPiResult {
 
   diagnostics.npmStatus = result.status;
   diagnostics.npmSignal = result.signal;
-  console.log('[pi-install] npm install finished',
-    { status: result.status, signal: result.signal, stderrTail: (result.stderr || '').slice(-500) });
-
   if (result.error) {
     diagnostics.spawnError = result.error.message;
     return {

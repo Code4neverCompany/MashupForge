@@ -49,7 +49,6 @@ export async function GET(req: Request) {
       },
     });
   } catch (e: unknown) {
-    console.error('Proxy image error:', e);
     return new NextResponse('Error fetching image', { status: 500 });
   }
 }

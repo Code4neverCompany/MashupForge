@@ -29,8 +29,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     if (!getRes.ok) {
       const err = await getRes.text();
-      console.error(`Leonardo status error (v${usedV2 ? '2' : '1'}, ${getRes.status}):`, err);
-
       // Leonardo's Hasura layer transiently returns 500s ("Invalid response
       // from authorization hook", "unexpected", etc.) while a generation is
       // still being committed to the datastore — a subsequent poll usually

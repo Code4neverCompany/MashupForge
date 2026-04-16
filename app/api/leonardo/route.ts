@@ -130,7 +130,6 @@ export async function POST(req: Request) {
 
     if (!createRes.ok) {
       const err = await createRes.text();
-      console.error('Leonardo create error:', err);
       try {
         const parsedErr = JSON.parse(err);
         const leoMsg = extractLeonardoError(parsedErr);
@@ -151,7 +150,6 @@ export async function POST(req: Request) {
     if (Array.isArray(createData)) {
       const errs = createData as Array<Record<string, unknown>>;
       if (errs.length > 0 && errs[0].extensions) {
-        console.error('Leonardo GraphQL error:', JSON.stringify(errs));
         return NextResponse.json({
           error: `Leonardo API Error: ${String(errs[0].message ?? 'Validation failed')}`
         }, { status: 400 });
