@@ -280,16 +280,18 @@ export function MainContent() {
         if (isDesktop && desktopCreds.hasInstagramToken && desktopCreds.hasInstagramAccountId) return true;
         return false;
       case 'pinterest':
-        return !!settings.apiKeys.pinterest?.accessToken;
+        if (settings.apiKeys.pinterest?.accessToken) return true;
+        if (isDesktop && desktopCreds.hasPinterestCreds) return true;
+        return false;
       case 'twitter':
-        return !!(
-          settings.apiKeys.twitter?.appKey &&
-          settings.apiKeys.twitter?.appSecret &&
-          settings.apiKeys.twitter?.accessToken &&
-          settings.apiKeys.twitter?.accessSecret
-        );
+        if (settings.apiKeys.twitter?.appKey && settings.apiKeys.twitter?.appSecret &&
+            settings.apiKeys.twitter?.accessToken && settings.apiKeys.twitter?.accessSecret) return true;
+        if (isDesktop && desktopCreds.hasTwitterCreds) return true;
+        return false;
       case 'discord':
-        return !!settings.apiKeys.discordWebhook;
+        if (settings.apiKeys.discordWebhook) return true;
+        if (isDesktop && desktopCreds.hasDiscordCreds) return true;
+        return false;
     }
   };
 

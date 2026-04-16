@@ -15,6 +15,13 @@ export const DESKTOP_CONFIG_KEYS = [
   { key: 'ZAI_API_KEY',            label: 'Zai API Key',            hint: 'From console.zai.dev (pi.dev backend)' },
   { key: 'INSTAGRAM_ACCOUNT_ID',   label: 'Instagram Account ID',   hint: 'Business account ID from Meta for Developers' },
   { key: 'INSTAGRAM_ACCESS_TOKEN', label: 'Instagram Access Token', hint: 'Long-lived Facebook Page Token (starts with EAA)' },
+  { key: 'TWITTER_APP_KEY',        label: 'Twitter App Key',        hint: 'OAuth 1.0a consumer key from developer.x.com' },
+  { key: 'TWITTER_APP_SECRET',     label: 'Twitter App Secret',     hint: 'OAuth 1.0a consumer secret' },
+  { key: 'TWITTER_ACCESS_TOKEN',   label: 'Twitter Access Token',   hint: 'OAuth 1.0a access token' },
+  { key: 'TWITTER_ACCESS_SECRET',  label: 'Twitter Access Secret',  hint: 'OAuth 1.0a access token secret' },
+  { key: 'PINTEREST_ACCESS_TOKEN', label: 'Pinterest Access Token', hint: 'From developers.pinterest.com (pins:write scope)' },
+  { key: 'PINTEREST_BOARD_ID',     label: 'Pinterest Board ID',     hint: 'Target board ID (optional — defaults to first board)' },
+  { key: 'DISCORD_WEBHOOK_URL',    label: 'Discord Webhook URL',    hint: 'Channel webhook URL from Server Settings → Integrations' },
 ] as const;
 
 export type DesktopConfigKey = typeof DESKTOP_CONFIG_KEYS[number]['key'];

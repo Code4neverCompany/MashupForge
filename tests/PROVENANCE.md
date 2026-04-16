@@ -1,4 +1,4 @@
-# Test Suite Provenance — 107/107 tests
+# Test Suite Provenance — 110/110 tests
 
 Maps each test file to the story/audit that created it and what it guards.
 
@@ -12,14 +12,14 @@ Maps each test file to the story/audit that created it and what it guards.
 | `hooks/mergeSettings.test.ts` | 8 | `e124ce8` — AUDIT-051 POLISH-018 gate | `mergeSettings` — undefined stripping, watermark deep-merge, apiKeys deep-merge, partial patch preservation |
 | `lib/fetchWithRetry.test.ts` | 7 | `3ff243f` — OPT-002 transient failure retry | `fetchWithRetry` — 200 passthrough, 4xx no-retry, 500 retry-then-succeed, network error exhaustion |
 | `lib/pi-setup.test.ts` | 7 | `cbe178a` — STORY-091 trending error fix | `resolvePiJsEntry` — scalar/object bin field, missing package.json, malformed JSON, missing entry file |
-| `lib/desktop-config-keys.test.ts` | 7 | `914c1fd` — VERIFY-001 INSTAGRAM-CRED-FIX gate | `DESKTOP_CONFIG_KEYS` — locks LEONARDO, ZAI, INSTAGRAM_ACCOUNT_ID, INSTAGRAM_ACCESS_TOKEN presence |
+| `lib/desktop-config-keys.test.ts` | 10 | `914c1fd` — VERIFY-001 + CRED-001 gate | `DESKTOP_CONFIG_KEYS` — locks all 11 keys: LEONARDO, ZAI, IG, Twitter×4, Pinterest×2, Discord |
 | `lib/instagram-credentials.test.ts` | 7 | `614e8ec` — VERIFY-003 env-first resolver gate | `resolveInstagramCredentials` — env-over-body priority, partial env, undefined body, web fallback |
 | `lib/runtime-env.test.ts` | 7 | `ff31bd5` — AUDIT-047 serverless guard gate | `isServerless` — VERCEL/AWS_LAMBDA/NETLIFY/CF_PAGES flags, empty-string non-match, multi-flag |
 
 ## Coverage by category
 
 - **Security:** 14 tests (proxy-image SSRF allowlist)
-- **Data integrity:** 29 tests (instagram-credentials, desktop-config-keys, runtime-env, mergeSettings)
+- **Data integrity:** 32 tests (instagram-credentials, desktop-config-keys, runtime-env, mergeSettings)
 - **LLM output safety:** 17 tests (aiClient JSON extraction)
 - **Scheduler correctness:** 16 tests (smartScheduler slot scoring + engagement cache)
 - **Error handling:** 17 tests (errors + fetchWithRetry)

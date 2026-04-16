@@ -28,6 +28,22 @@ describe('DESKTOP_CONFIG_KEYS', () => {
     expect(keyNames).toContain('INSTAGRAM_ACCESS_TOKEN');
   });
 
+  it('includes Twitter OAuth 1.0a keys (CRED-001)', () => {
+    expect(keyNames).toContain('TWITTER_APP_KEY');
+    expect(keyNames).toContain('TWITTER_APP_SECRET');
+    expect(keyNames).toContain('TWITTER_ACCESS_TOKEN');
+    expect(keyNames).toContain('TWITTER_ACCESS_SECRET');
+  });
+
+  it('includes Pinterest keys (CRED-001)', () => {
+    expect(keyNames).toContain('PINTEREST_ACCESS_TOKEN');
+    expect(keyNames).toContain('PINTEREST_BOARD_ID');
+  });
+
+  it('includes Discord webhook URL (CRED-001)', () => {
+    expect(keyNames).toContain('DISCORD_WEBHOOK_URL');
+  });
+
   it('every entry has a non-empty label and hint', () => {
     for (const entry of DESKTOP_CONFIG_KEYS) {
       expect(entry.label.length).toBeGreaterThan(0);

@@ -291,15 +291,19 @@ export async function POST(req: Request) {
     }
 
     if (platforms.includes('twitter')) {
-      if (!credentials?.twitter?.appKey || !credentials?.twitter?.appSecret || !credentials?.twitter?.accessToken || !credentials?.twitter?.accessSecret) {
+      const twAppKey = process.env.TWITTER_APP_KEY ?? credentials?.twitter?.appKey ?? '';
+      const twAppSecret = process.env.TWITTER_APP_SECRET ?? credentials?.twitter?.appSecret ?? '';
+      const twAccessToken = process.env.TWITTER_ACCESS_TOKEN ?? credentials?.twitter?.accessToken ?? '';
+      const twAccessSecret = process.env.TWITTER_ACCESS_SECRET ?? credentials?.twitter?.accessSecret ?? '';
+      if (!twAppKey || !twAppSecret || !twAccessToken || !twAccessSecret) {
         throw new Error('Twitter credentials incomplete');
       }
       const { TwitterApi } = await import('twitter-api-v2');
       const client = new TwitterApi({
-        appKey: credentials.twitter.appKey,
-        appSecret: credentials.twitter.appSecret,
-        accessToken: credentials.twitter.accessToken,
-        accessSecret: credentials.twitter.accessSecret,
+        appKey: twAppKey,
+        appSecret: twAppSecret,
+        accessToken: twAccessToken,
+        accessSecret: twAccessSecret,
       });
 
       const mediaIds: string[] = [];
@@ -318,7 +322,8 @@ export async function POST(req: Request) {
     }
 
     if (platforms.includes('pinterest')) {
-      if (!credentials?.pinterest?.accessToken) {
+      const pinAccessToken = process.env.PINTEREST_ACCESS_TOKEN ?? credentials?.pinterest?.accessToken ?? '';
+      if (!pinAccessToken) {
         throw new Error('Pinterest access token missing');
       }
 
@@ -361,14 +366,15 @@ export async function POST(req: Request) {
         description: caption || '',
         media_source: { source_type: 'image_url', url: publicUrl },
       };
-      if (credentials.pinterest.boardId) {
-        pinBody.board_id = credentials.pinterest.boardId;
+      const pinBoardId = process.env.PINTEREST_BOARD_ID ?? credentials?.pinterest?.boardId ?? '';
+      if (pinBoardId) {
+        pinBody.board_id = pinBoardId;
       }
 
       const pinRes = await fetch('https://api.pinterest.com/v5/pins', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${credentials.pinterest.accessToken}`,
+          Authorization: `Bearer ${pinAccessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(pinBody),
@@ -383,19 +389,20 @@ export async function POST(req: Request) {
     }
 
     if (platforms.includes('discord')) {
-      if (!credentials?.discord?.webhookUrl) {
+      const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL ?? credentials?.discord?.webhookUrl ?? '';
+      if (!discordWebhookUrl) {
         throw new Error('Discord webhook URL missing');
       }
 
       const formData = new FormData();
       formData.append('payload_json', JSON.stringify({ content: caption }));
-      
+
       imageItems.forEach((item, idx) => {
         const blob = new Blob([new Uint8Array(item.buffer)], { type: item.mimeType });
         formData.append(`files[${idx}]`, blob, `image-${idx}.jpg`);
       });
 
-      const discordRes = await fetch(credentials.discord.webhookUrl, {
+      const discordRes = await fetch(discordWebhookUrl, {
         method: 'POST',
         body: formData,
         signal: AbortSignal.timeout(10000),

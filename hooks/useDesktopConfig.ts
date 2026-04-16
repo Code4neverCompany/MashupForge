@@ -7,6 +7,9 @@ export interface DesktopCredentialFlags {
   hasInstagramAccountId: boolean;
   hasLeonardoKey: boolean;
   hasZaiKey: boolean;
+  hasTwitterCreds: boolean;
+  hasPinterestCreds: boolean;
+  hasDiscordCreds: boolean;
 }
 
 export interface DesktopConfig {
@@ -19,6 +22,9 @@ const EMPTY_FLAGS: DesktopCredentialFlags = {
   hasInstagramAccountId: false,
   hasLeonardoKey: false,
   hasZaiKey: false,
+  hasTwitterCreds: false,
+  hasPinterestCreds: false,
+  hasDiscordCreds: false,
 };
 
 function toFlags(keys: Record<string, string>): DesktopCredentialFlags {
@@ -27,6 +33,12 @@ function toFlags(keys: Record<string, string>): DesktopCredentialFlags {
     hasInstagramAccountId: Boolean(keys.INSTAGRAM_ACCOUNT_ID),
     hasLeonardoKey: Boolean(keys.LEONARDO_API_KEY),
     hasZaiKey: Boolean(keys.ZAI_API_KEY),
+    hasTwitterCreds: Boolean(
+      keys.TWITTER_APP_KEY && keys.TWITTER_APP_SECRET &&
+      keys.TWITTER_ACCESS_TOKEN && keys.TWITTER_ACCESS_SECRET,
+    ),
+    hasPinterestCreds: Boolean(keys.PINTEREST_ACCESS_TOKEN),
+    hasDiscordCreds: Boolean(keys.DISCORD_WEBHOOK_URL),
   };
 }
 

@@ -258,7 +258,8 @@ export function SettingsModal({
                 </div>
               )}
 
-              {/* Pinterest */}
+              {/* Pinterest — hidden on desktop; config.json owns these keys */}
+              {isDesktop === false && (
               <div className="space-y-2 pt-3 border-t border-zinc-800/60">
                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Pinterest API</label>
                 <div className="grid grid-cols-1 gap-2">
@@ -293,6 +294,7 @@ export function SettingsModal({
                   Create an app at developers.pinterest.com with <code>pins:write</code> and <code>boards:read</code> scopes.
                 </p>
               </div>
+              )}
             </div>
           </div>
 

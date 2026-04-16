@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useMashup } from './MashupContext';
 import type { UserSettings } from '@/types/mashup';
+import { useDesktopConfig } from '@/hooks/useDesktopConfig';
 import { BestTimesWidget } from './pipeline/BestTimesWidget';
 import { ActiveIdeaCard } from './pipeline/ActiveIdeaCard';
 import { ApprovalQueue } from './pipeline/ApprovalQueue';
@@ -77,6 +78,8 @@ export function PipelinePanel() {
     setPipelineTargetDays,
   } = useMashup();
 
+  const { isDesktop, credentials: desktopCreds } = useDesktopConfig();
+
   const [logExpanded, setLogExpanded] = useState(true);
   const [queueExpanded, setQueueExpanded] = useState(true);
   const [logErrorsOnly, setLogErrorsOnly] = useState(false);
@@ -95,18 +98,22 @@ export function PipelinePanel() {
   const hasCreds = (p: PipelinePlatform): boolean => {
     switch (p) {
       case 'instagram':
-        return !!(settings.apiKeys.instagram?.accessToken && settings.apiKeys.instagram?.igAccountId);
+        if (settings.apiKeys.instagram?.accessToken && settings.apiKeys.instagram?.igAccountId) return true;
+        if (isDesktop && desktopCreds.hasInstagramToken && desktopCreds.hasInstagramAccountId) return true;
+        return false;
       case 'pinterest':
-        return !!settings.apiKeys.pinterest?.accessToken;
+        if (settings.apiKeys.pinterest?.accessToken) return true;
+        if (isDesktop && desktopCreds.hasPinterestCreds) return true;
+        return false;
       case 'twitter':
-        return !!(
-          settings.apiKeys.twitter?.appKey &&
-          settings.apiKeys.twitter?.appSecret &&
-          settings.apiKeys.twitter?.accessToken &&
-          settings.apiKeys.twitter?.accessSecret
-        );
+        if (settings.apiKeys.twitter?.appKey && settings.apiKeys.twitter?.appSecret &&
+            settings.apiKeys.twitter?.accessToken && settings.apiKeys.twitter?.accessSecret) return true;
+        if (isDesktop && desktopCreds.hasTwitterCreds) return true;
+        return false;
       case 'discord':
-        return !!settings.apiKeys.discordWebhook;
+        if (settings.apiKeys.discordWebhook) return true;
+        if (isDesktop && desktopCreds.hasDiscordCreds) return true;
+        return false;
     }
   };
   const availablePlatforms: PipelinePlatform[] = (['instagram', 'pinterest', 'twitter', 'discord'] as PipelinePlatform[]).filter(hasCreds);
