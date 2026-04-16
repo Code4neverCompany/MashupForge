@@ -360,7 +360,12 @@ export function MainContent() {
           credentials: buildCredentialsPayload(),
         }),
       });
-      const data = await res.json() as { error?: string };
+      let data: { error?: string };
+      try {
+        data = await res.json() as { error?: string };
+      } catch {
+        throw new Error(`Server error (HTTP ${res.status}) — check logs`);
+      }
       if (!res.ok) throw new Error(data.error || 'Post failed');
       setPostStatus((prev) => ({
         ...prev,
@@ -1120,7 +1125,9 @@ export function MainContent() {
                 credentials,
               }),
             });
-            const data = await res.json() as { error?: string };
+            let data: { error?: string };
+            try { data = await res.json() as { error?: string }; }
+            catch { throw new Error(`Server error (HTTP ${res.status})`); }
             if (!res.ok) throw new Error(data.error || 'Failed to post carousel');
 
             groupPosts.forEach((gp) => {
@@ -1156,7 +1163,9 @@ export function MainContent() {
             }),
           });
 
-          const data = await res.json() as { error?: string };
+          let data: { error?: string };
+          try { data = await res.json() as { error?: string }; }
+          catch { throw new Error(`Server error (HTTP ${res.status})`); }
           if (!res.ok) throw new Error(data.error || 'Failed to post');
 
           statusPatches.set(post.id, 'posted');

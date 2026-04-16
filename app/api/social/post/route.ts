@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import { TwitterApi } from 'twitter-api-v2';
-import sharp from 'sharp';
 import { getErrorMessage } from '@/lib/errors';
 import { resolveInstagramCredentials } from '@/lib/instagram-credentials';
 
@@ -91,7 +89,16 @@ async function waitForIgContainerReady(
  * - Already in range: returned unchanged.
  */
 async function prepareForInstagram(buffer: Buffer): Promise<Buffer> {
-  const meta = await sharp(buffer).metadata();
+  type SharpFn = (input?: Buffer | string) => { metadata(): Promise<{ width?: number; height?: number }>; resize(opts: Record<string, unknown>): { jpeg(opts: Record<string, unknown>): { toBuffer(): Promise<Buffer> } } };
+  let sharpFn: SharpFn;
+  try {
+    const mod = await import('sharp');
+    sharpFn = (mod.default ?? mod) as unknown as SharpFn;
+  } catch {
+    return buffer;
+  }
+
+  const meta = await sharpFn(buffer).metadata();
   const { width = 1080, height = 1080 } = meta;
   const ratio = width / height;
 
@@ -106,16 +113,14 @@ async function prepareForInstagram(buffer: Buffer): Promise<Buffer> {
   let newHeight: number;
 
   if (ratio < MIN_RATIO) {
-    // Too tall → widen the canvas
     newHeight = height;
     newWidth = Math.ceil(height * MIN_RATIO);
   } else {
-    // Too wide → grow the canvas vertically
     newWidth = width;
     newHeight = Math.ceil(width / MAX_RATIO);
   }
 
-  return sharp(buffer)
+  return sharpFn(buffer)
     .resize({
       width: newWidth,
       height: newHeight,
@@ -289,6 +294,7 @@ export async function POST(req: Request) {
       if (!credentials?.twitter?.appKey || !credentials?.twitter?.appSecret || !credentials?.twitter?.accessToken || !credentials?.twitter?.accessSecret) {
         throw new Error('Twitter credentials incomplete');
       }
+      const { TwitterApi } = await import('twitter-api-v2');
       const client = new TwitterApi({
         appKey: credentials.twitter.appKey,
         appSecret: credentials.twitter.appSecret,
