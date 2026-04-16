@@ -122,6 +122,14 @@ export function ApprovalQueue({
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={handleApproveAllFiltered}
+            disabled={filtered.length === 0}
+            className="text-[11px] px-2 py-1 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 rounded-xl border border-emerald-500/30 transition-colors disabled:opacity-40"
+          >
+            <Check className="w-3 h-3 inline mr-1" />
+            Approve All ({filtered.length})
+          </button>
+          <button
             onClick={selectAllVisible}
             className="text-[11px] px-2 py-1 bg-zinc-800 text-zinc-300 rounded-xl hover:bg-zinc-700 transition-colors"
           >
@@ -230,36 +238,24 @@ export function ApprovalQueue({
         </div>
       )}
 
-      {/* Bulk action bar */}
-      {(selectedCount > 0 || filtered.length !== posts.length) && (
+      {/* Bulk action bar — shown only when items are selected */}
+      {selectedCount > 0 && (
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-amber-500/20">
-          {selectedCount > 0 && (
-            <>
-              <span className="text-xs text-amber-200">{selectedCount} selected</span>
-              <button
-                onClick={handleBulkApprove}
-                className="text-xs px-3 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 rounded-xl border border-emerald-500/40 transition-colors"
-              >
-                <Check className="w-3 h-3 inline mr-1" />
-                Approve Selected
-              </button>
-              <button
-                onClick={handleBulkReject}
-                className="text-xs px-3 py-1 bg-red-600/30 hover:bg-red-600/50 text-red-200 rounded-xl border border-red-500/40 transition-colors"
-              >
-                <X className="w-3 h-3 inline mr-1" />
-                Reject Selected
-              </button>
-            </>
-          )}
-          {filtered.length !== posts.length && filtered.length > 0 && (
-            <button
-              onClick={handleApproveAllFiltered}
-              className="text-xs px-3 py-1 bg-amber-600/20 hover:bg-amber-600/40 text-amber-200 rounded-xl border border-amber-500/40 transition-colors"
-            >
-              Approve All {filtered.length} Matching
-            </button>
-          )}
+          <span className="text-xs text-amber-200">{selectedCount} selected</span>
+          <button
+            onClick={handleBulkApprove}
+            className="text-xs px-3 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 rounded-xl border border-emerald-500/40 transition-colors"
+          >
+            <Check className="w-3 h-3 inline mr-1" />
+            Approve Selected
+          </button>
+          <button
+            onClick={handleBulkReject}
+            className="text-xs px-3 py-1 bg-red-600/30 hover:bg-red-600/50 text-red-200 rounded-xl border border-red-500/40 transition-colors"
+          >
+            <X className="w-3 h-3 inline mr-1" />
+            Reject Selected
+          </button>
         </div>
       )}
 
