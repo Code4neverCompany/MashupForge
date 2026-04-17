@@ -50,7 +50,8 @@ import {
   Wand2,
   Clock,
   Send,
-  TrendingUp
+  TrendingUp,
+  ImageOff
 } from 'lucide-react';
 import {
   useMashup,
@@ -2503,7 +2504,7 @@ export function MainContent() {
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center">
-                                    <ImageIcon className="w-8 h-8 text-zinc-700" />
+                                    <ImageOff className="w-8 h-8 text-zinc-700" />
                                   </div>
                                 )}
                                 {isWorking && (
@@ -3322,7 +3323,7 @@ export function MainContent() {
                                             />
                                           ) : (
                                             <div className="w-full h-full flex items-center justify-center bg-zinc-950">
-                                              <ImageIcon className="w-5 h-5 text-zinc-700" />
+                                              <ImageOff className="w-5 h-5 text-zinc-700" />
                                             </div>
                                           )}
                                           {isSel && (
@@ -3722,7 +3723,7 @@ export function MainContent() {
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center">
-                                    <ImageIcon className="w-8 h-8 text-zinc-700" />
+                                    <ImageOff className="w-8 h-8 text-zinc-700" />
                                   </div>
                                 )}
                                 <span className={`absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 ${badge.color}/90 text-[10px] font-medium text-white rounded-full`}>
@@ -4057,7 +4058,7 @@ export function MainContent() {
                                     />
                                   ) : (
                                     <div className="w-full h-full flex items-center justify-center bg-zinc-950">
-                                      <ImageIcon className="w-6 h-6 text-zinc-700" />
+                                      <ImageOff className="w-6 h-6 text-zinc-700" />
                                     </div>
                                   )}
                                   {img.isPostReady && (
@@ -4213,7 +4214,7 @@ export function MainContent() {
                         <div className="relative w-full h-full">
                           {/* CDN-expiry fallback — revealed when video onError fires */}
                           <div className="absolute inset-0 flex items-center justify-center">
-                            <ImageIcon className="w-8 h-8 text-zinc-700" />
+                            <ImageOff className="w-8 h-8 text-zinc-700" />
                           </div>
                           <video
                             src={img.url}
@@ -4244,7 +4245,7 @@ export function MainContent() {
                           {/* CDN-expiry fallback — sits behind Image at z-0;
                               revealed automatically when onError hides the img */}
                           <div className="absolute inset-0 flex items-center justify-center z-0">
-                            <ImageIcon className="w-8 h-8 text-zinc-700" />
+                            <ImageOff className="w-8 h-8 text-zinc-700" />
                           </div>
                           <Image
                             src={img.url || `data:image/jpeg;base64,${img.base64}`}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Calendar, Check, X, Lightbulb, Image as ImageIcon } from 'lucide-react';
+import { Calendar, Check, X, Lightbulb, ImageOff } from 'lucide-react';
 import type { GeneratedImage, Idea, ScheduledPost } from '@/types/mashup';
 
 export function ApprovalQueue({
@@ -295,7 +295,7 @@ export function ApprovalQueue({
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
-                    <ImageIcon className="w-6 h-6 text-zinc-600" />
+                    <ImageOff className="w-6 h-6 text-zinc-600" />
                   </div>
                 )}
               </div>
