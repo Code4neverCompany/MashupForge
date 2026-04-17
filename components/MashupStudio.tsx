@@ -1,12 +1,21 @@
 'use client';
 
-import { Sidebar } from './Sidebar';
-import { MainContent } from './MainContent';
+import dynamic from 'next/dynamic';
 import { MashupProvider, useMashup } from './MashupContext';
 import { ErrorBoundary } from './ErrorBoundary';
 import { DesktopLoadingScreen } from './DesktopLoadingScreen';
 import { ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+
+const Sidebar = dynamic(
+  () => import('./Sidebar').then((m) => m.Sidebar),
+  { ssr: false },
+);
+
+const MainContent = dynamic(
+  () => import('./MainContent').then((m) => m.MainContent),
+  { ssr: false },
+);
 
 function MashupApp() {
   const { isLoaded } = useMashup();

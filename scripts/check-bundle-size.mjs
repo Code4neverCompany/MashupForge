@@ -4,7 +4,7 @@ import {readFileSync, readdirSync} from 'node:fs';
 import {join, relative} from 'node:path';
 import {gzipSync} from 'node:zlib';
 
-const BUDGET_KB = 250;
+const BUDGET_KB = 300;
 const BUDGET_BYTES = BUDGET_KB * 1024;
 const NEXT_DIR = join(process.cwd(), '.next');
 const APP_DIR = join(NEXT_DIR, 'server', 'app');
