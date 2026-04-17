@@ -104,10 +104,28 @@ jobs:
             ls -la "$BUNDLE_DIR" || true
             exit 1
           fi
+
+          # Tauri v2 with bundle.createUpdaterArtifacts=true sometimes still
+          # does not emit latest.json for the NSIS target. If it's missing,
+          # synthesize one from the .sig + .exe we already have so the
+          # updater endpoint has something to serve. jq handles JSON
+          # escaping of the multi-line minisign signature properly —
+          # heredoc would produce invalid JSON.
           if [ ! -f "$LATEST" ]; then
-            echo "::error::latest.json not found under $BUNDLE_DIR — createUpdaterArtifacts may be disabled"
-            ls -la "$BUNDLE_DIR" || true
-            exit 1
+            echo "latest.json not emitted by Tauri; generating it manually"
+            jq -n \
+              --arg version "${TAG#v}" \
+              --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              --arg signature "$(cat "$SIG")" \
+              --arg url "https://github.com/Code4neverCompany/MashupForge/releases/download/$TAG/$(basename "$EXE")" \
+              '{
+                version: $version,
+                notes: "",
+                pub_date: $pub_date,
+                platforms: {
+                  "windows-x86_64": { signature: $signature, url: $url }
+                }
+              }' > "$LATEST"
           fi
 
           echo "Uploading $EXE, $SIG, and $LATEST to release $TAG"
