@@ -41,7 +41,7 @@ export interface PiStatus {
   lastError: string | null;
 }
 
-export type PiBusy = null | 'install' | 'start' | 'stop' | 'setup' | 'config';
+export type PiBusy = null | 'install' | 'start' | 'stop' | 'setup';
 
 const RECOMMENDED_NICHES = [
   'Multiverse Mashup',
@@ -95,7 +95,6 @@ interface SettingsModalProps {
   piError: string | null;
   piSetupMsg: string | null;
   handlePiSetup: () => void;
-  handleProviderConfig: () => void;
   refreshPiStatus: () => void;
   collections: Collection[];
   savedImages: GeneratedImage[];
@@ -113,7 +112,6 @@ export function SettingsModal({
   piError,
   piSetupMsg,
   handlePiSetup,
-  handleProviderConfig,
   refreshPiStatus,
   collections,
   savedImages,
@@ -323,8 +321,7 @@ export function SettingsModal({
             <h4 className="text-lg font-medium text-white mb-2">Pi.dev AI Engine</h4>
             <p className="text-[11px] text-zinc-500 -mt-2">
               All text AI runs through <code>pi</code> as a subprocess.
-              Configure provider/model + API keys in your terminal:{' '}
-              <code className="text-zinc-300">pi config</code>.
+              Pick a provider + model below in <span className="text-zinc-300">Desktop Configuration</span>; API keys are stored locally in <code>config.json</code>.
             </p>
 
             {/* Status row */}
@@ -394,16 +391,6 @@ export function SettingsModal({
                 className="btn-gold-sm rounded-lg"
               >
                 {piBusy === 'setup' ? 'Opening…' : 'Setup Pi.dev'}
-              </button>
-            )}
-
-            {piStatus?.authenticated && piStatus?.installed && (
-              <button
-                onClick={handleProviderConfig}
-                disabled={piBusy !== null}
-                className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors border border-zinc-700/60"
-              >
-                {piBusy === 'config' ? 'Opening…' : 'Switch Provider'}
               </button>
             )}
 

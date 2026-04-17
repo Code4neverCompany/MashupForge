@@ -1,9 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power } from 'lucide-react';
-import { DESKTOP_CONFIG_KEYS } from '@/lib/desktop-config-keys';
+import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power, Check } from 'lucide-react';
+import { DESKTOP_CONFIG_KEYS, type DesktopConfigFieldMeta } from '@/lib/desktop-config-keys';
 import { PortConflictBanner } from './PortConflictBanner';
+
+// Provider/model changes need pi to respawn so the new env reaches the
+// child process. The next prompt will auto-restart pi after stop().
+const PI_RESTART_KEYS = new Set(['PI_PROVIDER', 'PI_DEFAULT_MODEL']);
 
 // ── PROP-005: Tauri auto-launch toggle ────────────────────────────────────────
 // Dynamically imported so the web build (no Tauri) never bundles the plugin.
@@ -69,9 +73,9 @@ interface DesktopConfigResponse {
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-// ── Field row ────────────────────────────────────────────────────────────────
+// ── Field rows ───────────────────────────────────────────────────────────────
 
-function KeyField({
+function SecretField({
   label,
   hint,
   value,
@@ -117,6 +121,102 @@ function KeyField({
   );
 }
 
+function TextField({
+  label,
+  hint,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+        {label}
+      </label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full bg-[#050505] border border-zinc-800/60 hover:border-[#c5a062]/30 focus:border-[#c5a062]/60 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-[#c5a062]/25 transition-colors font-mono"
+        spellCheck={false}
+        autoComplete="off"
+      />
+      <p className="text-[10px] text-zinc-600">{hint}</p>
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  hint,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  options: readonly string[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+        {label}
+      </label>
+      <div role="radiogroup" aria-label={label} className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        {options.map((opt) => {
+          const selected = value === opt;
+          return (
+            <button
+              key={opt}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onChange(opt)}
+              className={[
+                'group relative flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors',
+                selected
+                  ? 'border-[#c5a062] bg-[#c5a062]/10 text-[#c5a062]'
+                  : 'border-zinc-800/60 bg-[#050505] text-zinc-400 hover:border-[#c5a062]/30 hover:text-zinc-200',
+              ].join(' ')}
+            >
+              {selected && <Check className="w-3 h-3" aria-hidden="true" />}
+              <span className="capitalize">{opt}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-zinc-600">{hint}</p>
+    </div>
+  );
+}
+
+function FieldRouter({
+  meta,
+  value,
+  onChange,
+}: {
+  meta: DesktopConfigFieldMeta;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  if (meta.kind === 'select') {
+    return <SelectField label={meta.label} hint={meta.hint} value={value} options={meta.options} onChange={onChange} />;
+  }
+  if (meta.kind === 'text') {
+    return <TextField label={meta.label} hint={meta.hint} value={value} onChange={onChange} />;
+  }
+  return <SecretField label={meta.label} hint={meta.hint} value={value} onChange={onChange} />;
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 /**
@@ -159,7 +259,7 @@ export function DesktopSettingsPanel() {
 
   // ── Save ──────────────────────────────────────────────────────────────────
 
-  const persist = useCallback(async (snapshot: Record<string, string>) => {
+  const persist = useCallback(async (snapshot: Record<string, string>, restartPi: boolean) => {
     setSaveState('saving');
     setSaveError('');
     try {
@@ -180,6 +280,11 @@ export function DesktopSettingsPanel() {
       // Refresh config so configPath / savedKeys reflect the write.
       const refreshed = await fetch('/api/desktop/config').then((r) => r.json() as Promise<DesktopConfigResponse>);
       setConfig(refreshed);
+      // Provider/model changes need a pi respawn so the new env reaches
+      // the child process. Fire-and-forget: next prompt auto-starts pi.
+      if (restartPi) {
+        void fetch('/api/pi/stop', { method: 'POST' }).catch(() => {});
+      }
     } catch (e) {
       setSaveState('error');
       setSaveError((e as Error).message ?? 'Network error.');
@@ -190,13 +295,14 @@ export function DesktopSettingsPanel() {
   // the draft differs from the last-known config. No manual button needed.
   useEffect(() => {
     if (!seededRef.current || !config?.isDesktop) return;
-    const dirty = DESKTOP_CONFIG_KEYS.some(
+    const changedKeys = DESKTOP_CONFIG_KEYS.filter(
       ({ key }) => (draft[key] ?? '') !== (config.keys[key] ?? '')
     );
-    if (!dirty) return;
+    if (changedKeys.length === 0) return;
+    const restartPi = changedKeys.some(({ key }) => PI_RESTART_KEYS.has(key));
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = setTimeout(() => {
-      void persist(draft);
+      void persist(draft, restartPi);
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => {
       if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
@@ -269,15 +375,14 @@ export function DesktopSettingsPanel() {
         </div>
       )}
 
-      {/* Key fields */}
+      {/* Config fields — kind-discriminated dispatch */}
       <div className="space-y-4">
-        {DESKTOP_CONFIG_KEYS.map(({ key, label, hint }) => (
-          <KeyField
-            key={key}
-            label={label}
-            hint={hint}
-            value={draft[key] ?? ''}
-            onChange={(v) => setDraft((prev) => ({ ...prev, [key]: v }))}
+        {DESKTOP_CONFIG_KEYS.map((meta) => (
+          <FieldRouter
+            key={meta.key}
+            meta={meta}
+            value={draft[meta.key] ?? ''}
+            onChange={(v) => setDraft((prev) => ({ ...prev, [meta.key]: v }))}
           />
         ))}
       </div>
