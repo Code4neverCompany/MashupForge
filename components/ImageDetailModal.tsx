@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   X,
@@ -58,6 +59,30 @@ export function ImageDetailModal({
   toggleApproveImage,
   deleteImage,
 }: ImageDetailModalProps) {
+  const [zoom, setZoom] = useState(1);
+  const [origin, setOrigin] = useState('50% 50%');
+  const imgAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setZoom(1);
+    setOrigin('50% 50%');
+  }, [image.id]);
+
+  useEffect(() => {
+    const el = imgAreaRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      setOrigin(`${x}% ${y}%`);
+      setZoom((prev) => Math.min(5, Math.max(1, prev + (e.deltaY > 0 ? -0.25 : 0.25))));
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, []);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md overflow-hidden">
       <motion.div
@@ -124,7 +149,11 @@ export function ImageDetailModal({
               )}
             </div>
           ) : (
-            <div className="relative w-full h-full flex items-center justify-center group">
+            <div
+              ref={imgAreaRef}
+              className="relative w-full h-full flex items-center justify-center group"
+              onDoubleClick={() => { setZoom(1); setOrigin('50% 50%'); }}
+            >
               {/* CDN-expiry fallback — revealed when Image onError fires */}
               <div className="absolute inset-0 flex items-center justify-center">
                 <ImageOff className="w-12 h-12 text-zinc-700" />
@@ -134,13 +163,25 @@ export function ImageDetailModal({
                 alt={image.prompt}
                 loading="lazy"
                 className="absolute inset-0 w-full h-full object-contain shadow-2xl rounded-lg select-none"
+                style={{
+                  transform: `scale(${zoom})`,
+                  transformOrigin: origin,
+                  transition: zoom === 1 ? 'transform 0.2s ease' : 'transform 0.08s ease-out',
+                  cursor: zoom > 1 ? 'crosshair' : 'zoom-in',
+                }}
                 referrerPolicy="no-referrer"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
               <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                <span className="bg-black/60 backdrop-blur-md text-white/60 text-[10px] px-2 py-1 rounded uppercase tracking-widest border border-white/5">
-                  Original Size View
-                </span>
+                {zoom > 1.01 ? (
+                  <span className="bg-black/60 backdrop-blur-md text-[#c5a062] text-[10px] px-2 py-1 rounded uppercase tracking-widest border border-[#c5a062]/30">
+                    {zoom.toFixed(1)}× · dbl-click to reset
+                  </span>
+                ) : (
+                  <span className="bg-black/60 backdrop-blur-md text-white/60 text-[10px] px-2 py-1 rounded uppercase tracking-widest border border-white/5">
+                    Scroll to zoom
+                  </span>
+                )}
               </div>
             </div>
           )}
