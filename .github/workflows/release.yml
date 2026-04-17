@@ -37,10 +37,12 @@ jobs:
         run: npm ci && npm run build
 
       - name: Copy standalone
-        run: node scripts/copy-standalone-to-resources.mjs
+        shell: pwsh
+        run: .\scripts\copy-standalone-to-resources.ps1
 
       - name: Fetch Node.js
-        run: node scripts/fetch-windows-node.mjs
+        shell: pwsh
+        run: .\scripts\fetch-windows-node.ps1
 
       - name: Build Tauri
         run: cargo tauri build
@@ -55,3 +57,5 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
