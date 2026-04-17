@@ -4,6 +4,15 @@ import { useState, useEffect } from 'react';
 import { get, set } from 'idb-keyval';
 import { type GeneratedImage } from '../types/mashup';
 
+// Normalize images on load: rewrite legacy tag spelling and reset any
+// transient pipeline status that was persisted mid-flight (the work itself
+// did not survive the reload, so the status would otherwise be stuck).
+function normalizeOnLoad(img: GeneratedImage): GeneratedImage {
+  const tags = img.tags?.map(t => t === 'Warhammer 40,000' ? 'Warhammer 40k' : t);
+  const status = img.status === 'generating' || img.status === 'animating' ? 'ready' : img.status;
+  return { ...img, tags, status };
+}
+
 export function useImages() {
   const [savedImages, setSavedImages] = useState<GeneratedImage[]>([]);
   const [isImagesLoaded, setIsImagesLoaded] = useState(false);
@@ -11,36 +20,20 @@ export function useImages() {
   useEffect(() => {
     const loadImages = async () => {
       try {
-        // Migrate from localStorage if needed
         const storedImages = localStorage.getItem('mashup_saved_images');
         if (storedImages) {
           try {
-            const images = JSON.parse(storedImages).map((img: GeneratedImage) => ({
-              ...img,
-              tags: img.tags?.map(t => t === 'Warhammer 40,000' ? 'Warhammer 40k' : t)
-            }));
+            const images = JSON.parse(storedImages).map(normalizeOnLoad);
             await set('mashup_saved_images', images);
             localStorage.removeItem('mashup_saved_images');
             setSavedImages(images);
           } catch {
             const idbImages = await get('mashup_saved_images');
-            if (idbImages) {
-              const cleanedImages = idbImages.map((img: GeneratedImage) => ({
-                ...img,
-                tags: img.tags?.map(t => t === 'Warhammer 40,000' ? 'Warhammer 40k' : t)
-              }));
-              setSavedImages(cleanedImages);
-            }
+            if (idbImages) setSavedImages(idbImages.map(normalizeOnLoad));
           }
         } else {
           const idbImages = await get('mashup_saved_images');
-          if (idbImages) {
-            const cleanedImages = idbImages.map((img: GeneratedImage) => ({
-              ...img,
-              tags: img.tags?.map(t => t === 'Warhammer 40,000' ? 'Warhammer 40k' : t)
-            }));
-            setSavedImages(cleanedImages);
-          }
+          if (idbImages) setSavedImages(idbImages.map(normalizeOnLoad));
         }
       } catch {
         // silent — savedImages remains empty, isImagesLoaded still fires
@@ -51,64 +44,50 @@ export function useImages() {
     loadImages();
   }, []);
 
+  // PROP-020: single debounced IDB write coalesces rapid mutations
+  // (bulk tag-select, approveAll, carousel-group delete) into one write
+  // 200ms after the last change, instead of N concurrent writes per
+  // mutator. Mirrors the PROP-010 pattern in useSettings.
+  useEffect(() => {
+    if (!isImagesLoaded) return;
+    const timer = setTimeout(() => {
+      void set('mashup_saved_images', savedImages).catch(() => {});
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [savedImages, isImagesLoaded]);
+
   const saveImage = (img: GeneratedImage) => {
     setSavedImages(prev => {
       const exists = prev.some(i => i.id === img.id);
-      let next;
-      if (exists) {
-        next = prev.map(i => i.id === img.id ? { ...i, ...img } : i);
-      } else {
-        next = [{ ...img, savedAt: Date.now() }, ...prev];
-      }
-      set('mashup_saved_images', next).catch(() => {});
-      return next;
+      if (exists) return prev.map(i => i.id === img.id ? { ...i, ...img } : i);
+      return [{ ...img, savedAt: Date.now() }, ...prev];
     });
   };
 
   const deleteImage = (id: string, fromSaved: boolean) => {
     if (fromSaved) {
-      setSavedImages(prev => {
-        const next = prev.filter(i => i.id !== id);
-        set('mashup_saved_images', next).catch(() => {});
-        return next;
-      });
+      setSavedImages(prev => prev.filter(i => i.id !== id));
     }
-    // Returns whether to also delete from working images
     return !fromSaved;
   };
 
   const updateImageTags = (id: string, tags: string[]) => {
-    setSavedImages(prev => {
-      const next = prev.map(img => img.id === id ? { ...img, tags } : img);
-      set('mashup_saved_images', next).catch(() => {});
-      return next;
-    });
+    setSavedImages(prev => prev.map(img => img.id === id ? { ...img, tags } : img));
   };
 
   const bulkUpdateImageTags = (ids: string[], tags: string[], mode: 'append' | 'replace') => {
-    setSavedImages(prev => {
-      const next = prev.map(img => {
-        if (ids.includes(img.id)) {
-          let newTags = tags;
-          if (mode === 'append') {
-            const existingTags = img.tags || [];
-            newTags = Array.from(new Set([...existingTags, ...tags]));
-          }
-          return { ...img, tags: newTags };
-        }
-        return img;
-      });
-      set('mashup_saved_images', next).catch(() => {});
-      return next;
-    });
+    setSavedImages(prev => prev.map(img => {
+      if (!ids.includes(img.id)) return img;
+      if (mode === 'append') {
+        const existingTags = img.tags || [];
+        return { ...img, tags: Array.from(new Set([...existingTags, ...tags])) };
+      }
+      return { ...img, tags };
+    }));
   };
 
   const toggleApproveImage = (id: string) => {
-    setSavedImages(prev => {
-      const next = prev.map(img => img.id === id ? { ...img, approved: !img.approved } : img);
-      set('mashup_saved_images', next).catch(() => {});
-      return next;
-    });
+    setSavedImages(prev => prev.map(img => img.id === id ? { ...img, approved: !img.approved } : img));
   };
 
   const setImageStatus = (id: string, status: 'generating' | 'animating' | 'ready') => {
@@ -116,19 +95,11 @@ export function useImages() {
   };
 
   const updateSavedImageCollectionId = (imageId: string, collectionId: string | undefined) => {
-    setSavedImages(prev => {
-      const next = prev.map(img => img.id === imageId ? { ...img, collectionId } : img);
-      set('mashup_saved_images', next).catch(() => {});
-      return next;
-    });
+    setSavedImages(prev => prev.map(img => img.id === imageId ? { ...img, collectionId } : img));
   };
 
   const clearCollectionFromImages = (collectionId: string) => {
-    setSavedImages(prev => {
-      const next = prev.map(img => img.collectionId === collectionId ? { ...img, collectionId: undefined } : img);
-      set('mashup_saved_images', next).catch(() => {});
-      return next;
-    });
+    setSavedImages(prev => prev.map(img => img.collectionId === collectionId ? { ...img, collectionId: undefined } : img));
   };
 
   return {
