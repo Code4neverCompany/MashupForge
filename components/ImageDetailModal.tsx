@@ -15,6 +15,7 @@ import {
   Trash2,
   BookmarkCheck,
   XCircle,
+  ImageOff,
 } from 'lucide-react';
 import type { GeneratedImage, Collection } from './MashupContext';
 import type { UserSettings } from '@/types/mashup';
@@ -77,12 +78,17 @@ export function ImageDetailModal({
 
           {image.isVideo ? (
             <div className="relative w-full h-full flex items-center justify-center group">
+              {/* CDN-expiry fallback — revealed when video onError fires */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <ImageOff className="w-12 h-12 text-zinc-700" />
+              </div>
               <video
                 src={image.url}
                 autoPlay
                 loop
                 controls
-                className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
+                className="max-w-full max-h-full object-contain shadow-2xl rounded-lg relative"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
               {settings.watermark?.enabled && settings.watermark.image && (
                 <div
@@ -120,12 +126,17 @@ export function ImageDetailModal({
             </div>
           ) : (
             <div className="relative w-full h-full flex items-center justify-center group">
+              {/* CDN-expiry fallback — revealed when Image onError fires */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <ImageOff className="w-12 h-12 text-zinc-700" />
+              </div>
               <Image
                 src={image.url || `data:image/jpeg;base64,${image.base64}`}
                 alt={image.prompt}
                 fill
                 className="object-contain shadow-2xl rounded-lg select-none"
                 referrerPolicy="no-referrer"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
               <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                 <span className="bg-black/60 backdrop-blur-md text-white/60 text-[10px] px-2 py-1 rounded uppercase tracking-widest border border-white/5">
