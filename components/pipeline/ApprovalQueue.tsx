@@ -124,9 +124,9 @@ export function ApprovalQueue({
           <button
             onClick={handleApproveAllFiltered}
             disabled={filtered.length === 0}
-            className="text-[11px] px-2 py-1 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 rounded-xl border border-emerald-500/30 transition-colors disabled:opacity-40"
+            className="text-[11px] px-2.5 py-1 bg-[#c5a062] hover:bg-[#d4b478] active:bg-[#a68748] text-[#050505] font-semibold rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1"
           >
-            <Check className="w-3 h-3 inline mr-1" />
+            <Check className="w-3 h-3" />
             Approve All ({filtered.length})
           </button>
           <button
