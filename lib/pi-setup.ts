@@ -15,7 +15,7 @@ const isWindows = platform() === 'win32';
 
 // Pinned version for runtime install reproducibility. Bump here when
 // upgrading — keep in sync with the devDependency in package.json.
-const PI_CLI_VERSION = '0.66.1';
+const PI_CLI_VERSION = '0.67.6';
 
 /**
  * Translate common Node errno codes into Windows-specific user-facing guidance.
