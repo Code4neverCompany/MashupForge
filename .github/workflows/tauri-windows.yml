@@ -78,23 +78,41 @@ jobs:
           workspaces: src-tauri
 
       - name: Build Tauri bundle
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build
 
-      - name: Upload .exe to GitHub Release
+      - name: Upload release assets (installer + updater manifest + signature)
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.tag.outputs.value }}"
-          EXE=$(ls src-tauri/target/release/bundle/nsis/*.exe 2>/dev/null | head -n1)
+          BUNDLE_DIR="src-tauri/target/release/bundle/nsis"
+          EXE=$(ls "$BUNDLE_DIR"/*.exe 2>/dev/null | head -n1)
+          SIG=$(ls "$BUNDLE_DIR"/*.exe.sig 2>/dev/null | head -n1)
+          LATEST="$BUNDLE_DIR/latest.json"
 
           if [ -z "$EXE" ] || [ ! -f "$EXE" ]; then
-            echo "::error::Tauri NSIS .exe not found under src-tauri/target/release/bundle/nsis/"
-            ls -la src-tauri/target/release/bundle/nsis/ || true
+            echo "::error::Tauri NSIS .exe not found under $BUNDLE_DIR"
+            ls -la "$BUNDLE_DIR" || true
+            exit 1
+          fi
+          if [ -z "$SIG" ] || [ ! -f "$SIG" ]; then
+            echo "::error::Signature (.exe.sig) not found under $BUNDLE_DIR — signing env vars missing?"
+            ls -la "$BUNDLE_DIR" || true
+            exit 1
+          fi
+          if [ ! -f "$LATEST" ]; then
+            echo "::error::latest.json not found under $BUNDLE_DIR — createUpdaterArtifacts may be disabled"
+            ls -la "$BUNDLE_DIR" || true
             exit 1
           fi
 
-          echo "Uploading $EXE to release $TAG"
+          echo "Uploading $EXE, $SIG, and $LATEST to release $TAG"
           gh release create "$TAG" --title "MashupForge $TAG" --notes "Tauri desktop build for Windows." 2>/dev/null || true
           gh release upload "$TAG" "$EXE" --clobber
-          echo "Uploaded $EXE to $TAG"
+          gh release upload "$TAG" "$SIG" --clobber
+          gh release upload "$TAG" "$LATEST" --clobber
+          echo "Uploaded installer, signature, and updater manifest to $TAG"
