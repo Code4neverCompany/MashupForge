@@ -881,6 +881,22 @@ export function MainContent() {
     }
   };
 
+  const handleProviderConfig = async () => {
+    setPiBusy('config');
+    setPiError(null);
+    try {
+      const res = await fetch('/api/pi/config', { method: 'POST' });
+      const data = await res.json() as { success?: boolean; error?: string; tmuxSession?: string };
+      if (!res.ok || data.success === false) {
+        setPiError(data.error || 'Provider config failed');
+      } else if (data.tmuxSession) {
+        setPiSetupMsg(data.tmuxSession);
+      }
+    } finally {
+      setPiBusy(null);
+    }
+  };
+
   const PREDEFINED_PROMPTS = [
     "Darth Vader as a Space Marine in the Warhammer 40k universe, grimdark style",
     "Iron Man's Hulkbuster armor redesigned by Mandalorian armorers, Beskar plating",
@@ -4515,6 +4531,7 @@ export function MainContent() {
           piError={piError}
           piSetupMsg={piSetupMsg}
           handlePiSetup={handlePiSetup}
+          handleProviderConfig={handleProviderConfig}
           refreshPiStatus={refreshPiStatus}
           collections={collections}
           savedImages={savedImages}

@@ -13,6 +13,10 @@ import { dirname, join } from 'node:path';
 
 const isWindows = platform() === 'win32';
 
+// Pinned version for runtime install reproducibility. Bump here when
+// upgrading — keep in sync with the devDependency in package.json.
+const PI_CLI_VERSION = '0.66.1';
+
 /**
  * Translate common Node errno codes into Windows-specific user-facing guidance.
  * Desktop users see these in the Settings / install flow and have no way to
@@ -344,7 +348,7 @@ export function installPi(): InstallPiResult {
       '--prefix',
       quoteWinArg(localPrefix),
       '--global',
-      '@mariozechner/pi-coding-agent',
+      `@mariozechner/pi-coding-agent@${PI_CLI_VERSION}`,
     ],
     spawnOpts,
   );

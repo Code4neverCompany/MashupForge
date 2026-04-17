@@ -42,7 +42,7 @@ export interface PiStatus {
   lastError: string | null;
 }
 
-export type PiBusy = null | 'install' | 'start' | 'stop' | 'setup';
+export type PiBusy = null | 'install' | 'start' | 'stop' | 'setup' | 'config';
 
 const RECOMMENDED_NICHES = [
   'Multiverse Mashup',
@@ -96,6 +96,7 @@ interface SettingsModalProps {
   piError: string | null;
   piSetupMsg: string | null;
   handlePiSetup: () => void;
+  handleProviderConfig: () => void;
   refreshPiStatus: () => void;
   collections: Collection[];
   savedImages: GeneratedImage[];
@@ -113,6 +114,7 @@ export function SettingsModal({
   piError,
   piSetupMsg,
   handlePiSetup,
+  handleProviderConfig,
   refreshPiStatus,
   collections,
   savedImages,
@@ -393,6 +395,16 @@ export function SettingsModal({
                 className="btn-gold-sm rounded-lg"
               >
                 {piBusy === 'setup' ? 'Opening…' : 'Setup Pi.dev'}
+              </button>
+            )}
+
+            {piStatus?.authenticated && piStatus?.installed && (
+              <button
+                onClick={handleProviderConfig}
+                disabled={piBusy !== null}
+                className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors border border-zinc-700/60"
+              >
+                {piBusy === 'config' ? 'Opening…' : 'Switch Provider'}
               </button>
             )}
 
