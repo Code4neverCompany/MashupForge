@@ -149,23 +149,13 @@ export async function start(): Promise<void> {
 
   args.push('--system-prompt', fullSystemPrompt);
 
-  // Strip AI-related env vars so pi doesn't auto-select a different provider.
-  // Pi should use its own auth setup (pi /login → ~/.pi/agent/auth.json).
+  // Forward AI provider env vars so pi can authenticate via the same
+  // keys the user configured in DesktopSettingsPanel. Previously we
+  // stripped every `*_API_KEY` to force pi to use its own
+  // ~/.pi/agent/auth.json, which broke the ZAI fallback flow: pi needs
+  // ZAI_API_KEY (and GEMINI_API_KEY etc.) in env to route to the
+  // matching provider — see providers.md in @mariozechner/pi-coding-agent.
   const cleanEnv = { ...process.env };
-  for (const key of Object.keys(cleanEnv)) {
-    if (
-      key.endsWith('_API_KEY') ||
-      key === 'ZAI_API_KEY' ||
-      key === 'GOOGLE_API_KEY' ||
-      key === 'GEMINI_API_KEY' ||
-      key === 'ANTHROPIC_API_KEY' ||
-      key === 'OPENAI_API_KEY' ||
-      key === 'GROQ_API_KEY' ||
-      key === 'CEREBRAS_API_KEY'
-    ) {
-      delete cleanEnv[key];
-    }
-  }
 
   // Windows: `pi.cmd` is an npm shim and Node 18.20.2+ refuses to spawn
   // `.cmd` / `.bat` files without `shell: true` (CVE-2024-27980). Shell mode
