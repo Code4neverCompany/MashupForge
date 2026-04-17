@@ -8,7 +8,8 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ['lucide-react', 'motion'],
   },
   outputFileTracingExcludes: {
-    '/api/pi/**': ['./next.config.ts', './tests/**'],
+    '*': ['./src-tauri/**', './docs/**', './tests/**', './scripts/**', './.github/**'],
+    '/api/pi/**': ['./next.config.ts'],
   },
   // Expose the CI commit SHA so the desktop Settings panel can show the
   // exact build. Falls back to 'dev' in local dev. GITHUB_SHA is set by
