@@ -93,8 +93,13 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
+  // Only accept keys declared in DESKTOP_CONFIG_KEYS — prevents arbitrary
+  // env-var injection via the PATCH body (e.g. NODE_OPTIONS, LD_PRELOAD).
+  const allowedKeys = new Set(DESKTOP_CONFIG_KEYS.map(({ key }) => key));
+
   // Merge: empty-string values remove the key; non-empty values upsert.
   for (const [k, v] of Object.entries(body.keys)) {
+    if (!allowedKeys.has(k)) continue;
     if (typeof v === 'string' && v.trim().length > 0) {
       existing[k] = v.trim();
       // Also inject immediately so running API routes pick it up without restart.
@@ -107,7 +112,8 @@ export async function PATCH(req: NextRequest) {
 
   try {
     mkdirSync(dirname(configPath), { recursive: true });
-    writeFileSync(configPath, JSON.stringify(existing, null, 2) + '\n', 'utf8');
+    // 0o600: owner read/write only — config.json contains API keys.
+    writeFileSync(configPath, JSON.stringify(existing, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
   } catch (e: unknown) {
     return NextResponse.json(
       { success: false, error: getErrorMessage(e) },
