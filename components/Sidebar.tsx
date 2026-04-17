@@ -218,48 +218,38 @@ Return ONLY the JSON array, no prose.`;
       
       <aside aria-label="Sidebar" className={`fixed md:static inset-y-0 left-0 z-50 w-[85vw] sm:w-80 glass-panel flex flex-col h-full shrink-0 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div role="tablist" aria-label="Sidebar panels" className="flex p-2 gap-1.5 border-b border-[#c5a062]/15">
-          <button
-            role="tab"
-            aria-selected={activeTab === 'content'}
-            aria-controls="sidebar-content-panel"
-            onClick={() => setActiveTab('content')}
-            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e6ff]/50 ${
-              activeTab === 'content'
-                ? 'bg-[#00e6ff]/10 text-[#00e6ff] border border-[#00e6ff]/20'
-                : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border border-transparent'
-            }`}
-          >
-            <Search className="w-3.5 h-3.5" />
-            Content
-          </button>
-          <button
-            role="tab"
-            aria-selected={activeTab === 'chat'}
-            aria-controls="sidebar-chat-panel"
-            onClick={() => setActiveTab('chat')}
-            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e6ff]/50 ${
-              activeTab === 'chat'
-                ? 'bg-[#00e6ff]/10 text-[#00e6ff] border border-[#00e6ff]/20'
-                : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border border-transparent'
-            }`}
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            Chat
-          </button>
-          <button
-            role="tab"
-            aria-selected={activeTab === 'history'}
-            aria-controls="sidebar-history-panel"
-            onClick={() => setActiveTab('history')}
-            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e6ff]/50 ${
-              activeTab === 'history'
-                ? 'bg-[#00e6ff]/10 text-[#00e6ff] border border-[#00e6ff]/20'
-                : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border border-transparent'
-            }`}
-          >
-            <History className="w-3.5 h-3.5" />
-            History
-          </button>
+          {(
+            [
+              { id: 'content', label: 'Content', Icon: Search, controls: 'sidebar-content-panel' },
+              { id: 'chat',    label: 'Chat',    Icon: MessageSquare, controls: 'sidebar-chat-panel' },
+              { id: 'history', label: 'History', Icon: History, controls: 'sidebar-history-panel' },
+            ] as const
+          ).map(({ id, label, Icon, controls }) => {
+            const isActive = activeTab === id;
+            return (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={isActive}
+                aria-controls={controls}
+                onClick={() => setActiveTab(id)}
+                className={`flex-1 py-1.5 px-3 rounded-xl flex flex-col items-center justify-center gap-0 text-xs transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e6ff]/50 ${
+                  isActive
+                    ? 'bg-[#00e6ff]/10 text-[#00e6ff] border border-[#00e6ff]/20 font-bold'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border border-transparent font-semibold'
+                }`}
+              >
+                <span className="flex items-center gap-1.5 py-0.5">
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className={`h-0.5 rounded-full transition-all duration-200 ${isActive ? 'w-5 bg-[#00e6ff]' : 'w-0 bg-transparent'}`}
+                />
+              </button>
+            );
+          })}
         </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
