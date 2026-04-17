@@ -94,6 +94,7 @@ import { SettingsModal, type PiStatus, type PiBusy } from './SettingsModal';
 import { CollectionModal } from './CollectionModal';
 import { ImageDetailModal } from './ImageDetailModal';
 import { BulkTagModal } from './BulkTagModal';
+import { LazyImg } from './LazyImg';
 
 /**
  * Auto-sizing textarea that grows with its content. Resets to
@@ -2509,11 +2510,9 @@ export function MainContent() {
                               {/* Thumbnail */}
                               <div className="relative aspect-square bg-zinc-950">
                                 {img.url ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
+                                  <LazyImg
                                     src={img.url}
                                     alt={img.prompt}
-                                    loading="lazy"
                                     className="w-full h-full object-cover"
                                     onError={(e) => { e.currentTarget.style.display = 'none'; }}
                                   />
@@ -3328,11 +3327,9 @@ export function MainContent() {
                                           }`}
                                         >
                                           {img.url ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img
+                                            <LazyImg
                                               src={img.url}
                                               alt={img.prompt}
-                                              loading="lazy"
                                               className="w-full h-full object-cover"
                                               onError={(e) => { e.currentTarget.style.display = 'none'; }}
                                             />
@@ -3727,11 +3724,9 @@ export function MainContent() {
                               {/* Image */}
                               <div className="relative md:w-48 md:shrink-0 aspect-square bg-zinc-950">
                                 {img.url ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
+                                  <LazyImg
                                     src={img.url}
                                     alt={img.prompt}
-                                    loading="lazy"
                                     onClick={() => setSelectedImage(img)}
                                     className="w-full h-full object-cover cursor-zoom-in"
                                     onError={(e) => { e.currentTarget.style.display = 'none'; }}
@@ -4063,11 +4058,9 @@ export function MainContent() {
                                   title={inAnotherGroup ? 'Already in another carousel' : img.prompt}
                                 >
                                   {img.url ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
+                                    <LazyImg
                                       src={img.url}
                                       alt={img.prompt}
-                                      loading="lazy"
                                       className="w-full h-full object-cover"
                                       onError={(e) => { e.currentTarget.style.display = 'none'; }}
                                     />
@@ -4262,10 +4255,9 @@ export function MainContent() {
                           <div className="absolute inset-0 flex items-center justify-center z-0">
                             <ImageOff className="w-8 h-8 text-zinc-700" />
                           </div>
-                          <img
+                          <LazyImg
                             src={img.url || `data:image/jpeg;base64,${img.base64}`}
                             alt={img.prompt}
-                            loading="lazy"
                             className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                             referrerPolicy="no-referrer"
                             onError={(e) => { e.currentTarget.style.display = 'none'; }}
