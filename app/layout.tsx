@@ -3,6 +3,7 @@ import { Space_Grotesk, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Toast } from '@/components/Toast';
 import { UpdateChecker } from '@/components/UpdateChecker';
+import { FirstRunBanner } from '@/components/FirstRunBanner';
 
 // AETHER SANS → Space Grotesk: geometric tech sans, distinctive letterforms,
 // futuristic feel that matches the 4neverCompany dark studio aesthetic.
@@ -53,6 +54,7 @@ export default function RootLayout({
         {children}
         <Toast />
         <UpdateChecker />
+        <FirstRunBanner />
       </body>
     </html>
   );

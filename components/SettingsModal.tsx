@@ -370,7 +370,7 @@ export function SettingsModal({
                 <span className="text-[11px] text-[#00e6ff]">Starting pi.dev…</span>
               )}
               {!piBusy && piStatus && !piStatus.installed && (
-                <span className="text-[11px] text-amber-400">pi.dev not installed — retry pending</span>
+                <span className="text-[11px] text-[#c5a062]">pi.dev not installed — will auto-install on next check</span>
               )}
               {!piBusy && piStatus?.running && (
                 <span className="text-[11px] text-emerald-400">pi.dev running</span>

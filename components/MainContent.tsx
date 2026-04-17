@@ -861,6 +861,12 @@ export function MainContent() {
     if (showSettings) refreshPiStatus();
   }, [showSettings]);
 
+  useEffect(() => {
+    const handler = () => setShowSettings(true);
+    window.addEventListener('mashup:open-settings', handler);
+    return () => window.removeEventListener('mashup:open-settings', handler);
+  }, []);
+
   // handlePiInstall / handlePiStart / handlePiStop intentionally removed —
   // pi install + start are autonomous (see piAutoBootRef effect). Only the
   // auth step (handlePiSetup → /api/pi/setup) requires user interaction.
