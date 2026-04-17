@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { TrendingUp, X, Check } from 'lucide-react';
 import { formatTimeShort } from './TimePicker24';
 import type { PostPlatform } from '@/types/mashup';
@@ -42,6 +43,17 @@ export function SmartScheduleModal({
   onClose,
 }: SmartScheduleModalProps) {
   const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const [confirmed, setConfirmed] = useState(false);
+
+  useEffect(() => {
+    if (!confirmed) return;
+    const t = setTimeout(onClose, 1400);
+    return () => clearTimeout(t);
+  }, [confirmed, onClose]);
+
+  const confirmLabel = slots.length > 0
+    ? `Scheduled for ${DAY_NAMES[new Date(slots[0].date).getDay()]} ${formatTimeShort(slots[0].time)} ✓`
+    : `${postCount} post${postCount !== 1 ? 's' : ''} scheduled ✓`;
 
   return (
     <div
@@ -55,7 +67,7 @@ export function SmartScheduleModal({
         {/* Header */}
         <div className="flex items-center justify-between">
           <h3 className="type-title flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-amber-400" />
+            <TrendingUp className="w-5 h-5 text-[#c5a062]" />
             Smart Schedule ({postCount} posts)
           </h3>
           <button type="button" onClick={onClose} className="p-1 text-zinc-400 hover:text-white" aria-label="Close smart schedule dialog">
@@ -91,7 +103,7 @@ export function SmartScheduleModal({
                   >
                     <span className="text-[10px] text-zinc-500 w-5">#{i + 1}</span>
                     <span className="text-xs font-mono text-white">{slot.date}</span>
-                    <span className="text-xs font-mono text-amber-400">{formatTimeShort(slot.time)}</span>
+                    <span className="text-xs font-mono text-[#c5a062]">{formatTimeShort(slot.time)}</span>
                     <span className="text-[10px] text-zinc-600">{dayLabel}</span>
                     <div className="flex-1" />
                     <div className="w-20 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
@@ -143,21 +155,28 @@ export function SmartScheduleModal({
         </p>
 
         {/* Actions */}
-        <div className="flex gap-2 justify-end">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg"
-          >
-            Cancel
-          </button>
-          <button
-            disabled={form.platforms.length === 0}
-            onClick={onConfirm}
-            className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5"
-          >
-            <TrendingUp className="w-3.5 h-3.5" /> Smart Schedule {postCount} Posts
-          </button>
-        </div>
+        {confirmed ? (
+          <div className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#c5a062]/10 border border-[#c5a062]/30 rounded-xl text-[#c5a062] text-xs font-semibold">
+            <Check className="w-4 h-4 shrink-0" />
+            {confirmLabel}
+          </div>
+        ) : (
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg"
+            >
+              Cancel
+            </button>
+            <button
+              disabled={form.platforms.length === 0}
+              onClick={() => { onConfirm(); setConfirmed(true); }}
+              className="px-3 py-1.5 text-xs bg-[#00e6ff] hover:bg-[#33eaff] disabled:opacity-40 text-[#050505] font-semibold rounded-lg flex items-center gap-1.5"
+            >
+              <TrendingUp className="w-3.5 h-3.5" /> Smart Schedule {postCount} Posts
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
