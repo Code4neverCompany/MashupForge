@@ -61,8 +61,12 @@ origins. ✓
 ## Instagram Credential Flow (verified end-to-end)
 
 ### INSTAGRAM-CRED-FIX — Config.json persistence
-`DESKTOP_CONFIG_KEYS` has 4 entries (LEONARDO_API_KEY, ZAI_API_KEY,
-INSTAGRAM_ACCOUNT_ID, INSTAGRAM_ACCESS_TOKEN). ✓
+`DESKTOP_CONFIG_KEYS` includes `INSTAGRAM_ACCOUNT_ID` and
+`INSTAGRAM_ACCESS_TOKEN` (the original two IG keys that motivated this
+fix). The list has since grown to 16 entries covering Leonardo, pi.dev
+provider/model + per-provider API keys (ZAI/ANTHROPIC/OPENAI/GOOGLE),
+Instagram, Twitter (4), Pinterest (2), and Discord — see
+`lib/desktop-config-keys.ts` for the source of truth. ✓
 
 ### VERIFY-003 — `resolveInstagramCredentials()` (`lib/instagram-credentials.ts`)
 Pure function — `env.INSTAGRAM_ACCOUNT_ID ?? body?.igAccountId ?? ''`.
