@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { mergeSettings } from '@/hooks/useSettings';
-import { defaultSettings } from '@/types/mashup';
+import { defaultSettings, type WatermarkSettings } from '@/types/mashup';
+
+// PROP-024 compile-time guard. If WatermarkSettings gains a field that
+// defaultSettings.watermark doesn't satisfy, tsc --noEmit will error here
+// before the test suite even runs. Update defaultSettings in types/mashup.ts
+// when adding new WatermarkSettings fields, then update the runtime checks below.
+const _watermarkShape: Required<WatermarkSettings> = defaultSettings.watermark!;
 
 // POLISH-018 regression gate. mergeSettings deep-merges loaded IDB
 // payloads into the running settings. If it regresses to a shallow
@@ -77,5 +83,38 @@ describe('mergeSettings', () => {
     });
     expect(result.enabledProviders).toEqual(defaultSettings.enabledProviders);
     expect(result.defaultLeonardoModel).toBe(defaultSettings.defaultLeonardoModel);
+  });
+});
+
+// PROP-024: runtime shape guard for defaultSettings.watermark.
+// Each assertion names a field explicitly so the test output identifies
+// which field was removed or mis-typed if this block ever fails.
+describe('defaultSettings watermark shape (PROP-024)', () => {
+  it('watermark is defined', () => {
+    expect(defaultSettings.watermark).toBeDefined();
+  });
+
+  it('enabled is a boolean', () => {
+    expect(typeof defaultSettings.watermark!.enabled).toBe('boolean');
+  });
+
+  it('image is null or a string', () => {
+    const v = defaultSettings.watermark!.image;
+    expect(v === null || typeof v === 'string').toBe(true);
+  });
+
+  it('position is a valid WatermarkSettings position value', () => {
+    const valid: WatermarkSettings['position'][] = [
+      'top-left', 'top-right', 'bottom-left', 'bottom-right', 'center',
+    ];
+    expect(valid).toContain(defaultSettings.watermark!.position);
+  });
+
+  it('opacity is a number', () => {
+    expect(typeof defaultSettings.watermark!.opacity).toBe('number');
+  });
+
+  it('scale is a number', () => {
+    expect(typeof defaultSettings.watermark!.scale).toBe('number');
   });
 });
