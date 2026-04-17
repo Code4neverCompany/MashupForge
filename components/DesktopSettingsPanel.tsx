@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power } from 'lucide-react';
 import { DESKTOP_CONFIG_KEYS } from '@/lib/desktop-config-keys';
-import { UpdateBanner } from './UpdateBanner';
 import { PortConflictBanner } from './PortConflictBanner';
 
 // ── PROP-005: Tauri auto-launch toggle ────────────────────────────────────────
@@ -242,9 +241,6 @@ export function DesktopSettingsPanel() {
 
       {/* PORT-001: Warn when ephemeral-port fallback fired */}
       <PortConflictBanner />
-
-      {/* Update check (STORY-122) */}
-      <UpdateBanner />
 
       {/* PROP-005: Auto-launch at startup toggle */}
       {autolaunch.enabled !== null && (
