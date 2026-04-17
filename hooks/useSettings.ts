@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { get, set } from 'idb-keyval';
 import { type UserSettings, defaultSettings } from '../types/mashup';
 
@@ -29,6 +29,12 @@ export function mergeSettings(prev: UserSettings, patch: Partial<UserSettings>):
 export function useSettings() {
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false);
+
+  // Always-current ref used by the beforeunload flush below. Updated
+  // synchronously on every render so the handler never closes over a
+  // stale value without needing to re-subscribe the listener.
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   // PROP-010: load path. Defensive `typeof === 'object'` guard rejects any
   // corrupted/non-object value left over from the pre-fix race that could
@@ -68,6 +74,24 @@ export function useSettings() {
     }, 300);
     return () => clearTimeout(timer);
   }, [settings, isSettingsLoaded]);
+
+  // Flush-on-unload safety net for the 300ms debounce window. Writes
+  // synchronously to localStorage on beforeunload; the load path already
+  // migrates localStorage → IDB on next session start, so no settings
+  // change is lost even if the tab closes before the debounce fires.
+  // Registered once (when isSettingsLoaded flips true) via empty-ish dep
+  // array — settingsRef.current always holds the latest value so the
+  // listener never needs to be re-registered.
+  useEffect(() => {
+    if (!isSettingsLoaded) return;
+    const flush = () => {
+      try {
+        localStorage.setItem('mashup_settings', JSON.stringify(settingsRef.current));
+      } catch { /* storage quota — silent */ }
+    };
+    window.addEventListener('beforeunload', flush);
+    return () => window.removeEventListener('beforeunload', flush);
+  }, [isSettingsLoaded]);
 
   // Stable identity across renders — useState's setSettings is itself
   // stable, so this useCallback can have an empty dep array. Stable
