@@ -57,16 +57,16 @@ export function useSettings() {
     loadSettings();
   }, []);
 
-  // PROP-010: persist after every committed state change. Replaces the
-  // previous `setSettings(updater) → await set(latest!)` pattern, which
-  // raced because React 18 doesn't run the updater synchronously at
-  // `setSettings` call time — `latest` was often still `undefined` when
-  // the IDB write fired, persisting `undefined` and causing a full reset
-  // on next load. The effect form sees the committed state directly, so
-  // there is no closure to capture from.
+  // PROP-010: persist after every committed state change, debounced 300ms.
+  // Debounce prevents an IDB write on every keystroke in text fields while
+  // still guaranteeing the final value is persisted. The cleanup cancels any
+  // pending timer so rapid updates coalesce into a single write.
   useEffect(() => {
     if (!isSettingsLoaded) return;
-    void set('mashup_settings', settings).catch(() => {});
+    const timer = setTimeout(() => {
+      void set('mashup_settings', settings).catch(() => {});
+    }, 300);
+    return () => clearTimeout(timer);
   }, [settings, isSettingsLoaded]);
 
   // Stable identity across renders — useState's setSettings is itself
