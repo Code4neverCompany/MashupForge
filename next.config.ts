@@ -1,13 +1,14 @@
 import type {NextConfig} from 'next';
-import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 
-const projectDir = path.dirname(fileURLToPath(import.meta.url));
+const projectDir = import.meta.dirname;
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   experimental: {
     optimizePackageImports: ['lucide-react', 'motion'],
+  },
+  outputFileTracingExcludes: {
+    '/api/pi/**': ['./next.config.ts', './tests/**'],
   },
   // Expose the CI commit SHA so the desktop Settings panel can show the
   // exact build. Falls back to 'dev' in local dev. GITHUB_SHA is set by
