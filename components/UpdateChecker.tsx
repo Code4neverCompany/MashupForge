@@ -56,8 +56,12 @@ export function UpdateChecker() {
           const lastSeen = localStorage.getItem(LAST_SEEN_KEY);
           if (lastSeen && lastSeen !== currentVersion) {
             if (!cancelled) setState({ kind: 'post-update', version: currentVersion });
+            // Only reset to idle if the post-update toast is still showing —
+            // the updater check below can set 'available' within this 5s
+            // window and we must not clobber it.
             window.setTimeout(() => {
-              if (!cancelled) setState({ kind: 'idle' });
+              if (cancelled) return;
+              setState((prev) => (prev.kind === 'post-update' ? { kind: 'idle' } : prev));
             }, 5000);
           }
           localStorage.setItem(LAST_SEEN_KEY, currentVersion);
