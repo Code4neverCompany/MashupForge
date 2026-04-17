@@ -62,6 +62,21 @@ jobs:
         shell: pwsh
         run: scripts/copy-standalone-to-resources.ps1
 
+      - name: Strip non-Windows sharp bindings from bundled app
+        shell: pwsh
+        working-directory: src-tauri/resources/app/node_modules/@img
+        run: |
+          # Linux build pulls linux+linuxmusl sharp bindings into
+          # .next/standalone. They're dead weight on Windows (~33 MB
+          # across libvips + sharp). Must run BEFORE the npm install
+          # step below so the win32 bindings it fetches survive.
+          Get-ChildItem -Directory | Where-Object {
+            $_.Name -like '*linux*' -or $_.Name -like '*darwin*'
+          } | ForEach-Object {
+            Write-Host "Removing $($_.Name)"
+            Remove-Item -Recurse -Force $_.FullName
+          }
+
       - name: Install native Windows deps into bundled app
         shell: pwsh
         working-directory: src-tauri/resources/app
