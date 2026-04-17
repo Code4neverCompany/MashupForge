@@ -17,3 +17,6 @@ src-tauri/resources/node/
 src-tauri/resources/app/
 src-tauri/resources/pi/
 dist/
+
+# Claude Code session files
+.claude/
