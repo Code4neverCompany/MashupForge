@@ -74,11 +74,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "${{ steps.tag.outputs.value }}"
-          $exe = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
+
+          # NSIS target produces .exe installers
+          $exe = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $exe) {
+            Write-Host "Listing bundle contents for debugging:"
+            Get-ChildItem src-tauri/target/release/bundle -Recurse -File | ForEach-Object { Write-Host "  $($_.FullName)" }
             Write-Error "No .exe found in bundle/nsis/"
             exit 1
           }
+
+          # Rename to standardised asset names (gh derives name from filename)
+          $setupExe = "MashupForge-$tag-setup.exe"
+          Copy-Item $exe.FullName -Destination $setupExe
           $zip = "MashupForge-$tag.zip"
           Compress-Archive -Path $exe.FullName -DestinationPath $zip -Force
 
@@ -89,6 +97,6 @@ jobs:
           }
 
           # Upload assets — --clobber replaces if already present
-          gh release upload $tag $exe.FullName --asset-name "MashupForge-$tag-setup.exe" --clobber
-          gh release upload $tag $zip --asset-name "MashupForge-$tag.zip" --clobber
+          gh release upload $tag $setupExe --clobber
+          gh release upload $tag $zip --clobber
           Write-Host "Assets uploaded to release $tag"

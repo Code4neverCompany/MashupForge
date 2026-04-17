@@ -133,12 +133,16 @@ $BundleRoot = if ($Dev) {
     Join-Path $RepoRoot 'src-tauri\target\release\bundle'
 }
 
+$Exe = Get-ChildItem -Path $BundleRoot -Filter '*.exe' -Recurse -ErrorAction SilentlyContinue
 $Msi = Get-ChildItem -Path $BundleRoot -Filter '*.msi' -Recurse -ErrorAction SilentlyContinue
 
-if ($Msi) {
+if ($Exe) {
+    Write-Host "NSIS EXE: $($Exe.FullName)"
+} elseif ($Msi) {
     Write-Host "MSI:      $($Msi.FullName)"
 } else {
-    Write-Warning "No .msi installer found under $BundleRoot"
+    Write-Warning "No installer found under $BundleRoot"
+    Get-ChildItem -Path $BundleRoot -Recurse -File | ForEach-Object { Write-Host "  $($_.FullName)" }
 }
 
 Write-Host ""
