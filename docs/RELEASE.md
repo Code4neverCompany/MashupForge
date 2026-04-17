@@ -5,8 +5,7 @@
 Three files must agree — CI fails on mismatch.
 
 ```bash
-bash scripts/increment-version.sh   # bumps package.json + tauri.conf.json
-# Then manually bump src-tauri/Cargo.toml `version = "x.y.z"` to match.
+bash scripts/increment-version.sh   # bumps package.json + tauri.conf.json + Cargo.toml
 ```
 
 ## 2. Build portable Windows bundle (from WSL)
