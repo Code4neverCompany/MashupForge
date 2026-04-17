@@ -4211,6 +4211,10 @@ export function MainContent() {
                       
                       {img.isVideo ? (
                         <div className="relative w-full h-full">
+                          {/* CDN-expiry fallback — revealed when video onError fires */}
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <ImageIcon className="w-8 h-8 text-zinc-700" />
+                          </div>
                           <video
                             src={img.url}
                             autoPlay
@@ -4218,6 +4222,7 @@ export function MainContent() {
                             muted
                             playsInline
                             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
                           />
                           {settings.watermark?.enabled && (
                             <div className={`absolute pointer-events-none z-10 ${
