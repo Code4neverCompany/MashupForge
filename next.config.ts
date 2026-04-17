@@ -6,6 +6,9 @@ const projectDir = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'motion'],
+  },
   // Expose the CI commit SHA so the desktop Settings panel can show the
   // exact build. Falls back to 'dev' in local dev. GITHUB_SHA is set by
   // GitHub Actions automatically on every push/PR run.

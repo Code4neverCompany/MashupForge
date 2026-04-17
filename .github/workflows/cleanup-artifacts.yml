@@ -1,0 +1,20 @@
+name: Cleanup Old Artifacts
+
+on:
+  workflow_run:
+    workflows: ["Build Windows installer"]
+    types:
+      - completed
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Delete old artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: |
+            mashupforge-windows-msi
+            mashupforge-windows-nsis
+          failOnError: false
