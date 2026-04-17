@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import Image from 'next/image';
 import ReactMarkdown from 'react-markdown';
 import { Send, Search, MessageSquare, Loader2, ExternalLink, Image as ImageIcon, Sparkles, Columns, RefreshCw, History } from 'lucide-react';
 import { useMashup, LEONARDO_MODELS } from './MashupContext';
@@ -296,7 +295,7 @@ Return ONLY the JSON array, no prose.`;
                     aria-label={`Open in Studio: ${img.prompt.slice(0, 60)}`}
                   >
                     {img.url ? (
-                      <Image src={img.url} alt={`Generated: ${img.prompt.slice(0, 80)}`} fill className="object-cover" unoptimized />
+                      <img src={img.url} alt={`Generated: ${img.prompt.slice(0, 80)}`} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Loader2 className="w-4 h-4 animate-spin text-zinc-700" />

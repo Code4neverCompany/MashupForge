@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'motion/react';
-import Image from 'next/image';
 import { 
   Loader2, 
   Image as ImageIcon, 
@@ -2162,11 +2161,11 @@ export function MainContent() {
                                     </div>
                                   ) : (
                                     <>
-                                      <Image
+                                      <img
                                         src={img.url || `data:image/jpeg;base64,${img.base64}`}
                                         alt={img.prompt}
-                                        fill
-                                        className="object-cover transition-transform duration-700 group-hover:scale-110"
+                                        loading="lazy"
+                                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                                         referrerPolicy="no-referrer"
                                       />
                                       <div className="absolute bottom-0 left-0 right-0 h-1/3 bg-gradient-to-t from-black/60 via-black/20 to-transparent pointer-events-none" />
@@ -4249,7 +4248,7 @@ export function MainContent() {
                               settings.watermark.position === 'top-left' ? 'top-2 left-2' : 'bottom-2 right-2'
                             }`} style={{ opacity: settings.watermark.opacity || 0.8 }}>
                               {settings.watermark.image ? (
-                                <Image src={settings.watermark.image} alt="Watermark" fill className="object-contain" referrerPolicy="no-referrer" />
+                                <img src={settings.watermark.image} alt="Watermark" className="absolute inset-0 w-full h-full object-contain" referrerPolicy="no-referrer" />
                               ) : settings.channelName ? (
                                 <span className="text-white bg-black/50 px-2 py-1 rounded text-xs font-bold">{settings.channelName}</span>
                               ) : null}
@@ -4263,12 +4262,11 @@ export function MainContent() {
                           <div className="absolute inset-0 flex items-center justify-center z-0">
                             <ImageOff className="w-8 h-8 text-zinc-700" />
                           </div>
-                          <Image
+                          <img
                             src={img.url || `data:image/jpeg;base64,${img.base64}`}
                             alt={img.prompt}
-                            fill
-                            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                            className="object-cover transition-transform duration-700 group-hover:scale-110"
+                            loading="lazy"
+                            className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                             referrerPolicy="no-referrer"
                             onError={(e) => { e.currentTarget.style.display = 'none'; }}
                           />

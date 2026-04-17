@@ -1,7 +1,6 @@
 'use client';
 
 import { motion } from 'motion/react';
-import Image from 'next/image';
 import {
   X,
   Loader2,
@@ -104,7 +103,7 @@ export function ImageDetailModal({
                     maxWidth: '200px',
                   }}
                 >
-                  <Image src={settings.watermark.image} alt="Watermark" fill className="object-contain" referrerPolicy="no-referrer" />
+                  <img src={settings.watermark.image} alt="Watermark" className="absolute inset-0 w-full h-full object-contain" referrerPolicy="no-referrer" />
                 </div>
               )}
               {settings.watermark?.enabled && !settings.watermark.image && settings.channelName && (
@@ -130,11 +129,11 @@ export function ImageDetailModal({
               <div className="absolute inset-0 flex items-center justify-center">
                 <ImageOff className="w-12 h-12 text-zinc-700" />
               </div>
-              <Image
+              <img
                 src={image.url || `data:image/jpeg;base64,${image.base64}`}
                 alt={image.prompt}
-                fill
-                className="object-contain shadow-2xl rounded-lg select-none"
+                loading="lazy"
+                className="absolute inset-0 w-full h-full object-contain shadow-2xl rounded-lg select-none"
                 referrerPolicy="no-referrer"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />

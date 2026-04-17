@@ -2,7 +2,6 @@
 
 import { useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import Image from 'next/image';
 import {
   Settings as SettingsIcon,
   X,
@@ -513,12 +512,10 @@ export function SettingsModal({
                             maxHeight: '40%',
                           }}
                         >
-                          <Image
+                          <img
                             src={settings.watermark.image}
                             alt="Watermark preview"
-                            fill
-                            className="object-contain drop-shadow-lg"
-                            unoptimized
+                            className="absolute inset-0 w-full h-full object-contain drop-shadow-lg"
                           />
                         </div>
                       </div>
