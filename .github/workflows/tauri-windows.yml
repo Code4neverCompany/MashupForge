@@ -16,6 +16,8 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 60
+    outputs:
+      tag: ${{ steps.tag.outputs.value }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -98,11 +100,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build
 
-      - name: Upload release assets (installer + updater manifest + signature)
+      - name: Synthesize latest.json if Tauri didn't emit one
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Tauri v2 with bundle.createUpdaterArtifacts=true sometimes still
+          # does not emit latest.json for the NSIS target. Generate from the
+          # .sig + .exe so the updater endpoint has something to serve. jq
+          # handles JSON escaping of the multi-line minisign signature.
           TAG="${{ steps.tag.outputs.value }}"
           BUNDLE_DIR="src-tauri/target/release/bundle/nsis"
           EXE=$(ls "$BUNDLE_DIR"/*.exe 2>/dev/null | head -n1)
@@ -120,12 +124,6 @@ jobs:
             exit 1
           fi
 
-          # Tauri v2 with bundle.createUpdaterArtifacts=true sometimes still
-          # does not emit latest.json for the NSIS target. If it's missing,
-          # synthesize one from the .sig + .exe we already have so the
-          # updater endpoint has something to serve. jq handles JSON
-          # escaping of the multi-line minisign signature properly —
-          # heredoc would produce invalid JSON.
           if [ ! -f "$LATEST" ]; then
             echo "latest.json not emitted by Tauri; generating it manually"
             jq -n \
@@ -142,6 +140,39 @@ jobs:
                 }
               }' > "$LATEST"
           fi
+
+      - name: Upload build artifacts for release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-nsis-bundle
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.exe.sig
+            src-tauri/target/release/bundle/nsis/latest.json
+          if-no-files-found: error
+          retention-days: 7
+
+  upload:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: tauri-nsis-bundle
+          path: bundle
+
+      - name: Upload release assets (installer + updater manifest + signature)
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG="${{ needs.build.outputs.tag }}"
+          EXE=$(ls bundle/*.exe 2>/dev/null | head -n1)
+          SIG=$(ls bundle/*.exe.sig 2>/dev/null | head -n1)
+          LATEST="bundle/latest.json"
 
           echo "Uploading $EXE, $SIG, and $LATEST to release $TAG"
           gh release create "$TAG" --title "MashupForge $TAG" --notes "Tauri desktop build for Windows." 2>/dev/null || true
