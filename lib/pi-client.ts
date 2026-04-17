@@ -120,22 +120,29 @@ export async function start(): Promise<void> {
     ? `${BASE_SYSTEM_PROMPT}\n\n${userSystemPrompt}`
     : BASE_SYSTEM_PROMPT;
 
-  // Read pi's auth.json to find which provider the user logged into.
-  // This way pi uses its own OAuth/API-key setup, not our env vars.
-  let piProvider = '';
-  try {
-    const { existsSync, readFileSync } = await import('node:fs');
-    const { join } = await import('node:path');
-    const { homedir } = await import('node:os');
-    const authFile = join(homedir(), '.pi', 'agent', 'auth.json');
-    if (existsSync(authFile)) {
-      const auth = JSON.parse(readFileSync(authFile, 'utf8'));
-      const providers = Object.keys(auth);
-      if (providers.length > 0) {
-        piProvider = providers[0]; // Use first logged-in provider
+  // Provider/model resolution order:
+  //   1. PI_PROVIDER / PI_DEFAULT_MODEL env (hydrated from config.json by
+  //      the Tauri wrapper — set via the Desktop Settings dropdown)
+  //   2. First provider key in ~/.pi/agent/auth.json (users who ran
+  //      `pi /login` for OAuth providers)
+  //   3. Pi's own default (no flag passed)
+  let piProvider = process.env.PI_PROVIDER?.trim() || '';
+  if (!piProvider) {
+    try {
+      const { existsSync, readFileSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const { homedir } = await import('node:os');
+      const authFile = join(homedir(), '.pi', 'agent', 'auth.json');
+      if (existsSync(authFile)) {
+        const auth = JSON.parse(readFileSync(authFile, 'utf8'));
+        const providers = Object.keys(auth);
+        if (providers.length > 0) {
+          piProvider = providers[0];
+        }
       }
-    }
-  } catch { /* no auth file — pi will error gracefully */ }
+    } catch { /* no auth file — pi will error gracefully */ }
+  }
+  const piModel = process.env.PI_DEFAULT_MODEL?.trim() || '';
 
   const args = [
     '--mode', 'rpc',
@@ -145,6 +152,9 @@ export async function start(): Promise<void> {
 
   if (piProvider) {
     args.push('--provider', piProvider);
+  }
+  if (piModel) {
+    args.push('--model', piModel);
   }
 
   args.push('--system-prompt', fullSystemPrompt);

@@ -22,6 +22,8 @@ export const DESKTOP_CONFIG_KEYS = [
   { key: 'PINTEREST_ACCESS_TOKEN', label: 'Pinterest Access Token', hint: 'From developers.pinterest.com (pins:write scope)' },
   { key: 'PINTEREST_BOARD_ID',     label: 'Pinterest Board ID',     hint: 'Target board ID (optional — defaults to first board)' },
   { key: 'DISCORD_WEBHOOK_URL',    label: 'Discord Webhook URL',    hint: 'Channel webhook URL from Server Settings → Integrations' },
+  { key: 'PI_PROVIDER',            label: 'Pi.dev Provider',        hint: 'Default AI provider (zai, anthropic, openai, google)' },
+  { key: 'PI_DEFAULT_MODEL',       label: 'Pi.dev Default Model',   hint: 'Default model ID (e.g. glm-5, claude-sonnet-4-20250514)' },
 ] as const;
 
 export type DesktopConfigKey = typeof DESKTOP_CONFIG_KEYS[number]['key'];
