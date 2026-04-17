@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power, Check } from 'lucide-react';
+import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power } from 'lucide-react';
 import { DESKTOP_CONFIG_KEYS, type DesktopConfigFieldMeta } from '@/lib/desktop-config-keys';
 import { PortConflictBanner } from './PortConflictBanner';
 
@@ -182,14 +182,13 @@ function SelectField({
               aria-checked={selected}
               onClick={() => onChange(opt)}
               className={[
-                'group relative flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors',
+                'flex items-center justify-center rounded-lg border px-2.5 py-2 text-xs font-medium capitalize transition-colors',
                 selected
                   ? 'border-[#c5a062] bg-[#c5a062]/10 text-[#c5a062]'
                   : 'border-zinc-800/60 bg-[#050505] text-zinc-400 hover:border-[#c5a062]/30 hover:text-zinc-200',
               ].join(' ')}
             >
-              {selected && <Check className="w-3 h-3" aria-hidden="true" />}
-              <span className="capitalize">{opt}</span>
+              {opt}
             </button>
           );
         })}
