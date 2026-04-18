@@ -55,7 +55,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Core hooks — order matters for dependencies
-  const { settings, updateSettings, isSettingsLoaded } = useSettings();
+  const { settings, updateSettings, isSettingsLoaded, saveState: settingsSaveState } = useSettings();
 
   const imagesHook = useImages();
   const {
@@ -229,6 +229,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     progress,
     settings,
     updateSettings,
+    settingsSaveState,
     generateImages,
     generatePostContent,
     rerollImage,

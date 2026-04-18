@@ -96,6 +96,11 @@ import { CollectionModal } from './CollectionModal';
 import { ImageDetailModal } from './ImageDetailModal';
 import { BulkTagModal } from './BulkTagModal';
 import { LazyImg } from './LazyImg';
+import { GalleryCard } from './GalleryCard';
+// TECHDEBT-001: ui tokens are imported aliased to `ui*` to avoid
+// collision with `status` field names that local handlers iterate over.
+import { status as uiStatus, gold as uiGold, surface as uiSurface } from '@/lib/ui-tokens';
+import { computeCarouselView as computeCarouselViewPure, type PostItem } from '@/lib/carouselView';
 
 /**
  * Auto-sizing textarea that grows with its content. Resets to
@@ -138,9 +143,10 @@ export function MainContent() {
     collections,
     isGenerating, 
     progress, 
-    settings, 
-    updateSettings, 
-    generateImages, 
+    settings,
+    updateSettings,
+    settingsSaveState,
+    generateImages,
     generatePostContent,
     rerollImage, 
     saveImage, 
@@ -478,69 +484,14 @@ export function MainContent() {
   };
 
   // ── Carousel grouping (Post Ready tab) ─────────────────────────────
-  type PostItem =
-    | { kind: 'single'; img: GeneratedImage }
-    | { kind: 'carousel'; id: string; images: GeneratedImage[]; group?: CarouselGroup };
-
-  /** 5-minute window for auto-grouping same-prompt batches. */
-  const CAROUSEL_AUTO_WINDOW_MS = 5 * 60 * 1000;
-
-  /**
-   * Group post-ready images into singles + carousels. Explicit groups in
-   * settings.carouselGroups take precedence. Remaining images are
-   * auto-grouped when 2+ share the same prompt and were saved within
-   * CAROUSEL_AUTO_WINDOW_MS of each other.
-   */
-  const computeCarouselView = useCallback((ready: GeneratedImage[]): PostItem[] => {
-    const items: PostItem[] = [];
-    const handled = new Set<string>();
-
-    const explicitGroups = settings.carouselGroups || [];
-    for (const g of explicitGroups) {
-      const imgs = g.imageIds
-        .map((id) => ready.find((i) => i.id === id))
-        .filter((i): i is GeneratedImage => !!i);
-      if (imgs.length === 0) continue;
-      items.push({ kind: 'carousel', id: g.id, images: imgs, group: g });
-      for (const i of imgs) handled.add(i.id);
-    }
-
-    const remaining = ready.filter((i) => !handled.has(i.id));
-    remaining.sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0));
-    for (let i = 0; i < remaining.length; i++) {
-      if (handled.has(remaining[i].id)) continue;
-      const anchor = remaining[i];
-      const siblings = [anchor];
-      for (let j = i + 1; j < remaining.length; j++) {
-        const cand = remaining[j];
-        if (handled.has(cand.id)) continue;
-        if (
-          cand.prompt === anchor.prompt &&
-          Math.abs((cand.savedAt || 0) - (anchor.savedAt || 0)) <= CAROUSEL_AUTO_WINDOW_MS
-        ) {
-          siblings.push(cand);
-        }
-      }
-      if (siblings.length > 1) {
-        items.push({
-          kind: 'carousel',
-          id: `auto-${anchor.id}`,
-          images: siblings,
-        });
-        for (const s of siblings) handled.add(s.id);
-      } else {
-        items.push({ kind: 'single', img: anchor });
-        handled.add(anchor.id);
-      }
-    }
-
-    items.sort((a, b) => {
-      const aT = a.kind === 'single' ? a.img.savedAt || 0 : Math.max(...a.images.map((i) => i.savedAt || 0));
-      const bT = b.kind === 'single' ? b.img.savedAt || 0 : Math.max(...b.images.map((i) => i.savedAt || 0));
-      return bT - aT;
-    });
-    return items;
-  }, [settings.carouselGroups]);
+  // Pure logic lives in lib/carouselView.ts (TEST-001). This wrapper
+  // just supplies the explicit-groups slice from settings so call
+  // sites stay terse.
+  const computeCarouselView = useCallback(
+    (ready: GeneratedImage[]): PostItem[] =>
+      computeCarouselViewPure(ready, settings.carouselGroups || []),
+    [settings.carouselGroups],
+  );
 
   /**
    * Persist a manual carousel group. If imageIds has fewer than 2
@@ -752,6 +703,43 @@ export function MainContent() {
     saveImage({ ...img, ...patch });
   };
 
+  /**
+   * REFACTOR-001 — single shared "AI-caption fan-out" for a carousel.
+   *
+   * Three sites used to have parallel inline copies of "call
+   * generatePostContent on the anchor, then propagate caption +
+   * hashtags to siblings": batchCaptionImages (BUG-001 + WARN-1), the
+   * captioning-view per-card Generate button, and the post-ready
+   * Regen button. The copies drifted (notably WARN-1's per-image
+   * overwrite guard existed only in batch). One helper keeps the loop
+   * body in one place; callers pass `{ force: true }` when an explicit
+   * user "Regenerate" should overwrite siblings' existing captions.
+   *
+   * The anchor is always skipped inside the loop (its caption was
+   * already persisted by generatePostContent's side effect). Returns
+   * the (possibly updated) anchor for callers that need it.
+   */
+  const fanCaptionToGroup = async (
+    anchor: GeneratedImage,
+    rest: GeneratedImage[],
+    opts: { force?: boolean } = {},
+  ): Promise<GeneratedImage | undefined> => {
+    const withCaption = await generatePostContent(anchor);
+    if (!withCaption?.postCaption) return withCaption;
+    const force = opts.force === true;
+    for (const ci of rest) {
+      if (ci.id === anchor.id) continue;
+      // WARN-1 guard: never overwrite a sibling's per-image caption
+      // unless the caller explicitly opted in (force regenerate).
+      if (!force && ci.postCaption) continue;
+      patchImage(ci, {
+        postCaption: withCaption.postCaption,
+        postHashtags: withCaption.postHashtags,
+      });
+    }
+    return withCaption;
+  };
+
   /** Remove one hashtag by index and persist. */
   const removeHashtag = (img: GeneratedImage, index: number) => {
     const next = (img.postHashtags || []).filter((_, i) => i !== index);
@@ -800,6 +788,8 @@ export function MainContent() {
         setPreparingPostId(anchor.id);
         try {
           if (entry.kind === 'carousel' && !entry.needsAi) {
+            // No-AI path: anchor already has a caption; propagate it
+            // verbatim. (Distinct from the helper, which calls AI.)
             for (const ci of entry.rest) {
               if (ci.postCaption) continue;
               patchImage(ci, {
@@ -807,17 +797,10 @@ export function MainContent() {
                 postHashtags: anchor.postHashtags,
               });
             }
+          } else if (entry.kind === 'carousel') {
+            await fanCaptionToGroup(anchor, entry.rest);
           } else {
-            const withCaption = await generatePostContent(anchor);
-            if (entry.kind === 'carousel' && withCaption?.postCaption) {
-              for (const ci of entry.rest) {
-                if (ci.postCaption) continue;
-                patchImage(ci, {
-                  postCaption: withCaption.postCaption,
-                  postHashtags: withCaption.postHashtags,
-                });
-              }
-            }
+            await generatePostContent(anchor);
           }
         } catch {
           // individual batch failure — continue to next entry
@@ -1576,7 +1559,7 @@ export function MainContent() {
           {!hasApiKey && (
             <button
               onClick={checkApiKey}
-              className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 rounded-lg font-medium text-xs border border-amber-500/20 transition-all animate-pulse shrink-0"
+              className={`hidden sm:flex items-center gap-2 px-3 py-1.5 ${uiStatus.warn.subtleBg} ${uiStatus.warn.text} hover:bg-amber-500/20 rounded-lg font-medium text-xs border ${uiStatus.warn.border} transition-all animate-pulse shrink-0`}
             >
               <Tag className="w-3 h-3" />
               Select API Key
@@ -2495,19 +2478,11 @@ export function MainContent() {
                                     disabled={isWorking || batchCaptioning}
                                     onClick={async () => {
                                       // Generate ONE caption using the anchor's
-                                      // prompt, then fan it out to every image.
+                                      // prompt, then fan it out. Explicit
+                                      // user click → force overwrite siblings.
                                       setPreparingPostId(anchor.id);
                                       try {
-                                        const withCaption = await generatePostContent(anchor);
-                                        if (withCaption?.postCaption) {
-                                          for (const ci of entry.images) {
-                                            if (ci.id === anchor.id) continue;
-                                            patchImage(ci, {
-                                              postCaption: withCaption.postCaption,
-                                              postHashtags: withCaption.postHashtags,
-                                            });
-                                          }
-                                        }
+                                        await fanCaptionToGroup(anchor, entry.images, { force: true });
                                       } finally {
                                         setPreparingPostId(null);
                                       }
@@ -3452,7 +3427,7 @@ export function MainContent() {
                                     type="date"
                                     value={slot.date}
                                     onChange={(e) => setCalendarSlotClick({ ...slot, date: e.target.value })}
-                                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
+                                    className={`w-full ${uiSurface.canvas} border ${uiSurface.hairline} rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 ${uiGold.ring}`}
                                   />
                                 </div>
                                 <div className="space-y-1">
@@ -3460,7 +3435,7 @@ export function MainContent() {
                                   <TimePicker24
                                     value={slot.time}
                                     onChange={(v) => setCalendarSlotClick({ ...slot, time: v })}
-                                    className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
+                                    className={`w-full ${uiSurface.canvas} border ${uiSurface.hairline} rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 ${uiGold.ring}`}
                                   />
                                 </div>
                               </div>
@@ -3570,8 +3545,8 @@ export function MainContent() {
                                   <div
                                     className={`px-4 py-2 text-[11px] font-medium border-b ${
                                       anchor.postError
-                                        ? 'bg-red-600/20 text-red-300 border-red-600/30'
-                                        : 'bg-emerald-600/20 text-emerald-300 border-emerald-600/30'
+                                        ? `${uiStatus.error.subtleBg} ${uiStatus.error.text} border-red-500/30`
+                                        : `${uiStatus.success.subtleBg} ${uiStatus.success.text} border-emerald-500/30`
                                     }`}
                                   >
                                     {anchor.postError
@@ -3709,15 +3684,11 @@ export function MainContent() {
                                     <button
                                       disabled={isCarouselRegen || !!busy}
                                       onClick={async () => {
+                                        // Explicit "Regen" click → force
+                                        // overwrite even captioned siblings.
                                         setPreparingPostId(anchor.id);
                                         try {
-                                          const withCaption = await generatePostContent(anchor);
-                                          if (withCaption?.postCaption) {
-                                            for (const ci of item.images) {
-                                              if (ci.id === anchor.id) continue;
-                                              patchImage(ci, { postCaption: withCaption.postCaption, postHashtags: withCaption.postHashtags });
-                                            }
-                                          }
+                                          await fanCaptionToGroup(anchor, item.images, { force: true });
                                         } finally {
                                           setPreparingPostId(null);
                                         }
@@ -4222,405 +4193,36 @@ export function MainContent() {
               {displayedImages.map((img, idx) => {
                 const isSaved = savedImages.some(s => s.id === img.id);
                 return (
-                  <motion.div
+                  <GalleryCard
                     key={img.id}
-                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    transition={{ duration: 0.4, delay: idx * 0.1, ease: "easeOut" }}
-                    whileHover={{ scale: 1.02, y: -4, transition: { type: "spring", stiffness: 300, damping: 25 } }}
-                    onClick={() => setSelectedImage(img)}
-                    className={`group relative bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer ${
-                      dragOverCollection ? 'ring-2 ring-[#00e6ff] border-[#00e6ff]/50' : 'border-[#c5a062]/20 hover:border-[#c5a062]/60 hover:shadow-[0_8px_40px_rgba(197,160,98,0.18),0_0_0_1px_rgba(197,160,98,0.15)]'
-                    }`}
-                    draggable={view === 'gallery'}
-                    onDragStart={(e) => {
-                      const native = e as unknown as React.DragEvent;
-                      native.dataTransfer.setData('imageId', img.id);
-                      native.dataTransfer.effectAllowed = 'move';
-                    }}
-                  >
-                    <div
-                      className={`aspect-square relative overflow-hidden bg-zinc-950 ${img.approved ? 'ring-2 ring-emerald-500/60 ring-inset' : ''}`}
-                    >
-                      {(img.status === 'generating' || img.status === 'animating') && (
-                        <div className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center gap-3 p-4 text-center">
-                          <div className="relative">
-                            <div className="w-12 h-12 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin" />
-                            <Sparkles className="absolute inset-0 m-auto w-5 h-5 text-indigo-400 animate-pulse" />
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-xs font-bold text-white uppercase tracking-widest">
-                              {img.status === 'generating' ? 'Materializing' : 'Animating'}
-                            </p>
-                            <p className="text-[10px] text-zinc-400">
-                              {img.status === 'generating' ? 'Crafting across universes...' : 'Breathing life into pixels...'}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      {img.status === 'error' && (
-                        <div className="absolute inset-0 z-40 bg-red-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-2 p-4 text-center">
-                          <div className="w-12 h-12 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center">
-                            <XCircle className="w-6 h-6 text-red-400" />
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-xs font-bold text-red-300 uppercase tracking-widest">Generation Failed</p>
-                            <p className="text-[10px] text-red-200/80 max-w-[90%] leading-tight">
-                              {img.error || 'Unknown error'}
-                            </p>
-                          </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteImage(img.id, view === 'gallery');
-                            }}
-                            className="mt-1 px-3 py-1 text-[10px] bg-red-600/80 hover:bg-red-500 text-white rounded-lg transition-colors"
-                          >
-                            Dismiss
-                          </button>
-                        </div>
-                      )}
-                      {view === 'gallery' && !img.isVideo && img.imageId && (
-                        <div className="absolute top-4 left-4 z-30">
-                          <input
-                            type="checkbox"
-                            checked={selectedForBatch.has(img.id)}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              const newSet = new Set(selectedForBatch);
-                              if (e.target.checked) newSet.add(img.id);
-                              else newSet.delete(img.id);
-                              setSelectedForBatch(newSet);
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-5 h-5 rounded border-zinc-600 bg-zinc-900/80 backdrop-blur-sm text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#c5a062]"
-                          />
-                        </div>
-                      )}
-                      
-                      {img.isVideo ? (
-                        <div className="relative w-full h-full">
-                          {/* CDN-expiry fallback — revealed when video onError fires */}
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <ImageOff className="w-8 h-8 text-zinc-700" />
-                          </div>
-                          <video
-                            src={img.url}
-                            autoPlay
-                            loop
-                            muted
-                            playsInline
-                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                          />
-                          {settings.watermark?.enabled && (
-                            <div className={`absolute pointer-events-none z-10 ${
-                              settings.watermark.position === 'bottom-right' ? 'bottom-2 right-2' :
-                              settings.watermark.position === 'bottom-left' ? 'bottom-2 left-2' :
-                              settings.watermark.position === 'top-right' ? 'top-2 right-2' :
-                              settings.watermark.position === 'top-left' ? 'top-2 left-2' : 'bottom-2 right-2'
-                            }`} style={{ opacity: settings.watermark.opacity || 0.8 }}>
-                              {settings.watermark.image ? (
-                                <img src={settings.watermark.image} alt="Watermark" className="absolute inset-0 w-full h-full object-contain" referrerPolicy="no-referrer" />
-                              ) : settings.channelName ? (
-                                <span className="text-white bg-black/50 px-2 py-1 rounded text-xs font-bold">{settings.channelName}</span>
-                              ) : null}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <>
-                          {/* CDN-expiry fallback — sits behind Image at z-0;
-                              revealed automatically when onError hides the img */}
-                          <div className="absolute inset-0 flex items-center justify-center z-0">
-                            <ImageOff className="w-8 h-8 text-zinc-700" />
-                          </div>
-                          <LazyImg
-                            src={img.url || `data:image/jpeg;base64,${img.base64}`}
-                            alt={img.prompt}
-                            className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                            referrerPolicy="no-referrer"
-                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                          />
-                        </>
-                      )}
-                      
-                      {/* Hover glow overlay — warm-gold from below, cool-blue at top edge */}
-                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-[6] bg-gradient-to-t from-[#c5a062]/12 via-transparent to-[#00e6ff]/6" />
-
-                      {/* DESIGN-002 §3: permanent model chip (bottom-left).
-                          Replaces the bottom-left "Approved" pill — the inset
-                          emerald ring already conveys approved state.
-                          Promoted from hover-only to always-visible because
-                          the gallery's whole purpose is comparing models. */}
-                      {img.modelInfo?.modelName && (
-                        <span
-                          className="absolute bottom-2 left-2 z-[5] px-1.5 py-0.5 text-[9px] font-semibold tracking-wide uppercase bg-black/55 backdrop-blur-md text-[#c5a062] border border-[#c5a062]/30 rounded-full max-w-[80px] truncate pointer-events-none select-none"
-                          title={img.modelInfo.modelName}
-                        >
-                          {img.modelInfo.modelName}
-                        </span>
-                      )}
-
-                      {/* Top Actions Overlay — compact icon row.
-                          Buttons shrunk from w-10→w-8 and icons w-5→w-4
-                          so all 7 fit comfortably on one line without
-                          colliding with the approved indicator. */}
-                      <div className="absolute top-0 left-0 right-0 p-2 flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
-                        {img.imageId && !img.isVideo && view !== 'gallery' && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleAnimate(img); }}
-                            disabled={img.status === 'animating'}
-                            className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-indigo-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
-                            title="Animate Image"
-                          >
-                            {img.status === 'animating' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Video className="w-4 h-4" />}
-                          </button>
-                        )}
-                        {view === 'studio' && !img.isVideo && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); rerollImage(img.id, img.prompt); }}
-                            disabled={isGenerating}
-                            className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
-                            title="Re-roll Image"
-                          >
-                            <RefreshCw className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                          </button>
-                        )}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); toggleApproveImage(img.id); }}
-                          className={`w-8 h-8 flex items-center justify-center rounded-lg backdrop-blur-md transition-colors ${
-                            img.approved
-                              ? 'bg-emerald-500 text-white'
-                              : 'bg-black/50 hover:bg-emerald-500/80 text-white'
-                          }`}
-                          title={img.approved ? 'Unapprove Image' : 'Approve Image'}
-                        >
-                          <BookmarkCheck className="w-4 h-4" />
-                        </button>
-                        {view === 'gallery' && (
-                          <div className="relative group/col">
-                            <button
-                              onClick={(e) => e.stopPropagation()}
-                              className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
-                              title="Add to Collection"
-                            >
-                              <FolderPlus className="w-4 h-4" />
-                            </button>
-                            <div className="absolute right-0 top-full mt-2 w-48 bg-zinc-900 border border-zinc-800/60 rounded-xl shadow-2xl opacity-0 invisible group-hover/col:opacity-100 group-hover/col:visible transition-all z-50 p-2">
-                              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2 py-1 mb-1">Add to Collection</p>
-                              {collections.map(col => (
-                                <button
-                                  key={col.id}
-                                  onClick={(e) => { e.stopPropagation(); addImageToCollection(img.id, col.id); }}
-                                  onDragOver={(e) => { e.preventDefault(); setDragOverCollection(col.id); }}
-                                  onDragLeave={() => setDragOverCollection(null)}
-                                  onDrop={(e) => {
-                                    e.preventDefault();
-                                    const droppedImageId = e.dataTransfer.getData('imageId');
-                                    if (droppedImageId) addImageToCollection(droppedImageId, col.id);
-                                    setDragOverCollection(null);
-                                  }}
-                                  className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
-                                    dragOverCollection === col.id ? 'bg-emerald-500 text-white scale-105' :
-                                    img.collectionId === col.id ? 'bg-emerald-500/20 text-emerald-400' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
-                                  }`}
-                                >
-                                  {col.name}
-                                </button>
-                              ))}
-                              {img.collectionId && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); removeImageFromCollection(img.id); }}
-                                  className="w-full text-left px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10 transition-colors mt-1 border-t border-zinc-800 pt-2"
-                                >
-                                  Remove from Collection
-                                </button>
-                              )}
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setShowCollectionModal(true); }}
-                                className="w-full text-left px-3 py-2 rounded-lg text-xs text-emerald-400 hover:bg-emerald-500/10 transition-colors mt-1 border-t border-zinc-800 pt-2 flex items-center gap-2"
-                              >
-                                <Plus className="w-3 h-3" />
-                                New Collection
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                        {view !== 'gallery' && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); saveImage(img); }}
-                            disabled={isSaved}
-                            className={`w-8 h-8 flex items-center justify-center rounded-lg backdrop-blur-md transition-colors ${
-                              isSaved
-                                ? 'bg-emerald-500/80 text-white cursor-default'
-                                : 'bg-black/50 hover:bg-black/80 text-white'
-                            }`}
-                            title={isSaved ? 'Saved to Gallery' : 'Save to Gallery'}
-                          >
-                            {isSaved ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
-                          </button>
-                        )}
-                        <button
-                          disabled={preparingPostId === img.id}
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            if (preparingPostId) return;
-                            setPreparingPostId(img.id);
-                            try {
-                              if (!img.approved) toggleApproveImage(img.id);
-                              if (!img.postCaption) await generatePostContent(img);
-                              await saveImage({ ...img, isPostReady: true });
-                              setView('post-ready');
-                            } finally {
-                              setPreparingPostId(null);
-                            }
-                          }}
-                          className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 disabled:opacity-60 disabled:hover:bg-black/50 text-white rounded-lg backdrop-blur-md transition-colors"
-                          title={preparingPostId === img.id ? 'Generating caption…' : 'Prepare for Post'}
-                        >
-                          {preparingPostId === img.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Save className="w-4 h-4" />
-                          )}
-                        </button>
-                        {view !== 'gallery' && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); deleteImage(img.id, false); }}
-                            className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-red-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
-                            title="Delete Image"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                        {view === 'gallery' && (
-                          <KebabMenu
-                            ariaLabel={`More actions for ${img.prompt.slice(0, 60)}`}
-                            items={(() => {
-                              const isTagging = taggingId === img.id;
-                              const hasTags = !!(img.tags && img.tags.length > 0);
-                              const out: (KebabMenuItem | null)[] = [
-                                img.imageId && !img.isVideo
-                                  ? {
-                                      kind: 'item',
-                                      id: 'animate',
-                                      label: img.status === 'animating' ? 'Animating…' : 'Animate',
-                                      icon: img.status === 'animating' ? Loader2 : Video,
-                                      disabled: img.status === 'animating',
-                                      onSelect: () => handleAnimate(img),
-                                    }
-                                  : null,
-                                {
-                                  kind: 'item',
-                                  id: 'auto-tag',
-                                  label: isTagging
-                                    ? 'Tagging…'
-                                    : hasTags ? 'Re-generate tags' : 'Auto-tag',
-                                  icon: isTagging ? Loader2 : Tag,
-                                  disabled: isTagging,
-                                  onSelect: () => {
-                                    if (taggingId) return;
-                                    setTaggingId(img.id);
-                                    autoTagImage(img.id, img).finally(() => setTaggingId(null));
-                                  },
-                                },
-                                {
-                                  kind: 'item',
-                                  id: 'download',
-                                  label: 'Download',
-                                  icon: Download,
-                                  onSelect: () => {
-                                    const href = img.url || `data:image/jpeg;base64,${img.base64}`;
-                                    const a = document.createElement('a');
-                                    a.href = href;
-                                    a.download = `mashup-${img.id}.jpg`;
-                                    if (img.url) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
-                                    document.body.appendChild(a);
-                                    a.click();
-                                    document.body.removeChild(a);
-                                  },
-                                },
-                                { kind: 'separator' },
-                                {
-                                  kind: 'item',
-                                  id: 'delete',
-                                  label: 'Delete',
-                                  icon: Trash2,
-                                  destructive: true,
-                                  onSelect: () => deleteImage(img.id, true),
-                                },
-                              ];
-                              return out.filter((x): x is KebabMenuItem => x !== null);
-                            })()}
-                          />
-                        )}
-                      </div>
-
-                      {/* DESIGN-002 §3.5/§3.6: slimmed bottom hover panel.
-                          Drops the redundant model badge (now permanent at
-                          bottom-left), drops the inline Download button (now
-                          in the kebab), and pulls tags inside the panel as a
-                          single-row clipped strip with +N overflow. */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 pt-12 pointer-events-none z-[20]">
-                        <p className="text-xs text-zinc-200 line-clamp-2 mb-1.5 font-medium leading-snug shadow-sm pointer-events-auto">
-                          {img.prompt}
-                        </p>
-                        {img.tags && img.tags.length > 0 ? (
-                          <div className="flex gap-1 overflow-hidden pointer-events-auto">
-                            {img.tags.slice(0, 3).map((t) => (
-                              <span
-                                key={t}
-                                className="shrink-0 px-1.5 py-0.5 text-[9px] bg-[#c5a062]/15 text-[#c5a062]/85 border border-[#c5a062]/25 rounded-full whitespace-nowrap"
-                              >
-                                {t}
-                              </span>
-                            ))}
-                            {img.tags.length > 3 && (
-                              <span className="shrink-0 px-1.5 py-0.5 text-[9px] text-zinc-400 whitespace-nowrap">
-                                +{img.tags.length - 3}
-                              </span>
-                            )}
-                          </div>
-                        ) : view === 'gallery' ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (taggingId) return;
-                              setTaggingId(img.id);
-                              autoTagImage(img.id, img).finally(() => setTaggingId(null));
-                            }}
-                            disabled={taggingId === img.id}
-                            className="self-start inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] bg-[#c5a062]/10 hover:bg-[#c5a062]/25 text-[#c5a062]/90 hover:text-[#c5a062] border border-[#c5a062]/30 rounded-full whitespace-nowrap pointer-events-auto disabled:opacity-60 disabled:cursor-wait transition-colors"
-                            title="Auto-generate tags via pi.dev"
-                          >
-                            {taggingId === img.id ? (
-                              <>
-                                <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                                Tagging…
-                              </>
-                            ) : (
-                              <>
-                                <Tag className="w-2.5 h-2.5" />
-                                Auto-tag
-                              </>
-                            )}
-                          </button>
-                        ) : null}
-                      </div>
-
-                      {/* Animating Overlay */}
-                      {img.status === 'animating' && (
-                        <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-30 backdrop-blur-sm">
-                          <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-3" />
-                          <span className="text-sm font-medium text-white">Generating Video...</span>
-                        </div>
-                      )}
-                    </div>
-                    {/* DESIGN-002 §3.6: tag row moved INTO the bottom hover
-                        panel inside the image — restores grid baseline. */}
-                  </motion.div>
+                    image={img}
+                    index={idx}
+                    view={view}
+                    isSaved={isSaved}
+                    settings={settings}
+                    collections={collections}
+                    selectedForBatch={selectedForBatch}
+                    taggingId={taggingId}
+                    preparingPostId={preparingPostId}
+                    isGenerating={isGenerating}
+                    dragOverCollection={dragOverCollection}
+                    onOpen={setSelectedImage}
+                    onToggleBatch={setSelectedForBatch}
+                    setDragOverCollection={setDragOverCollection}
+                    setTaggingId={setTaggingId}
+                    setPreparingPostId={setPreparingPostId}
+                    setShowCollectionModal={setShowCollectionModal}
+                    setView={setView}
+                    handleAnimate={handleAnimate}
+                    rerollImage={rerollImage}
+                    toggleApproveImage={toggleApproveImage}
+                    addImageToCollection={addImageToCollection}
+                    removeImageFromCollection={removeImageFromCollection}
+                    saveImage={saveImage}
+                    deleteImage={deleteImage}
+                    generatePostContent={generatePostContent}
+                    autoTagImage={autoTagImage}
+                  />
                 );
               })}
               {/* Skeleton placeholders if generating */}
@@ -4668,6 +4270,7 @@ export function MainContent() {
           onClose={() => setShowSettings(false)}
           settings={settings}
           updateSettings={updateSettings}
+          saveState={settingsSaveState}
           isDesktop={isDesktop}
           piStatus={piStatus}
           piBusy={piBusy}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   Settings as SettingsIcon,
@@ -18,6 +18,12 @@ import {
   Eye,
   EyeOff,
   Copy,
+  AlertCircle,
+  Loader2,
+  KeyRound,
+  Cpu,
+  Monitor,
+  Sliders,
 } from 'lucide-react';
 import { showToast } from '@/components/Toast';
 import {
@@ -27,6 +33,20 @@ import {
 } from './MashupContext';
 import type { UserSettings, WatermarkSettings } from '@/types/mashup';
 import { DesktopSettingsPanel } from './DesktopSettingsPanel';
+import type { SettingsSaveState } from '@/hooks/useSettings';
+
+// FEAT-002b: tab restructure. Four sections — General (collections, channel,
+// image/video defaults, watermark), API Keys (web-only inputs + a desktop hint),
+// AI Engine (pi.dev + system prompt + niches/genres + personalities), and
+// Desktop (auto-update + Tauri-native config panel).
+type TabId = 'general' | 'apiKeys' | 'aiEngine' | 'desktop';
+
+const TABS: ReadonlyArray<{ id: TabId; label: string; icon: typeof SettingsIcon }> = [
+  { id: 'general', label: 'General', icon: Sliders },
+  { id: 'apiKeys', label: 'API Keys', icon: KeyRound },
+  { id: 'aiEngine', label: 'AI Engine', icon: Cpu },
+  { id: 'desktop', label: 'Desktop', icon: Monitor },
+];
 
 // FIX-100 slice A: extracted from MainContent.tsx (~714 LOC).
 // PiStatus shape lifted from the inline declaration that lived inside
@@ -89,6 +109,8 @@ interface SettingsModalProps {
   updateSettings: (
     patch: Partial<UserSettings> | ((prev: UserSettings) => Partial<UserSettings>),
   ) => void;
+  /** FEAT-002b S1: lifecycle of the debounced IDB save — drives the header pill. */
+  saveState: SettingsSaveState;
   isDesktop: boolean | null;
   piStatus: PiStatus | null;
   piBusy: PiBusy;
@@ -105,7 +127,8 @@ interface SettingsModalProps {
 export function SettingsModal({
   onClose,
   settings,
-  updateSettings: updateSettingsProp,
+  updateSettings,
+  saveState,
   isDesktop,
   piStatus,
   piBusy,
@@ -118,8 +141,7 @@ export function SettingsModal({
   deleteCollection,
   openCollectionModal,
 }: SettingsModalProps) {
-  const [showSaved, setShowSaved] = useState(false);
-  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>('general');
   // Inline personality-save input — replaces the blocking prompt() dialog.
   const [personalityName, setPersonalityName] = useState<string | null>(null);
   // Which password fields are currently revealed.
@@ -136,13 +158,21 @@ export function SettingsModal({
       () => showToast('Failed to copy', 'error'),
     );
 
-  // Wrapper that triggers the "Saved" indicator on every settings write.
-  const updateSettings: typeof updateSettingsProp = (patch) => {
-    updateSettingsProp(patch);
-    if (savedTimer.current) clearTimeout(savedTimer.current);
-    setShowSaved(true);
-    savedTimer.current = setTimeout(() => setShowSaved(false), 1500);
-  };
+  // FEAT-002b S1: drive the saved/saving/error pill from the real lifecycle
+  // exposed by useSettings instead of an ephemeral local timer. The "Saved"
+  // pill only shows for ~1.5s after each successful write so the header
+  // doesn't permanently advertise "Saved" the entire session — once the
+  // window elapses we hide it via the local fade flag below.
+  const [showSavedPill, setShowSavedPill] = useState(false);
+  useEffect(() => {
+    if (saveState.kind !== 'saved') {
+      setShowSavedPill(false);
+      return;
+    }
+    setShowSavedPill(true);
+    const t = setTimeout(() => setShowSavedPill(false), 1500);
+    return () => clearTimeout(t);
+  }, [saveState]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
@@ -159,14 +189,36 @@ export function SettingsModal({
             Settings
           </h3>
           <div className="flex items-center gap-3">
-            <motion.span
-              animate={{ opacity: showSaved ? 1 : 0 }}
-              transition={{ duration: 0.2 }}
-              className="text-xs text-emerald-400 flex items-center gap-1 pointer-events-none select-none"
-            >
-              <Check className="w-3 h-3" />
-              Saved
-            </motion.span>
+            {/* FEAT-002b S1: real save lifecycle pill — emerald Saved /
+                blue Saving… / red Save failed: msg. Replaces the prior
+                ephemeral local timer that fired regardless of whether
+                the IDB write actually succeeded. */}
+            {saveState.kind === 'error' && (
+              <span
+                role="alert"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-red-500/15 text-red-300 border border-red-500/40 max-w-[260px]"
+                title={saveState.message}
+              >
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <span className="truncate">Save failed: {saveState.message}</span>
+              </span>
+            )}
+            {saveState.kind === 'saving' && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-[#00e6ff] pointer-events-none select-none">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Saving…
+              </span>
+            )}
+            {saveState.kind !== 'error' && saveState.kind !== 'saving' && (
+              <motion.span
+                animate={{ opacity: showSavedPill ? 1 : 0 }}
+                transition={{ duration: 0.2 }}
+                className="text-xs text-emerald-400 flex items-center gap-1 pointer-events-none select-none"
+              >
+                <Check className="w-3 h-3" />
+                Saved
+              </motion.span>
+            )}
             <button
               onClick={onClose}
               className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors"
@@ -176,7 +228,59 @@ export function SettingsModal({
           </div>
         </div>
 
+        {/* FEAT-002b: tab bar — sticky between header and scroll body. */}
+        <div className="flex items-stretch gap-1 px-3 pt-2 border-b border-zinc-800/60 bg-[#050505]/40 shrink-0 overflow-x-auto custom-scrollbar">
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            const active = activeTab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setActiveTab(t.id)}
+                aria-current={active ? 'page' : undefined}
+                className={`relative inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold transition-colors whitespace-nowrap rounded-t-lg ${
+                  active
+                    ? 'text-white bg-zinc-900/60'
+                    : 'text-zinc-500 hover:text-zinc-200'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {t.label}
+                {active && (
+                  <span className="absolute left-2 right-2 -bottom-px h-0.5 bg-[#c5a062] rounded-full" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         <div className="p-6 space-y-6 overflow-y-auto">
+          {activeTab === 'apiKeys' && (
+          <>
+          {/* FEAT-002b: in desktop mode all API credentials are owned by
+              DesktopSettingsPanel (config.json). Surface a hint here so
+              users land on the right place instead of pondering an empty
+              tab. The actual web-only inputs below are gated by
+              `isDesktop === false` for STORY-130 / INSTAGRAM-CRED-FIX. */}
+          {isDesktop === true && (
+            <div className="rounded-xl border border-[#c5a062]/30 bg-[#c5a062]/5 p-4 flex items-start gap-3">
+              <Monitor className="w-4 h-4 text-[#c5a062] shrink-0 mt-0.5" />
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-white">Managed in Desktop Configuration</p>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  Leonardo, Instagram, and Pinterest credentials are stored in <code className="text-zinc-300">config.json</code> on disk and injected into the pi sidecar at start. Edit them in the Desktop tab.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('desktop')}
+                  className="text-[11px] text-[#00e6ff] hover:text-[#33eaff] transition-colors"
+                >
+                  Open Desktop tab →
+                </button>
+              </div>
+            </div>
+          )}
           {/* API Keys Section */}
           <div className="space-y-4 pt-4 border-t border-zinc-800">
             <label className="text-sm font-medium text-zinc-300">API Keys</label>
@@ -296,6 +400,73 @@ export function SettingsModal({
               )}
             </div>
           </div>
+          </>
+          )}
+
+          {activeTab === 'general' && (
+          <>
+          {/* FEAT-002b: Manage Collections (lifted out of watermark conditional) */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-[#c5a062]/10 rounded-lg">
+                  <Folder className="w-4 h-4 text-[#c5a062]" />
+                </div>
+                <h4 className="text-sm font-bold text-white uppercase tracking-wider">Manage Collections</h4>
+              </div>
+              <button
+                onClick={openCollectionModal}
+                className="btn-blue-sm px-3 py-1 text-[10px] rounded-lg gap-2"
+              >
+                <Plus className="w-3 h-3" />
+                New
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-2">
+              {collections.map((col) => (
+                <div key={col.id} className="group bg-zinc-900 border border-zinc-800/60 rounded-xl p-3 flex items-center justify-between hover:border-zinc-700 transition-all">
+                  <div className="space-y-0.5">
+                    <h5 className="text-xs font-bold text-white">{col.name}</h5>
+                    <p className="text-[9px] text-zinc-600 uppercase tracking-tighter">
+                      {savedImages.filter((img) => img.collectionId === col.id).length} Images
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => deleteCollection(col.id)}
+                    className="p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                    title="Delete Collection"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              {collections.length === 0 && (
+                <div className="text-center py-4 border border-dashed border-zinc-800 rounded-xl">
+                  <p className="text-[10px] text-zinc-500 italic">No collections created yet.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* FEAT-002b: Channel Name (lifted out of watermark conditional) */}
+          <div className="space-y-4 pt-4 border-t border-zinc-800/50">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="p-1.5 bg-[#c5a062]/10 rounded-lg">
+                <Tag className="w-4 h-4 text-[#c5a062]" />
+              </div>
+              <h4 className="text-sm font-bold text-white uppercase tracking-wider">Social Media</h4>
+            </div>
+            <div className="space-y-2">
+              <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-[0.1em]">Channel Name (for Hashtags)</label>
+              <input
+                type="text"
+                value={settings.channelName || ''}
+                onChange={(e) => updateSettings({ channelName: e.target.value })}
+                placeholder="e.g. MultiverseMashupAI"
+                className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 transition-all"
+              />
+            </div>
+          </div>
 
           <div className="space-y-4 pt-4 border-t border-zinc-800">
             <h4 className="text-lg font-medium text-white mb-2">Image Generation Settings</h4>
@@ -315,7 +486,11 @@ export function SettingsModal({
               </div>
             </div>
           </div>
+          </>
+          )}
 
+          {activeTab === 'aiEngine' && (
+          <>
           {/* Pi.dev — the AI engine for chat, ideas, captions, tags */}
           <div className="space-y-4 pt-4 border-t border-zinc-800">
             <h4 className="text-lg font-medium text-white mb-2">Pi.dev AI Engine</h4>
@@ -416,10 +591,14 @@ export function SettingsModal({
             )}
 
             <p className="text-[10px] text-zinc-500 pt-2 border-t border-zinc-800/60">
-              The AI System Prompt lives in <span className="text-zinc-300">AI Agent Personality</span> below. Restart pi (stop + start) after changing it for the new prompt to take effect.
+              The AI System Prompt lives below in this same tab. Restart pi (stop + start) after changing it for the new prompt to take effect.
             </p>
           </div>
+          </>
+          )}
 
+          {activeTab === 'general' && (
+          <>
           {/* Watermark Settings */}
           <div className="mt-8 pt-6 border-t border-zinc-800">
             <h4 className="text-lg font-medium text-white mb-4">Watermark (Wasserzeichen)</h4>
@@ -510,66 +689,10 @@ export function SettingsModal({
                   )}
                 </div>
 
-                <div className="space-y-4 pt-4 border-t border-zinc-800/50">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-[#c5a062]/10 rounded-lg">
-                        <Folder className="w-4 h-4 text-[#c5a062]" />
-                      </div>
-                      <h4 className="text-sm font-bold text-white uppercase tracking-wider">Manage Collections</h4>
-                    </div>
-                    <button
-                      onClick={openCollectionModal}
-                      className="btn-blue-sm px-3 py-1 text-[10px] rounded-lg gap-2"
-                    >
-                      <Plus className="w-3 h-3" />
-                      New
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-2">
-                    {collections.map((col) => (
-                      <div key={col.id} className="group bg-zinc-900 border border-zinc-800/60 rounded-xl p-3 flex items-center justify-between hover:border-zinc-700 transition-all">
-                        <div className="space-y-0.5">
-                          <h5 className="text-xs font-bold text-white">{col.name}</h5>
-                          <p className="text-[9px] text-zinc-600 uppercase tracking-tighter">
-                            {savedImages.filter((img) => img.collectionId === col.id).length} Images
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => deleteCollection(col.id)}
-                          className="p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                          title="Delete Collection"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                    {collections.length === 0 && (
-                      <div className="text-center py-4 border border-dashed border-zinc-800 rounded-xl">
-                        <p className="text-[10px] text-zinc-500 italic">No collections created yet.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-4 pt-4 border-t border-zinc-800/50">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="p-1.5 bg-[#c5a062]/10 rounded-lg">
-                      <Tag className="w-4 h-4 text-[#c5a062]" />
-                    </div>
-                    <h4 className="text-sm font-bold text-white uppercase tracking-wider">Social Media Settings</h4>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-[0.1em]">Channel Name (for Hashtags)</label>
-                    <input
-                      type="text"
-                      value={settings.channelName || ''}
-                      onChange={(e) => updateSettings({ channelName: e.target.value })}
-                      placeholder="e.g. MultiverseMashupAI"
-                      className="w-full bg-zinc-900 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30 transition-all"
-                    />
-                  </div>
-                </div>
+                {/* FEAT-002b bug fix: Manage Collections + Channel Name used
+                    to live HERE, nested inside the watermark.enabled wrapper —
+                    so disabling the watermark made them disappear. They have
+                    been lifted up to the top of the General tab. */}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -659,7 +782,11 @@ export function SettingsModal({
               </div>
             </div>
           </div>
+          </>
+          )}
 
+          {activeTab === 'aiEngine' && (
+          <>
           {/* AI System Prompt + Personality */}
           <div className="mt-8 pt-6 border-t border-zinc-800">
             <h4 className="text-lg font-medium text-white mb-4">AI System Prompt</h4>
@@ -941,9 +1068,28 @@ export function SettingsModal({
               </button>
             </div>
           </div>
+          </>
+          )}
 
-          {/* Desktop configuration — only renders in Tauri desktop build */}
-          <DesktopSettingsPanel />
+          {activeTab === 'desktop' && (
+            <>
+              {/* Desktop configuration — DesktopSettingsPanel auto-renders
+                  nothing on web builds, so a "use the desktop app" hint is
+                  rendered in its place when running in the browser. */}
+              <DesktopSettingsPanel />
+              {isDesktop === false && (
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Monitor className="w-4 h-4 text-zinc-500" />
+                    <p className="text-xs font-semibold text-white">Desktop-only</p>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    The desktop app stores credentials in <code className="text-zinc-300">config.json</code>, manages the pi.dev sidecar, and ships with auto-update. Run the Tauri build to access these settings.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         <div className="p-6 border-t border-zinc-800 bg-zinc-950/50 flex justify-end">

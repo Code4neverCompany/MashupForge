@@ -26,9 +26,21 @@ export function mergeSettings(prev: UserSettings, patch: Partial<UserSettings>):
   return merged;
 }
 
+// FEAT-002b S1: surface IndexedDB write failures so the SettingsModal
+// can render a red error pill. Previously the debounced save catch
+// silently swallowed errors (`/* silent */`) — quota exhaustion or
+// origin storage being disabled left users typing into a void with
+// no signal that nothing was being persisted.
+export type SettingsSaveState =
+  | { kind: 'idle' }
+  | { kind: 'saving' }
+  | { kind: 'saved'; at: number }
+  | { kind: 'error'; message: string };
+
 export function useSettings() {
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false);
+  const [saveState, setSaveState] = useState<SettingsSaveState>({ kind: 'idle' });
 
   // Always-current ref used by the beforeunload flush below. Updated
   // synchronously on every render so the handler never closes over a
@@ -67,10 +79,25 @@ export function useSettings() {
   // Debounce prevents an IDB write on every keystroke in text fields while
   // still guaranteeing the final value is persisted. The cleanup cancels any
   // pending timer so rapid updates coalesce into a single write.
+  // First post-load render is the merged-from-storage commit, not a user
+  // edit — skip flagging "Saving…" for it. Subsequent renders are real
+  // changes and drive the saveState lifecycle.
+  const skipFirstSaveRef = useRef(true);
   useEffect(() => {
     if (!isSettingsLoaded) return;
+    if (skipFirstSaveRef.current) {
+      skipFirstSaveRef.current = false;
+      return;
+    }
+    setSaveState({ kind: 'saving' });
     const timer = setTimeout(() => {
-      void set('mashup_settings', settings).catch(() => {});
+      set('mashup_settings', settings).then(
+        () => setSaveState({ kind: 'saved', at: Date.now() }),
+        (err) => setSaveState({
+          kind: 'error',
+          message: err instanceof Error ? err.message : 'Settings save failed',
+        }),
+      );
     }, 300);
     return () => clearTimeout(timer);
   }, [settings, isSettingsLoaded]);
@@ -107,5 +134,5 @@ export function useSettings() {
     });
   }, []);
 
-  return { settings, updateSettings, isSettingsLoaded };
+  return { settings, updateSettings, isSettingsLoaded, saveState };
 }

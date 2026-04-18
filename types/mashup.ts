@@ -558,6 +558,10 @@ export interface MashupContextType {
   progress: string;
   settings: UserSettings;
   updateSettings: (newSettings: Partial<UserSettings> | ((prev: UserSettings) => Partial<UserSettings>)) => void;
+  /** FEAT-002b S1: lifecycle of the debounced IndexedDB write so the
+   *  SettingsModal can render a real save indicator (incl. red error
+   *  pill on quota / disabled-storage failures). */
+  settingsSaveState: import('../hooks/useSettings').SettingsSaveState;
   generateImages: (customPrompts?: string[], append?: boolean, options?: GenerateOptions) => Promise<void>;
   generatePostContent: (image: GeneratedImage) => Promise<GeneratedImage | undefined>;
   rerollImage: (id: string, prompt: string, options?: GenerateOptions) => Promise<void>;
