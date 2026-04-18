@@ -358,7 +358,7 @@ Return ONLY the prompt text, nothing else.`;
     if (readyImages.length === 0) {
       addLog('image-ready', idea.id, 'error', 'Timed out waiting for any image');
     } else if (carouselMode && readyImages.length > 1) {
-      addLog('image-ready', idea.id, 'success', `${readyImages.length} image(s) ready — carousel mode`);
+      addLog('image-ready', idea.id, 'success', `${readyImages.length} image${readyImages.length === 1 ? '' : 's'} ready — carousel mode`);
 
       // Save all images to gallery so they show up in Gallery + Captioning
       for (const img of readyImages) {
@@ -444,7 +444,7 @@ Return ONLY the prompt text, nothing else.`;
       // auto-poster path, which is the only path that knows how to
       // fan a carouselGroupId out into a multi-image post.
     } else {
-      addLog('image-ready', idea.id, 'success', `${readyImages.length} image(s) ready from ${allModelIds.length} models`);
+      addLog('image-ready', idea.id, 'success', `${readyImages.length} image${readyImages.length === 1 ? '' : 's'} ready from ${allModelIds.length} model${allModelIds.length === 1 ? '' : 's'}`);
 
       // Process ALL generated images through caption + schedule.
       // Each model's output gets its own caption and scheduled post.
