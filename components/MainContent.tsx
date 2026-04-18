@@ -56,6 +56,7 @@ import {
   useMashup,
   GeneratedImage,
   LEONARDO_MODELS,
+  MODEL_PROMPT_GUIDES,
   Collection,
   GenerateOptions,
   ScheduledPost,
@@ -66,6 +67,9 @@ import {
   IMAGE_SIZES,
   type ViewType,
 } from './MashupContext';
+import { LEONARDO_SHARED_STYLES } from '@/types/mashup';
+import { suggestParameters, type ParamSuggestion } from '@/lib/param-suggest';
+import { ParamSuggestionCard } from './ParamSuggestionCard';
 import { KebabMenu, type KebabMenuItem } from './KebabMenu';
 // Lazy-loaded — the Pipeline tab pulls in smart-scheduler logic +
 // its own local state tree and isn't needed on first paint. ssr:false
@@ -212,6 +216,8 @@ export function MainContent() {
   const [isComparing, setIsComparing] = useState(false);
   /** Per-model parameter preview (set by pi when prompt changes). */
   const [modelPreviews, setModelPreviews] = useState<Record<string, { prompt?: string; style?: string; aspectRatio?: string; negativePrompt?: string; lighting?: string; angle?: string }>>({});
+  /** V030-007: smart pre-fill suggestion card visibility + payload. */
+  const [paramSuggestion, setParamSuggestion] = useState<ParamSuggestion | null>(null);
   const [isPushing, setIsPushing] = useState(false);
   // Track which image is currently having its caption generated so we can
   // show a per-card spinner while the pi caption request runs. Keyed by
@@ -1308,6 +1314,35 @@ export function MainContent() {
     setView('compare');
   };
 
+  // V030-007: generate a smart suggestion for models/style/ratio/size/
+  // negative prompt from the current prompt + prior winners. Pure —
+  // the user still has to click Apply to adopt the suggestion.
+  const handleSuggestParameters = () => {
+    if (!comparisonPrompt.trim()) {
+      showToast('Enter a prompt first so we can suggest parameters.', 'error');
+      return;
+    }
+    setParamSuggestion(
+      suggestParameters({
+        prompt: comparisonPrompt,
+        availableModels: LEONARDO_MODELS,
+        modelGuides: MODEL_PROMPT_GUIDES,
+        availableStyles: LEONARDO_SHARED_STYLES,
+        savedImages,
+      }),
+    );
+  };
+
+  const handleApplySuggestion = (
+    modelIds: string[],
+    options: Partial<GenerateOptions>,
+  ) => {
+    setComparisonModels(modelIds);
+    setComparisonOptions(prev => ({ ...prev, ...options }));
+    setParamSuggestion(null);
+    showToast('Parameters applied. You can still tweak anything before generating.', 'success');
+  };
+
   const handleCompare = async () => {
     if (comparisonModels.length < 2) {
       showToast('Please select at least 2 models to compare.', 'error');
@@ -2024,7 +2059,27 @@ export function MainContent() {
                           rows={10}
                           className="w-full bg-zinc-900/60 border border-[#00e6ff]/20 rounded-xl p-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#00e6ff]/20 focus:border-[#00e6ff]/35 min-h-[240px] resize-y shadow-inner shadow-[rgba(0,230,255,0.04)] transition-all duration-200"
                         />
+                        <div className="flex items-center justify-end">
+                          <button
+                            onClick={handleSuggestParameters}
+                            disabled={!comparisonPrompt.trim()}
+                            className="text-xs text-[#00e6ff] hover:text-white flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[#00e6ff]/25 hover:border-[#00e6ff]/50 bg-[#00e6ff]/5 hover:bg-[#00e6ff]/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            title="Suggest models, style, ratio, size, and negative prompt from your prompt + prior winners"
+                          >
+                            <Sparkles className="w-3 h-3" />
+                            Suggest Parameters
+                          </button>
+                        </div>
                       </div>
+
+                      {paramSuggestion && (
+                        <ParamSuggestionCard
+                          suggestion={paramSuggestion}
+                          availableStyles={LEONARDO_SHARED_STYLES}
+                          onApply={handleApplySuggestion}
+                          onDismiss={() => setParamSuggestion(null)}
+                        />
+                      )}
 
                       {/* AI-Optimized Parameters — read-only per-model indicators.
                           pi pre-computes optimal params per model via

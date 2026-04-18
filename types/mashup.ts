@@ -315,7 +315,7 @@ export interface LeonardoModelConfig {
 }
 
 // Shared styles for Nano Banana 2 and Nano Banana Pro (API-documented, 19 styles)
-const LEONARDO_SHARED_STYLES = [
+export const LEONARDO_SHARED_STYLES = [
   { name: 'None', uuid: '556c1ee5-ec38-42e8-955a-1e82dad0ffa1' },
   { name: 'Dynamic', uuid: '111dc692-d470-4eec-b791-3475abac4c46' },
   { name: 'Creative', uuid: '6fedbf1f-4a17-45ec-84fb-92fe524a29ef' },
