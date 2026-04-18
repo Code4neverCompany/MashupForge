@@ -143,4 +143,18 @@ describe('computeWeekFillStatus', () => {
     expect(s.percent).toBe(0);
     expect(s.filled).toBe(true); // 0 >= 0
   });
+
+  it('undefined posts is treated the same as an empty array', () => {
+    const s = computeWeekFillStatus(undefined, 7, 2, NOW);
+    expect(s.scheduledTotal).toBe(0);
+    expect(s.days).toHaveLength(7);
+    expect(s.filled).toBe(false);
+  });
+
+  it('post with timestamp exactly equal to now is counted (boundary: ts < now is false)', () => {
+    // ts === now.getTime() → ts < now.getTime() is false → should be kept
+    const posts: ScheduledPost[] = [post('2026-04-20', '12:00', 'scheduled')];
+    const s = computeWeekFillStatus(posts, 7, 2, NOW);
+    expect(s.days[0].scheduledCount).toBe(1);
+  });
 });

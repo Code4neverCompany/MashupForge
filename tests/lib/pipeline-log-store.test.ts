@@ -97,4 +97,20 @@ describe('pipeline-log-store', () => {
     const loaded = await loadPipelineLog();
     expect(loaded).toEqual([]);
   });
+
+  it('saving an empty array produces an empty load (no corruption)', async () => {
+    await savePipelineLog([makeEntry(0)]);
+    await savePipelineLog([]);
+    const loaded = await loadPipelineLog();
+    expect(loaded).toEqual([]);
+  });
+
+  it('entries at exactly 50 are stored without trimming', async () => {
+    const entries = Array.from({ length: 50 }, (_, i) => makeEntry(i));
+    await savePipelineLog(entries);
+    const loaded = await loadPipelineLog();
+    expect(loaded).toHaveLength(50);
+    expect(loaded[0].step).toBe('step-0');
+    expect(loaded[49].step).toBe('step-49');
+  });
 });
