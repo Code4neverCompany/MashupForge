@@ -2,21 +2,36 @@
 
 import { useState } from 'react';
 import { Lightbulb, Check, X, Edit3 } from 'lucide-react';
-import type { ParamSuggestion } from '@/lib/param-suggest';
+import type {
+  ParamSuggestion,
+  PerModelSuggestion,
+  PerModelImageSuggestion,
+  PerModelVideoSuggestion,
+} from '@/lib/param-suggest';
 import { LEONARDO_MODELS, type GenerateOptions } from '@/types/mashup';
 
 interface Props {
   suggestion: ParamSuggestion;
   availableStyles: { name: string; uuid: string }[];
-  onApply: (modelIds: string[], options: Partial<GenerateOptions>) => void;
+  /**
+   * Apply path. The card hands back BOTH the legacy "shared" options
+   * (used to overwrite the global `comparisonOptions`) and the full
+   * per-model map so callers can plumb per-model values into per-model
+   * state when they have one.
+   */
+  onApply: (
+    modelIds: string[],
+    options: Partial<GenerateOptions>,
+    perModel: Record<string, PerModelSuggestion>,
+  ) => void;
   onDismiss: () => void;
 }
 
 /**
- * V030-007: shows a suggestion card under the prompt textarea with
- * ranked models, aspect ratio, style, image size, and negative prompt —
- * each labeled with a one-line reason. "Edit" reveals inline form
- * controls so the user can override any field before applying.
+ * V030-008-per-model: card now renders one section per shortlisted
+ * model with that model's optimal parameters and a 1-2 sentence reason.
+ * Edit mode exposes per-model overrides; apply emits both shared
+ * options (legacy) and the full per-model map.
  */
 export function ParamSuggestionCard({
   suggestion,
@@ -25,36 +40,68 @@ export function ParamSuggestionCard({
   onDismiss,
 }: Props) {
   const [editMode, setEditMode] = useState(false);
+  // Per-model editable state. Cloned from suggestion on first render.
+  const [perModel, setPerModel] = useState<Record<string, PerModelSuggestion>>(
+    () => structuredClone(suggestion.perModel),
+  );
   const [modelIds, setModelIds] = useState<string[]>(suggestion.modelIds);
-  const [aspectRatio, setAspectRatio] = useState<string>(suggestion.aspectRatio);
-  const [style, setStyle] = useState<string | undefined>(suggestion.style);
-  const [imageSize, setImageSize] = useState<'1K' | '2K'>(suggestion.imageSize);
-  const [negativePrompt, setNegativePrompt] = useState<string>(
-    suggestion.negativePrompt ?? '',
-  );
-  const [quality, setQuality] = useState<'LOW' | 'MEDIUM' | 'HIGH' | undefined>(
-    suggestion.quality,
-  );
-  const [promptEnhance, setPromptEnhance] = useState<'ON' | 'OFF' | undefined>(
-    suggestion.promptEnhance,
-  );
+
+  const updateImageField = <K extends keyof PerModelImageSuggestion>(
+    modelId: string,
+    field: K,
+    value: PerModelImageSuggestion[K],
+  ) => {
+    setPerModel(prev => {
+      const cur = prev[modelId];
+      if (!cur || cur.type !== 'image') return prev;
+      return { ...prev, [modelId]: { ...cur, [field]: value } };
+    });
+  };
+
+  const updateVideoField = <K extends keyof PerModelVideoSuggestion>(
+    modelId: string,
+    field: K,
+    value: PerModelVideoSuggestion[K],
+  ) => {
+    setPerModel(prev => {
+      const cur = prev[modelId];
+      if (!cur || cur.type !== 'video') return prev;
+      return { ...prev, [modelId]: { ...cur, [field]: value } };
+    });
+  };
 
   const toggleModel = (id: string) => {
     setModelIds(prev => (prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]));
   };
 
   const handleApply = () => {
-    onApply(modelIds, {
-      aspectRatio,
-      style,
-      imageSize,
-      negativePrompt: negativePrompt.trim() || undefined,
-      quality,
-      promptEnhance,
-    });
+    // Derive shared options from the first selected model's per-model entry.
+    const firstId = modelIds.find(id => perModel[id]);
+    const first = firstId ? perModel[firstId] : undefined;
+    const shared: Partial<GenerateOptions> = first
+      ? first.type === 'image'
+        ? {
+            aspectRatio: first.aspectRatio,
+            imageSize: first.imageSize,
+            quality: first.quality,
+            promptEnhance: first.promptEnhance,
+            style: first.style,
+            negativePrompt: first.negativePrompt?.trim() || undefined,
+          }
+        : {
+            aspectRatio: first.aspectRatio,
+          }
+      : {};
+    // Restrict perModel payload to the models the user actually kept.
+    const filteredPerModel: Record<string, PerModelSuggestion> = {};
+    for (const id of modelIds) {
+      if (perModel[id]) filteredPerModel[id] = perModel[id];
+    }
+    onApply(modelIds, shared, filteredPerModel);
   };
 
-  const aspectOptions = ['1:1', '2:3', '3:2', '9:16', '16:9', '3:4', '4:3', '4:5', '5:4'];
+  const aspectOptionsImage = ['1:1', '2:3', '3:2', '9:16', '16:9', '3:4', '4:3', '4:5', '5:4'];
+  const aspectOptionsVideo = ['1:1', '9:16', '16:9'];
   const sizeOptions: ('1K' | '2K')[] = ['1K', '2K'];
   const qualityOptions: ('LOW' | 'MEDIUM' | 'HIGH')[] = ['LOW', 'MEDIUM', 'HIGH'];
 
@@ -63,7 +110,7 @@ export function ParamSuggestionCard({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs text-[#00e6ff] uppercase tracking-wider font-medium">
           <Lightbulb className="w-3.5 h-3.5" />
-          <span>Smart Suggestions</span>
+          <span>Per-Model Smart Suggestions</span>
           <span
             className={
               'text-[9px] normal-case tracking-normal px-1.5 py-0.5 rounded border ' +
@@ -75,9 +122,9 @@ export function ParamSuggestionCard({
             }
             title={
               suggestion.source === 'ai'
-                ? 'pi.dev authored this suggestion'
+                ? 'pi.dev authored every per-model suggestion'
                 : suggestion.source === 'ai+rules'
-                  ? 'pi.dev suggested most fields; missing ones were filled from rule-based defaults'
+                  ? 'pi.dev answered for some models; missing ones were filled from rule-based defaults'
                   : 'pi.dev unavailable — rule-based fallback'
             }
           >
@@ -93,7 +140,7 @@ export function ParamSuggestionCard({
           <button
             onClick={() => setEditMode(e => !e)}
             className="text-[11px] text-zinc-400 hover:text-white flex items-center gap-1 transition-colors"
-            title={editMode ? 'Show summary' : 'Override suggestions'}
+            title={editMode ? 'Show summary' : 'Override per-model settings'}
           >
             <Edit3 className="w-3 h-3" />
             {editMode ? 'View' : 'Edit'}
@@ -109,156 +156,108 @@ export function ParamSuggestionCard({
         </div>
       </div>
 
-      {suggestion.reasons.overall && (
-        <div className="text-[11px] text-zinc-300 leading-relaxed bg-[#00e6ff]/5 border border-[#00e6ff]/15 rounded-lg px-3 py-2">
-          {suggestion.reasons.overall}
-        </div>
-      )}
+      <div className="text-[10px] uppercase tracking-wider text-zinc-500">
+        Models — pi tunes parameters per model
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {LEONARDO_MODELS.map(m => (
+          <button
+            key={m.id}
+            onClick={() => toggleModel(m.id)}
+            className={
+              'px-2.5 py-1 rounded-lg border text-[11px] transition-colors ' +
+              (modelIds.includes(m.id)
+                ? 'bg-[#00e6ff]/15 border-[#00e6ff]/40 text-[#9fefff]'
+                : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-white')
+            }
+          >
+            {m.name}
+          </button>
+        ))}
+      </div>
 
-      {!editMode ? (
-        <div className="space-y-2 text-xs">
-          <SuggestionRow label="Models" value={modelIds.map(formatModel).join(', ') || '—'} reason={suggestion.reasons.models} />
-          <SuggestionRow label="Aspect Ratio" value={aspectRatio} reason={suggestion.reasons.aspectRatio} />
-          {style && (
-            <SuggestionRow label="Style" value={style} reason={suggestion.reasons.style} />
-          )}
-          <SuggestionRow label="Image Size" value={imageSize} reason={suggestion.reasons.imageSize} />
-          {quality && (
-            <SuggestionRow label="Quality" value={quality} reason={suggestion.reasons.quality} />
-          )}
-          {promptEnhance && (
-            <SuggestionRow
-              label="Prompt Enhance"
-              value={promptEnhance}
-              reason={suggestion.reasons.promptEnhance}
-            />
-          )}
-          {negativePrompt && (
-            <SuggestionRow
-              label="Negative Prompt"
-              value={negativePrompt.length > 60 ? `${negativePrompt.slice(0, 60)}…` : negativePrompt}
-              reason={suggestion.reasons.negativePrompt}
-            />
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3 text-xs">
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Models</label>
-            <div className="flex flex-wrap gap-1.5">
-              {LEONARDO_MODELS.map(m => (
-                <button
-                  key={m.id}
-                  onClick={() => toggleModel(m.id)}
+      <div className="space-y-2">
+        {modelIds.map(id => {
+          const sug = perModel[id];
+          if (!sug) return null;
+          return (
+            <div
+              key={id}
+              className="border border-zinc-800/80 rounded-lg p-3 bg-zinc-950/40 space-y-2"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-medium text-[#9fefff]">
+                  {formatModel(id)}{' '}
+                  <span className="text-[10px] text-zinc-500 font-normal">
+                    ({sug.type})
+                  </span>
+                </div>
+                <span
                   className={
-                    'px-2.5 py-1 rounded-lg border text-[11px] transition-colors ' +
-                    (modelIds.includes(m.id)
-                      ? 'bg-[#00e6ff]/15 border-[#00e6ff]/40 text-[#9fefff]'
-                      : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-white')
+                    'text-[9px] uppercase px-1.5 py-0.5 rounded border ' +
+                    (sug.source === 'ai'
+                      ? 'border-[#00e6ff]/40 text-[#9fefff] bg-[#00e6ff]/10'
+                      : sug.source === 'ai+rules'
+                        ? 'border-amber-400/30 text-amber-300 bg-amber-400/5'
+                        : 'border-zinc-700 text-zinc-400 bg-zinc-800/40')
                   }
                 >
-                  {m.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Aspect Ratio</label>
-              <select
-                value={aspectRatio}
-                onChange={e => setAspectRatio(e.target.value)}
-                className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
-              >
-                {aspectOptions.map(a => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Image Size</label>
-              <select
-                value={imageSize}
-                onChange={e => setImageSize(e.target.value as '1K' | '2K')}
-                className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
-              >
-                {sizeOptions.map(s => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            {quality !== undefined && (
-              <div>
-                <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
-                  Quality <span className="text-zinc-600 normal-case">(gpt-image-1.5)</span>
-                </label>
-                <select
-                  value={quality}
-                  onChange={e => setQuality(e.target.value as 'LOW' | 'MEDIUM' | 'HIGH')}
-                  className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
-                >
-                  {qualityOptions.map(q => (
-                    <option key={q} value={q}>
-                      {q}
-                    </option>
-                  ))}
-                </select>
+                  {sug.source === 'ai' ? 'pi' : sug.source === 'ai+rules' ? 'pi + rules' : 'rules'}
+                </span>
               </div>
-            )}
-            {promptEnhance !== undefined && (
-              <div>
-                <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
-                  Prompt Enhance
-                </label>
-                <select
-                  value={promptEnhance}
-                  onChange={e => setPromptEnhance(e.target.value as 'ON' | 'OFF')}
-                  className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
-                >
-                  <option value="ON">ON</option>
-                  <option value="OFF">OFF</option>
-                </select>
-              </div>
-            )}
-          </div>
 
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Style</label>
-            <select
-              value={style ?? ''}
-              onChange={e => setStyle(e.target.value || undefined)}
-              className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
-            >
-              <option value="">(auto — pi picks per model)</option>
-              {availableStyles.map(s => (
-                <option key={s.uuid} value={s.name}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Negative Prompt</label>
-            <input
-              type="text"
-              value={negativePrompt}
-              onChange={e => setNegativePrompt(e.target.value)}
-              placeholder="(optional — blurry, low-res, watermark, etc.)"
-              className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
-            />
-          </div>
-        </div>
-      )}
+              {!editMode ? (
+                <div className="space-y-1 text-[11px] text-zinc-300">
+                  {sug.type === 'image' ? (
+                    <>
+                      <ParamLine label="Aspect" value={`${sug.aspectRatio} (${sug.width}×${sug.height})`} />
+                      <ParamLine label="Image Size" value={sug.imageSize} />
+                      {sug.quality && <ParamLine label="Quality" value={sug.quality} />}
+                      <ParamLine label="Prompt Enhance" value={sug.promptEnhance} />
+                      {sug.style && <ParamLine label="Style" value={sug.style} />}
+                      {sug.negativePrompt && (
+                        <ParamLine
+                          label="Negative"
+                          value={
+                            sug.negativePrompt.length > 60
+                              ? `${sug.negativePrompt.slice(0, 60)}…`
+                              : sug.negativePrompt
+                          }
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <ParamLine label="Aspect" value={`${sug.aspectRatio} (${sug.width}×${sug.height})`} />
+                      <ParamLine label="Duration" value={`${sug.duration}s`} />
+                      <ParamLine label="Mode" value={sug.mode} />
+                      {sug.motionHasAudio !== undefined && (
+                        <ParamLine label="Audio" value={sug.motionHasAudio ? 'on' : 'off'} />
+                      )}
+                    </>
+                  )}
+                  <div className="text-[10px] text-zinc-500 italic pt-1">{sug.reason}</div>
+                </div>
+              ) : sug.type === 'image' ? (
+                <ImageEditor
+                  sug={sug}
+                  availableStyles={availableStyles}
+                  aspectOptions={aspectOptionsImage}
+                  sizeOptions={sizeOptions}
+                  qualityOptions={qualityOptions}
+                  onUpdate={(field, value) => updateImageField(id, field, value)}
+                />
+              ) : (
+                <VideoEditor
+                  sug={sug}
+                  aspectOptions={aspectOptionsVideo}
+                  onUpdate={(field, value) => updateVideoField(id, field, value)}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
 
       <div className="flex items-center justify-end gap-2 pt-1">
         <button
@@ -274,28 +273,175 @@ export function ParamSuggestionCard({
   );
 }
 
-function SuggestionRow({
-  label,
-  value,
-  reason,
-}: {
-  label: string;
-  value: string;
-  reason?: string;
-}) {
+function ParamLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start gap-3">
-      <span className="text-[10px] uppercase tracking-wider text-zinc-500 w-24 shrink-0 pt-0.5">
+    <div className="flex items-baseline gap-2">
+      <span className="text-[9px] uppercase tracking-wider text-zinc-500 w-20 shrink-0">
         {label}
       </span>
-      <div className="flex-1 min-w-0">
-        <div className="text-zinc-200 break-words">{value}</div>
-        {reason && <div className="text-[10px] text-zinc-500 mt-0.5">{reason}</div>}
-      </div>
+      <span className="text-zinc-200 break-words">{value}</span>
     </div>
   );
 }
 
 function formatModel(id: string): string {
   return LEONARDO_MODELS.find(m => m.id === id)?.name ?? id;
+}
+
+interface ImageEditorProps {
+  sug: PerModelImageSuggestion;
+  availableStyles: { name: string; uuid: string }[];
+  aspectOptions: string[];
+  sizeOptions: ('1K' | '2K')[];
+  qualityOptions: ('LOW' | 'MEDIUM' | 'HIGH')[];
+  onUpdate: <K extends keyof PerModelImageSuggestion>(
+    field: K,
+    value: PerModelImageSuggestion[K],
+  ) => void;
+}
+
+function ImageEditor({
+  sug,
+  availableStyles,
+  aspectOptions,
+  sizeOptions,
+  qualityOptions,
+  onUpdate,
+}: ImageEditorProps) {
+  return (
+    <div className="grid grid-cols-2 gap-2 text-[11px]">
+      <FieldSelect
+        label="Aspect Ratio"
+        value={sug.aspectRatio}
+        options={aspectOptions}
+        onChange={v => onUpdate('aspectRatio', v)}
+      />
+      <FieldSelect
+        label="Image Size"
+        value={sug.imageSize}
+        options={sizeOptions}
+        onChange={v => onUpdate('imageSize', v as '1K' | '2K')}
+      />
+      {sug.quality !== undefined && (
+        <FieldSelect
+          label="Quality"
+          value={sug.quality}
+          options={qualityOptions}
+          onChange={v => onUpdate('quality', v as 'LOW' | 'MEDIUM' | 'HIGH')}
+        />
+      )}
+      <FieldSelect
+        label="Prompt Enhance"
+        value={sug.promptEnhance}
+        options={['ON', 'OFF']}
+        onChange={v => onUpdate('promptEnhance', v as 'ON' | 'OFF')}
+      />
+      <div className="col-span-2">
+        <FieldSelect
+          label="Style"
+          value={sug.style ?? ''}
+          options={['', ...availableStyles.map(s => s.name)]}
+          renderOption={v => (v === '' ? '(none)' : v)}
+          onChange={v => onUpdate('style', v === '' ? undefined : v)}
+        />
+      </div>
+      <div className="col-span-2">
+        <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
+          Negative Prompt
+        </label>
+        <input
+          type="text"
+          value={sug.negativePrompt ?? ''}
+          onChange={e => onUpdate('negativePrompt', e.target.value || undefined)}
+          placeholder="(optional)"
+          className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
+        />
+      </div>
+    </div>
+  );
+}
+
+interface VideoEditorProps {
+  sug: PerModelVideoSuggestion;
+  aspectOptions: string[];
+  onUpdate: <K extends keyof PerModelVideoSuggestion>(
+    field: K,
+    value: PerModelVideoSuggestion[K],
+  ) => void;
+}
+
+function VideoEditor({ sug, aspectOptions, onUpdate }: VideoEditorProps) {
+  return (
+    <div className="grid grid-cols-2 gap-2 text-[11px]">
+      <FieldSelect
+        label="Aspect Ratio"
+        value={sug.aspectRatio}
+        options={aspectOptions}
+        onChange={v => onUpdate('aspectRatio', v)}
+      />
+      <div>
+        <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
+          Duration (s)
+        </label>
+        <input
+          type="number"
+          min={3}
+          max={15}
+          value={sug.duration}
+          onChange={e => {
+            const n = parseInt(e.target.value, 10);
+            if (Number.isFinite(n)) onUpdate('duration', n);
+          }}
+          className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
+        />
+      </div>
+      <FieldSelect
+        label="Mode"
+        value={sug.mode}
+        options={['RESOLUTION_720', 'RESOLUTION_1080']}
+        onChange={v => onUpdate('mode', v as 'RESOLUTION_720' | 'RESOLUTION_1080')}
+      />
+      {sug.motionHasAudio !== undefined && (
+        <FieldSelect
+          label="Audio"
+          value={sug.motionHasAudio ? 'on' : 'off'}
+          options={['on', 'off']}
+          onChange={v => onUpdate('motionHasAudio', v === 'on')}
+        />
+      )}
+    </div>
+  );
+}
+
+function FieldSelect({
+  label,
+  value,
+  options,
+  onChange,
+  renderOption,
+}: {
+  label: string;
+  value: string;
+  options: readonly string[];
+  onChange: (v: string) => void;
+  renderOption?: (v: string) => string;
+}) {
+  return (
+    <div>
+      <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
+        {label}
+      </label>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
+      >
+        {options.map(opt => (
+          <option key={opt || '__empty'} value={opt}>
+            {renderOption ? renderOption(opt) : opt}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 }

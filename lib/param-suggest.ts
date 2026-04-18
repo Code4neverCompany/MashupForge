@@ -1,29 +1,83 @@
 /**
  * V030-007: smart parameter pre-fill.
  * V030-008: AI-driven variant on top of the rule-based engine.
+ * V030-008-per-model: parameters are now produced PER MODEL. Each
+ * shortlisted model gets its own optimal aspect ratio, dimensions,
+ * quality, style, prompt-enhance flag (image) or duration / mode /
+ * motion-audio knob (video) — calibrated against THAT model's API
+ * surface. Where the AI variant runs, pi.dev is called once per model
+ * in parallel, each call seeing only that model's API doc slice.
  *
  * Two entry points:
  *
  *   `suggestParameters(input)` — pure, deterministic rule engine. Runs
  *   instantly, no network. Drives tests and serves as the fallback
- *   when pi.dev is unreachable.
+ *   when pi.dev is unreachable. Emits a per-model map plus a "best
+ *   shared" view derived from the first model (back-compat with the
+ *   existing card / apply path).
  *
- *   `suggestParametersAI(input)` — async. Packages the idea, the full
- *   per-model API compatibility matrix, the available styles, and the
- *   top prior winners, then asks pi.dev to reason about which model/
- *   ratio/style/quality/negative-prompt combination fits best. Any
- *   failure (network, bad JSON, missing field, timeout) falls back to
- *   the rule engine so the user never sees an empty card.
+ *   `suggestParametersAI(input)` — async. Calls the rule engine to
+ *   pick a model shortlist, then fires one pi.dev call per model in
+ *   parallel. Each call gets only that model's API doc slice so pi
+ *   reasons about a single model's capabilities. Per-model failures
+ *   fall back to the rule engine's perModel entry so the user always
+ *   sees a populated card.
  */
 
 import type {
   GeneratedImage,
   LeonardoModelConfig,
   LeonardoModelSpec,
+  LeonardoImageModelSpec,
+  LeonardoVideoModelSpec,
 } from '@/types/mashup';
 import { LEONARDO_MODEL_PARAMS } from '@/types/mashup';
 import { streamAIToString, extractJsonObjectFromLLM } from './aiClient';
-import { LEONARDO_API_DOCS } from './leonardo-api-docs';
+import {
+  LEONARDO_API_DOCS,
+  LEONARDO_API_DOCS_BY_MODEL,
+} from './leonardo-api-docs';
+
+export type SuggestionSource = 'ai' | 'rules' | 'ai+rules';
+
+// ── Per-model suggestion shape ───────────────────────────────────────────────
+
+export interface PerModelImageSuggestion {
+  type: 'image';
+  modelId: string;
+  apiName: string;
+  aspectRatio: string;
+  width: number;
+  height: number;
+  imageSize: '1K' | '2K';
+  /** Only set when the model exposes a quality knob (today gpt-image-1.5). */
+  quality?: 'LOW' | 'MEDIUM' | 'HIGH';
+  promptEnhance: 'ON' | 'OFF';
+  /** Style name (resolved to UUID downstream). Only meaningful for nano-banana-*. */
+  style?: string;
+  negativePrompt?: string;
+  /** 1-2 sentence rationale for THIS model's settings. */
+  reason: string;
+  source: SuggestionSource;
+}
+
+export interface PerModelVideoSuggestion {
+  type: 'video';
+  modelId: string;
+  apiName: string;
+  aspectRatio: string;
+  width: number;
+  height: number;
+  duration: number;
+  mode: 'RESOLUTION_720' | 'RESOLUTION_1080';
+  motionHasAudio?: boolean;
+  reason: string;
+  source: SuggestionSource;
+}
+
+export type PerModelSuggestion = PerModelImageSuggestion | PerModelVideoSuggestion;
+
+// ── Top-level (shared / shortlist) suggestion shape ──────────────────────────
 
 export interface ParamSuggestionReasons {
   models: string;
@@ -37,27 +91,24 @@ export interface ParamSuggestionReasons {
   overall?: string;
 }
 
-export type SuggestionSource = 'ai' | 'rules' | 'ai+rules';
-
 export interface ParamSuggestion {
   modelIds: string[];
+  /** Per-model parameter map keyed by in-app model id. */
+  perModel: Record<string, PerModelSuggestion>;
+  /**
+   * "Best shared" view derived from the first (highest-ranked) model.
+   * Kept for the existing apply path which writes to a single shared
+   * `comparisonOptions`. Per-model overrides live in `perModel`.
+   */
   aspectRatio: string;
   style?: string;
   imageSize: '1K' | '2K';
   negativePrompt?: string;
-  /** Only set when a top-ranked model supports quality (gpt-image-1.5). */
   quality?: 'LOW' | 'MEDIUM' | 'HIGH';
-  /**
-   * V030-008: Leonardo prompt_enhance knob. Defaults to 'ON' when any
-   * image model is in the shortlist (matches the server default).
-   * The AI path may override to 'OFF' when an idea reads as already-
-   * engineered (e.g. the prompt is clearly hand-tuned).
-   */
   promptEnhance?: 'ON' | 'OFF';
   reasons: ParamSuggestionReasons;
   priorMatchCount: number;
-  /** Where the suggestion came from. `ai+rules` = AI responded but we
-   *  back-filled some fields from the deterministic engine. */
+  /** Where the suggestion came from. `ai+rules` = AI partly responded. */
   source: SuggestionSource;
 }
 
@@ -71,13 +122,11 @@ export interface SuggestParametersInput {
   topN?: number;
   /** Models to exclude from ranking. Defaults to nano-banana (pipeline skips it). */
   excludedModelIds?: readonly string[];
-  /**
-   * Per-model API parameter spec. Defaults to LEONARDO_MODEL_PARAMS.
-   * Exposed for tests to inject a minimal spec; production callers
-   * should leave this unset.
-   */
+  /** Per-model API parameter spec. Defaults to LEONARDO_MODEL_PARAMS. */
   modelParams?: Record<string, LeonardoModelSpec>;
 }
+
+// ── Heuristic rules ──────────────────────────────────────────────────────────
 
 interface AspectRule {
   keywords: string[];
@@ -116,6 +165,11 @@ const DETAIL_KEYWORDS = [
   'hyper-detailed', 'intricate', '8k', '4k', 'ultra realistic',
 ];
 
+// Video-specific cues — duration + audio knobs.
+const SHORT_VIDEO_KEYWORDS = ['short clip', 'gif', 'looping', 'loop', 'quick'];
+const LONG_VIDEO_KEYWORDS = ['long take', 'extended', 'one shot', 'continuous shot'];
+const SILENT_VIDEO_KEYWORDS = ['silent', 'no audio', 'mute', 'quiet'];
+
 function tokenize(s: string): Set<string> {
   return new Set(
     s.toLowerCase()
@@ -140,6 +194,210 @@ function jaccard(a: Set<string>, b: Set<string>): number {
   return intersect / (a.size + b.size - intersect);
 }
 
+// ── Rule engine: per-model derivation ────────────────────────────────────────
+
+interface RuleHints {
+  aspectKeywordRatio?: string;
+  aspectKeywordReason?: string;
+  styleKeyword?: { name: string; reason: string };
+  detailHit?: string;
+  shortVideoHit?: string;
+  longVideoHit?: string;
+  silentVideoHit?: string;
+}
+
+function deriveHints(prompt: string): RuleHints {
+  const hints: RuleHints = {};
+  for (const rule of ASPECT_RULES) {
+    const hit = firstHit(prompt, rule.keywords);
+    if (hit) {
+      hints.aspectKeywordRatio = rule.ratio;
+      hints.aspectKeywordReason = `"${hit}" → ${rule.reason}`;
+      break;
+    }
+  }
+  for (const rule of STYLE_RULES) {
+    const hit = firstHit(prompt, rule.keywords);
+    if (hit) {
+      hints.styleKeyword = { name: rule.styleName, reason: `"${hit.trim()}" → ${rule.reason}` };
+      break;
+    }
+  }
+  hints.detailHit = firstHit(prompt, DETAIL_KEYWORDS);
+  hints.shortVideoHit = firstHit(prompt, SHORT_VIDEO_KEYWORDS);
+  hints.longVideoHit = firstHit(prompt, LONG_VIDEO_KEYWORDS);
+  hints.silentVideoHit = firstHit(prompt, SILENT_VIDEO_KEYWORDS);
+  return hints;
+}
+
+/** Pick the best supported aspect ratio for an image model given a hint. */
+function pickImageAspect(
+  spec: LeonardoImageModelSpec,
+  hint: string | undefined,
+): { aspectRatio: string; width: number; height: number; reason: string; clamped: boolean } {
+  const supported = spec.supported_sizes;
+  // Map "WxH" → "AR" for parsing. Falls back to the spec's own width/height.
+  const sizeToAspect = (sz: string): string | undefined => {
+    const m = sz.match(/^(\d+)x(\d+)$/);
+    if (!m) return undefined;
+    const w = parseInt(m[1], 10);
+    const h = parseInt(m[2], 10);
+    if (w === h) return '1:1';
+    if (w === 1024 && h === 1536) return '2:3';
+    if (w === 1536 && h === 1024) return '3:2';
+    return undefined;
+  };
+  const supportedAspects = new Set<string>();
+  for (const sz of supported) {
+    const a = sizeToAspect(sz);
+    if (a) supportedAspects.add(a);
+  }
+  const wantHint = hint && supportedAspects.has(hint);
+  const chosenAspect = wantHint ? hint : '1:1';
+  const reason = wantHint
+    ? `${hint} supported by this model`
+    : hint
+      ? `${hint} unsupported by this model — fallback to 1:1`
+      : 'default 1:1 (no orientation cue)';
+  // Resolve dims from the matching supported_size string.
+  let width = spec.width;
+  let height = spec.height;
+  for (const sz of supported) {
+    if (sizeToAspect(sz) === chosenAspect) {
+      const m = sz.match(/^(\d+)x(\d+)$/);
+      if (m) {
+        width = parseInt(m[1], 10);
+        height = parseInt(m[2], 10);
+        break;
+      }
+    }
+  }
+  return {
+    aspectRatio: chosenAspect,
+    width,
+    height,
+    reason,
+    clamped: !wantHint && Boolean(hint) && hint !== '1:1',
+  };
+}
+
+/** Build a per-model rule-based suggestion for a single model. */
+function ruleEngineForModel(
+  modelId: string,
+  spec: LeonardoModelSpec,
+  apiName: string,
+  hints: RuleHints,
+  availableStyleNames: Set<string>,
+  carriedNegativePrompt: string | undefined,
+): PerModelSuggestion {
+  if (spec.type === 'image') {
+    const aspect = pickImageAspect(spec, hints.aspectKeywordRatio);
+    const imageSize: '1K' | '2K' = hints.detailHit ? '2K' : '1K';
+
+    let quality: 'LOW' | 'MEDIUM' | 'HIGH' | undefined;
+    let qualityReason: string | undefined;
+    if (spec.quality && spec.quality.length > 0) {
+      quality = hints.detailHit ? 'HIGH' : 'MEDIUM';
+      qualityReason = hints.detailHit
+        ? `"${hints.detailHit}" → HIGH quality`
+        : 'MEDIUM — balanced cost / quality';
+    }
+
+    let style: string | undefined;
+    let styleReason: string | undefined;
+    if (spec.style_ids && hints.styleKeyword && availableStyleNames.has(hints.styleKeyword.name)) {
+      style = hints.styleKeyword.name;
+      styleReason = hints.styleKeyword.reason;
+    }
+
+    const promptEnhance: 'ON' | 'OFF' = spec.prompt_enhance;
+    const reasonParts = [
+      `${aspect.reason}`,
+      `${imageSize} render`,
+      qualityReason,
+      styleReason,
+      `prompt_enhance ${promptEnhance}`,
+    ].filter(Boolean);
+
+    return {
+      type: 'image',
+      modelId,
+      apiName,
+      aspectRatio: aspect.aspectRatio,
+      width: aspect.width,
+      height: aspect.height,
+      imageSize,
+      quality,
+      promptEnhance,
+      style,
+      negativePrompt: carriedNegativePrompt,
+      reason: reasonParts.join('; '),
+      source: 'rules',
+    };
+  }
+
+  // Video model.
+  // Aspect: respect hint when one of {1:1, 9:16, 16:9}; else default 16:9
+  // (the model's native landscape).
+  let aspectRatio = '16:9';
+  let width = 1920;
+  let height = 1080;
+  if (hints.aspectKeywordRatio === '9:16') {
+    aspectRatio = '9:16';
+    width = 1080;
+    height = 1920;
+  } else if (hints.aspectKeywordRatio === '1:1') {
+    aspectRatio = '1:1';
+    width = 1440;
+    height = 1440;
+  }
+
+  let duration = spec.duration;
+  let durationReason = `${duration}s default for ${modelId}`;
+  if (hints.shortVideoHit) {
+    duration = Math.max(3, Math.min(duration, 4));
+    durationReason = `"${hints.shortVideoHit}" → short ${duration}s clip`;
+  } else if (hints.longVideoHit && modelId !== 'kling-o3') {
+    duration = Math.min(15, Math.max(duration, 8));
+    durationReason = `"${hints.longVideoHit}" → ${duration}s extended take`;
+  }
+
+  const mode: 'RESOLUTION_720' | 'RESOLUTION_1080' =
+    spec.mode === 'RESOLUTION_720' ? 'RESOLUTION_720' : 'RESOLUTION_1080';
+
+  let motionHasAudio: boolean | undefined;
+  if (typeof spec.motion_has_audio === 'boolean') {
+    motionHasAudio = hints.silentVideoHit ? false : spec.motion_has_audio;
+  }
+
+  const reasonParts = [
+    `${aspectRatio} ${width}×${height}`,
+    durationReason,
+    mode,
+    motionHasAudio === undefined
+      ? undefined
+      : motionHasAudio
+        ? 'audio on'
+        : `audio off${hints.silentVideoHit ? ` ("${hints.silentVideoHit}")` : ''}`,
+  ].filter(Boolean);
+
+  return {
+    type: 'video',
+    modelId,
+    apiName,
+    aspectRatio,
+    width,
+    height,
+    duration,
+    mode,
+    motionHasAudio,
+    reason: reasonParts.join('; '),
+    source: 'rules',
+  };
+}
+
+// ── Public rule engine ───────────────────────────────────────────────────────
+
 export function suggestParameters(input: SuggestParametersInput): ParamSuggestion {
   const {
     prompt,
@@ -155,38 +413,8 @@ export function suggestParameters(input: SuggestParametersInput): ParamSuggestio
   const promptTokens = tokenize(prompt);
   const excluded = new Set(excludedModelIds);
   const eligible = availableModels.filter(m => !excluded.has(m.id));
-
-  // ── Aspect ratio ──────────────────────────────────────────────────────────
-  let aspectRatio = '1:1';
-  let aspectReason = 'default square — no orientation cue in prompt';
-  for (const rule of ASPECT_RULES) {
-    const hit = firstHit(prompt, rule.keywords);
-    if (hit) {
-      aspectRatio = rule.ratio;
-      aspectReason = `"${hit}" → ${rule.reason}`;
-      break;
-    }
-  }
-
-  // ── Style ─────────────────────────────────────────────────────────────────
-  let style: string | undefined;
-  let styleReason: string | undefined;
+  const hints = deriveHints(prompt);
   const availableStyleNames = new Set(availableStyles.map(s => s.name));
-  for (const rule of STYLE_RULES) {
-    const hit = firstHit(prompt, rule.keywords);
-    if (hit && availableStyleNames.has(rule.styleName)) {
-      style = rule.styleName;
-      styleReason = `"${hit.trim()}" → ${rule.reason}`;
-      break;
-    }
-  }
-
-  // ── Image size ────────────────────────────────────────────────────────────
-  const detailHit = firstHit(prompt, DETAIL_KEYWORDS);
-  const imageSize: '1K' | '2K' = detailHit ? '2K' : '1K';
-  const imageSizeReason = detailHit
-    ? `"${detailHit}" → render at 2K for detail`
-    : 'standard 1K render';
 
   // ── Prior-success mining (Jaccard over prompts) ──────────────────────────
   const winners = savedImages.filter(
@@ -217,11 +445,9 @@ export function suggestParameters(input: SuggestParametersInput): ParamSuggestio
       modelScore.set(id, (modelScore.get(id) ?? 0) + s.score * 10);
     }
   }
-
   const ranked = eligible
     .map(m => ({ id: m.id, score: modelScore.get(m.id) ?? 0 }))
     .sort((a, b) => b.score - a.score);
-
   const wantedCount = Math.max(1, Math.min(topN, ranked.length));
   const modelIds = ranked.slice(0, wantedCount).map(m => m.id);
 
@@ -230,68 +456,77 @@ export function suggestParameters(input: SuggestParametersInput): ParamSuggestio
     : `top ${modelIds.length} by prompt-guide keyword fit`;
 
   // ── Negative prompt (from closest prior winner that had one) ─────────────
-  let negativePrompt: string | undefined;
-  let negativeReason: string | undefined;
+  let carriedNegativePrompt: string | undefined;
+  let carriedNegativeReason: string | undefined;
   const priorWithNeg = scoredWinners.find(s => s.img.negativePrompt?.trim());
   if (priorWithNeg?.img.negativePrompt) {
-    negativePrompt = priorWithNeg.img.negativePrompt;
+    carriedNegativePrompt = priorWithNeg.img.negativePrompt;
     const snippet = priorWithNeg.img.prompt.slice(0, 40);
-    negativeReason = `carried over from prior winner "${snippet}${priorWithNeg.img.prompt.length > 40 ? '…' : ''}"`;
+    carriedNegativeReason = `carried over from prior winner "${snippet}${priorWithNeg.img.prompt.length > 40 ? '…' : ''}"`;
   }
 
-  // ── Per-model spec constraints ────────────────────────────────────────────
-  // The Leonardo v2 API accepts a fixed set of sizes per model. If every
-  // top-ranked model only supports 1024x1024 we override the keyword-
-  // derived ratio to 1:1 so the suggestion matches what the API will
-  // actually accept. Same idea applies to quality: only gpt-image-1.5
-  // exposes LOW/MEDIUM/HIGH today, so we only emit a quality suggestion
-  // when one of the top models has that capability.
-  const topSpecs = modelIds
-    .map(id => modelParams[id])
-    .filter((s): s is LeonardoModelSpec => Boolean(s));
-
-  const imageSpecs = topSpecs.filter(
-    (s): s is Extract<LeonardoModelSpec, { type: 'image' }> => s.type === 'image',
-  );
-  const allOnly1k1k =
-    imageSpecs.length > 0 &&
-    imageSpecs.every(
-      s => s.supported_sizes.length === 1 && s.supported_sizes[0] === '1024x1024',
+  // ── Per-model derivation ─────────────────────────────────────────────────
+  const perModel: Record<string, PerModelSuggestion> = {};
+  for (const id of modelIds) {
+    const spec = modelParams[id];
+    const cfg = availableModels.find(m => m.id === id);
+    const apiName = spec?.api_name ?? cfg?.apiModelId ?? id;
+    if (!spec) continue;
+    perModel[id] = ruleEngineForModel(
+      id,
+      spec,
+      apiName,
+      hints,
+      availableStyleNames,
+      carriedNegativePrompt,
     );
-  if (allOnly1k1k && aspectRatio !== '1:1') {
-    aspectReason = `${aspectRatio} unsupported — ${imageSpecs.map(s => s.api_name ?? '').filter(Boolean).join(', ') || 'selected models'} only accept 1024×1024`;
-    aspectRatio = '1:1';
   }
 
-  // Quality — only meaningful for gpt-image-1.5 (the one model with a
-  // LOW/MEDIUM/HIGH knob). Detail keywords in the prompt push it to HIGH;
-  // everything else stays MEDIUM.
+  // ── "Best shared" view ───────────────────────────────────────────────────
+  // The legacy apply path writes a single shared GenerateOptions; we
+  // derive that from the highest-ranked per-model entry so the UI keeps
+  // working without a per-model state migration. The per-model values
+  // remain in `perModel` for the new card to render.
+  const firstId = modelIds[0];
+  const first = firstId ? perModel[firstId] : undefined;
+
+  let aspectRatio = '1:1';
+  let aspectReason = 'default 1:1';
+  let imageSize: '1K' | '2K' = '1K';
+  let imageSizeReason = 'standard 1K render';
   let quality: 'LOW' | 'MEDIUM' | 'HIGH' | undefined;
   let qualityReason: string | undefined;
-  const modelWithQuality = imageSpecs.find(s => s.quality && s.quality.length > 0);
-  if (modelWithQuality) {
-    quality = detailHit ? 'HIGH' : 'MEDIUM';
-    qualityReason = detailHit
-      ? `"${detailHit}" → HIGH quality for detail rendering`
-      : 'MEDIUM — default for balanced cost / quality';
-  }
-
-  // V030-008: prompt_enhance defaults to ON when any image model is in
-  // the shortlist. Maurice's standing directive — let Leonardo auto-
-  // improve prompts unless the user explicitly opts out.
   let promptEnhance: 'ON' | 'OFF' | undefined;
   let promptEnhanceReason: string | undefined;
-  if (imageSpecs.length > 0) {
-    promptEnhance = 'ON';
-    promptEnhanceReason = 'ON by default — Leonardo auto-enhances prompts for richer output';
+  let style: string | undefined;
+  let styleReason: string | undefined;
+
+  if (first) {
+    aspectRatio = first.aspectRatio;
+    aspectReason = `${first.modelId}: ${first.reason.split(';')[0]?.trim() || first.aspectRatio}`;
+    if (first.type === 'image') {
+      imageSize = first.imageSize;
+      imageSizeReason = first.imageSize === '2K' ? `"${hints.detailHit}" → 2K` : 'standard 1K render';
+      quality = first.quality;
+      qualityReason = first.quality
+        ? hints.detailHit
+          ? `"${hints.detailHit}" → ${first.quality}`
+          : `${first.quality} — balanced cost / quality`
+        : undefined;
+      promptEnhance = first.promptEnhance;
+      promptEnhanceReason = `prompt_enhance ${first.promptEnhance}`;
+      style = first.style;
+      styleReason = first.style ? hints.styleKeyword?.reason : undefined;
+    }
   }
 
   return {
     modelIds,
+    perModel,
     aspectRatio,
     style,
     imageSize,
-    negativePrompt,
+    negativePrompt: carriedNegativePrompt,
     quality,
     promptEnhance,
     reasons: {
@@ -299,7 +534,7 @@ export function suggestParameters(input: SuggestParametersInput): ParamSuggestio
       aspectRatio: aspectReason,
       style: styleReason,
       imageSize: imageSizeReason,
-      negativePrompt: negativeReason,
+      negativePrompt: carriedNegativeReason,
       quality: qualityReason,
       promptEnhance: promptEnhanceReason,
     },
@@ -308,34 +543,439 @@ export function suggestParameters(input: SuggestParametersInput): ParamSuggestio
   };
 }
 
-// ── V030-008: AI-driven suggestion via pi.dev ────────────────────────────────
+// ── V030-008: AI-driven per-model suggestion via pi.dev ──────────────────────
 
 export interface SuggestParametersAIOptions {
   /** AbortSignal passed through to fetch. */
   signal?: AbortSignal;
   /**
    * Override the AI caller. Defaults to streamAIToString from aiClient.
-   * Exposed so tests can inject a canned response without touching
-   * fetch / the network.
+   * Receives the per-model prompt — tests inject a canned response keyed
+   * on which model is being evaluated.
    */
   aiCall?: (prompt: string, signal?: AbortSignal) => Promise<string>;
-  /**
-   * Override the fallback engine. Defaults to suggestParameters.
-   * Exposed for tests.
-   */
+  /** Override the fallback engine. Defaults to suggestParameters. */
   fallback?: (input: SuggestParametersInput) => ParamSuggestion;
 }
 
 /**
- * Build the compact compatibility matrix we hand to pi. Keeps the
- * token budget small by stripping fields the AI doesn't need to
- * reason about (e.g. uuids).
+ * Per-model pi prompt. Gives pi ONLY this model's API doc slice plus
+ * the user's idea, prior winners on this model, and the available
+ * style names. pi answers with that model's optimal parameters as a
+ * JSON object.
  */
-function buildModelMatrix(
-  eligible: readonly LeonardoModelConfig[],
-  modelParams: Record<string, LeonardoModelSpec>,
-): Array<Record<string, unknown>> {
-  return eligible.map(m => {
+export function buildPerModelPromptPayload(args: {
+  prompt: string;
+  modelId: string;
+  apiName: string;
+  spec: LeonardoModelSpec;
+  apiDocSlice: string;
+  availableStyles: { name: string; uuid: string }[];
+  priorWinnersOnThisModel: Array<Record<string, unknown>>;
+}): string {
+  const { prompt, modelId, apiName, spec, apiDocSlice, availableStyles, priorWinnersOnThisModel } = args;
+  const styleNames = availableStyles.map(s => s.name);
+  const isImage = spec.type === 'image';
+
+  const responseShape = isImage
+    ? [
+        '{',
+        '  "aspectRatio": "1:1" | "2:3" | "3:2" | ... (must be one this model supports),',
+        '  "imageSize": "1K" | "2K",',
+        '  "quality": "LOW" | "MEDIUM" | "HIGH",     // omit if this model has no quality knob',
+        '  "promptEnhance": "ON" | "OFF",            // default ON',
+        '  "style": "<style name from AVAILABLE STYLE NAMES, or omit>",',
+        '  "negativePrompt": "<optional>",',
+        '  "reason": "<1-2 sentences explaining why these settings fit THIS model for THIS idea>"',
+        '}',
+      ].join('\n')
+    : [
+        '{',
+        '  "aspectRatio": "16:9" | "1:1" | "9:16",',
+        '  "duration": <integer seconds within the model\'s allowed range>,',
+        '  "mode": "RESOLUTION_720" | "RESOLUTION_1080",',
+        '  "motionHasAudio": true | false,           // omit if model does not expose audio',
+        '  "reason": "<1-2 sentences explaining why these settings fit THIS model for THIS idea>"',
+        '}',
+      ].join('\n');
+
+  return [
+    `You are tuning Leonardo.AI parameters for a single model: ${modelId} (API: ${apiName}).`,
+    'You are NOT choosing a model. The model is fixed. Your job is to read the',
+    "API DOC SLICE below and pick this model's optimal parameters for the user's idea.",
+    '',
+    `USER IDEA:\n${prompt || '(empty)'}`,
+    '',
+    `MODEL: ${modelId} (API: ${apiName}; type: ${spec.type})`,
+    '--- BEGIN API DOC SLICE ---',
+    apiDocSlice,
+    '--- END API DOC SLICE ---',
+    '',
+    isImage
+      ? [
+          'AVAILABLE STYLE NAMES — return ONE name from this list verbatim, or omit.',
+          'CRITICAL: return the human-readable NAME (e.g. "Pro Color Photography").',
+          'Do NOT return a UUID. The app maps the name → UUID before calling Leonardo.',
+          `Names: ${JSON.stringify(styleNames)}`,
+        ].join('\n')
+      : 'STYLES: not applicable to video models.',
+    '',
+    'PRIOR WINNERS GENERATED BY THIS MODEL ON SIMILAR IDEAS (calibration):',
+    JSON.stringify(priorWinnersOnThisModel, null, 2),
+    '',
+    'HARD CONSTRAINTS:',
+    '- Choose only values the API DOC SLICE explicitly accepts for THIS model.',
+    '- If this model does not expose a knob, OMIT that field — do not invent values.',
+    '- Aspect ratio / dimensions must be one of the supported sizes in the slice above.',
+    isImage
+      ? '- imageSize is "1K" or "2K" only. quality is LOW/MEDIUM/HIGH only when the model exposes it.'
+      : '- duration must be within the model\'s allowed range from the slice (read carefully).',
+    '',
+    'Return ONLY a JSON object with this shape, no code fences, no commentary:',
+    responseShape,
+  ].join('\n');
+}
+
+interface PerModelAIResponse {
+  aspectRatio?: unknown;
+  imageSize?: unknown;
+  quality?: unknown;
+  promptEnhance?: unknown;
+  style?: unknown;
+  negativePrompt?: unknown;
+  duration?: unknown;
+  mode?: unknown;
+  motionHasAudio?: unknown;
+  reason?: unknown;
+}
+
+function pickString(v: unknown): string | undefined {
+  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * V030-008 style-UUID safety net. The pi.dev contract demands a NAME
+ * from AVAILABLE STYLE NAMES, not a UUID. If pi disobeys and returns
+ * a UUID anyway, look it up in the available styles list and translate
+ * back to the canonical NAME — the rest of the pipeline (
+ * `useComparison.ts` / `useImageGeneration.ts`) does name → UUID
+ * resolution before hitting `/api/leonardo`, so we must hand it a name.
+ */
+function resolveStyleAlias(
+  raw: string | undefined,
+  availableStyles: { name: string; uuid: string }[],
+): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (UUID_RE.test(trimmed)) {
+    const match = availableStyles.find(s => s.uuid.toLowerCase() === trimmed.toLowerCase());
+    return match?.name;
+  }
+  // Exact name match (case-sensitive first, then case-insensitive).
+  const exact = availableStyles.find(s => s.name === trimmed);
+  if (exact) return exact.name;
+  const ci = availableStyles.find(s => s.name.toLowerCase() === trimmed.toLowerCase());
+  return ci?.name;
+}
+
+/** Resolve dimensions for an aspect ratio against an image model's supported_sizes list. */
+function resolveImageDims(
+  spec: LeonardoImageModelSpec,
+  aspectRatio: string,
+): { width: number; height: number } {
+  for (const sz of spec.supported_sizes) {
+    const m = sz.match(/^(\d+)x(\d+)$/);
+    if (!m) continue;
+    const w = parseInt(m[1], 10);
+    const h = parseInt(m[2], 10);
+    const ar = w === h ? '1:1' : w === 1024 && h === 1536 ? '2:3' : w === 1536 && h === 1024 ? '3:2' : undefined;
+    if (ar === aspectRatio) return { width: w, height: h };
+  }
+  return { width: spec.width, height: spec.height };
+}
+
+function mergePerModelAI(
+  modelId: string,
+  apiName: string,
+  spec: LeonardoModelSpec,
+  parsed: PerModelAIResponse | null,
+  fallback: PerModelSuggestion,
+  availableStyles: { name: string; uuid: string }[],
+): PerModelSuggestion {
+  const availableStyleNames = new Set(availableStyles.map(s => s.name));
+  if (!parsed) return fallback;
+  if (spec.type === 'image' && fallback.type === 'image') {
+    let blendedSource: SuggestionSource = 'ai';
+    const aspectRatio = pickString(parsed.aspectRatio) ?? fallback.aspectRatio;
+    if (!pickString(parsed.aspectRatio)) blendedSource = 'ai+rules';
+    const dims = resolveImageDims(spec, aspectRatio);
+
+    const sizeCandidate = pickString(parsed.imageSize);
+    const imageSize: '1K' | '2K' =
+      sizeCandidate === '1K' || sizeCandidate === '2K' ? sizeCandidate : fallback.imageSize;
+    if (!sizeCandidate) blendedSource = 'ai+rules';
+
+    const qualityCandidate = pickString(parsed.quality);
+    let quality: 'LOW' | 'MEDIUM' | 'HIGH' | undefined;
+    if (
+      spec.quality &&
+      (qualityCandidate === 'LOW' || qualityCandidate === 'MEDIUM' || qualityCandidate === 'HIGH')
+    ) {
+      quality = qualityCandidate;
+    } else {
+      quality = fallback.quality;
+    }
+
+    const peCandidate = pickString(parsed.promptEnhance)?.toUpperCase();
+    const promptEnhance: 'ON' | 'OFF' =
+      peCandidate === 'ON' || peCandidate === 'OFF' ? peCandidate : fallback.promptEnhance;
+
+    // Style: pi MUST return a name. If it returns a UUID anyway,
+    // resolveStyleAlias maps it back to the canonical name. Anything
+    // not in the available set (after alias resolution) is dropped.
+    let style: string | undefined;
+    if (spec.style_ids) {
+      const raw = pickString(parsed.style);
+      const resolved = resolveStyleAlias(raw, availableStyles);
+      if (resolved && availableStyleNames.has(resolved)) style = resolved;
+    }
+    const finalStyle = style ?? fallback.style;
+
+    const negativePrompt = pickString(parsed.negativePrompt) ?? fallback.negativePrompt;
+
+    const reason = pickString(parsed.reason) ?? fallback.reason;
+    if (!pickString(parsed.reason)) blendedSource = 'ai+rules';
+
+    return {
+      type: 'image',
+      modelId,
+      apiName,
+      aspectRatio,
+      width: dims.width,
+      height: dims.height,
+      imageSize,
+      quality,
+      promptEnhance,
+      style: finalStyle,
+      negativePrompt,
+      reason,
+      source: blendedSource,
+    };
+  }
+
+  if (spec.type === 'video' && fallback.type === 'video') {
+    let blendedSource: SuggestionSource = 'ai';
+    const aspectRatio = pickString(parsed.aspectRatio) ?? fallback.aspectRatio;
+    if (!pickString(parsed.aspectRatio)) blendedSource = 'ai+rules';
+
+    let width = fallback.width;
+    let height = fallback.height;
+    if (aspectRatio === '9:16') {
+      width = 1080;
+      height = 1920;
+    } else if (aspectRatio === '1:1') {
+      width = 1440;
+      height = 1440;
+    } else if (aspectRatio === '16:9') {
+      width = 1920;
+      height = 1080;
+    }
+
+    const durationCandidate =
+      typeof parsed.duration === 'number' && Number.isFinite(parsed.duration)
+        ? parsed.duration
+        : undefined;
+    const duration = durationCandidate ?? fallback.duration;
+    if (durationCandidate === undefined) blendedSource = 'ai+rules';
+
+    const modeCandidate = pickString(parsed.mode);
+    const mode: 'RESOLUTION_720' | 'RESOLUTION_1080' =
+      modeCandidate === 'RESOLUTION_720' || modeCandidate === 'RESOLUTION_1080'
+        ? modeCandidate
+        : fallback.mode;
+
+    let motionHasAudio: boolean | undefined;
+    if (typeof parsed.motionHasAudio === 'boolean') {
+      motionHasAudio = parsed.motionHasAudio;
+    } else {
+      motionHasAudio = fallback.motionHasAudio;
+    }
+
+    const reason = pickString(parsed.reason) ?? fallback.reason;
+    if (!pickString(parsed.reason)) blendedSource = 'ai+rules';
+
+    return {
+      type: 'video',
+      modelId,
+      apiName,
+      aspectRatio,
+      width,
+      height,
+      duration,
+      mode,
+      motionHasAudio,
+      reason,
+      source: blendedSource,
+    };
+  }
+
+  return fallback;
+}
+
+async function defaultAiCall(prompt: string, signal?: AbortSignal): Promise<string> {
+  return streamAIToString(prompt, { mode: 'generate', signal });
+}
+
+/**
+ * Per-model AI suggestion. Picks the model shortlist via the rule
+ * engine, then runs one pi.dev call per model in parallel — each call
+ * sees only that model's API doc slice. Per-model failures fall back
+ * to the rule engine's perModel entry. The "best shared" view is
+ * derived from the first model's resolved suggestion so the legacy
+ * apply path (single shared GenerateOptions) keeps working.
+ */
+export async function suggestParametersAI(
+  input: SuggestParametersInput,
+  options: SuggestParametersAIOptions = {},
+): Promise<ParamSuggestion> {
+  const fallbackFn = options.fallback ?? suggestParameters;
+  const fallback = fallbackFn(input);
+  const caller = options.aiCall ?? defaultAiCall;
+
+  const modelParams = input.modelParams ?? LEONARDO_MODEL_PARAMS;
+
+  const promptTokens = tokenize(input.prompt);
+  const winners = input.savedImages.filter(
+    img => (img.winner || img.approved || img.isPostReady) && img.modelInfo?.modelId,
+  );
+
+  const perModelEntries = await Promise.all(
+    fallback.modelIds.map(async modelId => {
+      const spec = modelParams[modelId];
+      const fbEntry = fallback.perModel[modelId];
+      if (!spec || !fbEntry) return null;
+
+      const apiDocSlice = LEONARDO_API_DOCS_BY_MODEL[modelId];
+      if (!apiDocSlice) return [modelId, fbEntry] as const;
+
+      const cfg = input.availableModels.find(m => m.id === modelId);
+      const apiName = spec.api_name ?? cfg?.apiModelId ?? modelId;
+
+      const priorOnThis = winners
+        .filter(w => w.modelInfo?.modelId === modelId)
+        .map(w => ({ img: w, score: jaccard(promptTokens, tokenize(w.prompt)) }))
+        .filter(s => s.score > 0.1)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3)
+        .map(s => ({
+          prompt: s.img.prompt.slice(0, 140),
+          style: s.img.style,
+          aspectRatio: s.img.aspectRatio,
+          negativePrompt: s.img.negativePrompt,
+        }));
+
+      const promptPayload = buildPerModelPromptPayload({
+        prompt: input.prompt,
+        modelId,
+        apiName,
+        spec,
+        apiDocSlice,
+        availableStyles: input.availableStyles,
+        priorWinnersOnThisModel: priorOnThis,
+      });
+
+      let raw: string;
+      try {
+        raw = await caller(promptPayload, options.signal);
+      } catch {
+        return [modelId, fbEntry] as const;
+      }
+
+      const parsed = extractJsonObjectFromLLM(raw) as PerModelAIResponse | null;
+      if (!parsed || Object.keys(parsed).length === 0) {
+        return [modelId, fbEntry] as const;
+      }
+
+      const merged = mergePerModelAI(modelId, apiName, spec, parsed, fbEntry, input.availableStyles);
+      return [modelId, merged] as const;
+    }),
+  );
+
+  const perModel: Record<string, PerModelSuggestion> = {};
+  let aiHits = 0;
+  let aiPartial = 0;
+  for (const entry of perModelEntries) {
+    if (!entry) continue;
+    const [id, sug] = entry;
+    perModel[id] = sug;
+    if (sug.source === 'ai') aiHits++;
+    else if (sug.source === 'ai+rules') aiPartial++;
+  }
+
+  // Roll up overall source: all-ai → 'ai', any-ai → 'ai+rules', else 'rules'.
+  let overallSource: SuggestionSource = 'rules';
+  const total = Object.keys(perModel).length;
+  if (total > 0) {
+    if (aiHits === total) overallSource = 'ai';
+    else if (aiHits + aiPartial > 0) overallSource = 'ai+rules';
+  }
+
+  // Derive best-shared view from the highest-ranked model's resolved suggestion.
+  const firstId = fallback.modelIds[0];
+  const first = firstId ? perModel[firstId] : undefined;
+
+  const aspectRatio = first?.aspectRatio ?? fallback.aspectRatio;
+  const imageSize: '1K' | '2K' = first && first.type === 'image' ? first.imageSize : fallback.imageSize;
+  const quality = first && first.type === 'image' ? first.quality : fallback.quality;
+  const promptEnhance = first && first.type === 'image' ? first.promptEnhance : fallback.promptEnhance;
+  const style = first && first.type === 'image' ? first.style : fallback.style;
+  const negativePrompt =
+    first && first.type === 'image' ? first.negativePrompt : fallback.negativePrompt;
+
+  // Synthesise a 1-2 sentence "overall" reason from the per-model reasons.
+  const overall =
+    Object.values(perModel)
+      .map(s => `${s.modelId}: ${s.reason}`)
+      .join(' ')
+      .slice(0, 480) || undefined;
+
+  return {
+    modelIds: fallback.modelIds,
+    perModel,
+    aspectRatio,
+    style,
+    imageSize,
+    negativePrompt,
+    quality,
+    promptEnhance,
+    reasons: {
+      ...fallback.reasons,
+      overall,
+    },
+    priorMatchCount: fallback.priorMatchCount,
+    source: overallSource,
+  };
+}
+
+// ── Legacy export retained for the old test that still references it ─────────
+// `buildAIPromptPayload` was the global one-shot prompt; the new path uses
+// `buildPerModelPromptPayload` per model. We keep the old helper around for
+// any caller that wants the holistic catalog.
+export function buildAIPromptPayload(input: SuggestParametersInput): string {
+  const {
+    prompt,
+    availableModels,
+    availableStyles,
+    excludedModelIds = ['nano-banana'],
+    modelParams = LEONARDO_MODEL_PARAMS,
+    topN = 2,
+  } = input;
+  const excluded = new Set(excludedModelIds);
+  const eligible = availableModels.filter(m => !excluded.has(m.id));
+  const matrix = eligible.map(m => {
     const spec = modelParams[m.id];
     const base: Record<string, unknown> = {
       id: m.id,
@@ -356,267 +996,19 @@ function buildModelMatrix(
     }
     return base;
   });
-}
-
-/** Pull the most relevant recent winners in a compact form for the prompt. */
-function summarizeWinners(savedImages: readonly GeneratedImage[], promptTokens: Set<string>) {
-  const winners = savedImages.filter(
-    img => (img.winner || img.approved || img.isPostReady) && img.modelInfo?.modelId,
-  );
-  return winners
-    .map(img => ({ img, score: jaccard(promptTokens, tokenize(img.prompt)) }))
-    .filter(s => s.score > 0.1)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
-    .map(s => ({
-      prompt: s.img.prompt.slice(0, 140),
-      model: s.img.modelInfo?.modelId,
-      style: s.img.style,
-      aspectRatio: s.img.aspectRatio,
-      negativePrompt: s.img.negativePrompt,
-    }));
-}
-
-interface AIResponseShape {
-  modelIds?: unknown;
-  aspectRatio?: unknown;
-  style?: unknown;
-  imageSize?: unknown;
-  quality?: unknown;
-  negativePrompt?: unknown;
-  promptEnhance?: unknown;
-  reasoning?: unknown;
-  reasons?: unknown;
-}
-
-function pickString(v: unknown): string | undefined {
-  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
-}
-
-/**
- * Normalize pi's JSON blob against the `ParamSuggestion` shape. Any
- * field the AI omits or mangles is back-filled from the deterministic
- * fallback. Returned suggestion's `source` reflects whether the AI
- * provided every field (`ai`) or we had to stitch (`ai+rules`).
- */
-function mergeAIWithFallback(
-  parsed: AIResponseShape,
-  fallback: ParamSuggestion,
-  allowedModelIds: readonly string[],
-  allowedStyles: readonly string[],
-): ParamSuggestion {
-  let blendedSource: SuggestionSource = 'ai';
-
-  const modelIds = Array.isArray(parsed.modelIds)
-    ? parsed.modelIds
-        .filter((x): x is string => typeof x === 'string')
-        .filter(id => allowedModelIds.includes(id))
-    : [];
-  const finalModelIds = modelIds.length > 0 ? modelIds : fallback.modelIds;
-  if (modelIds.length === 0) blendedSource = 'ai+rules';
-
-  const aspectRatio = pickString(parsed.aspectRatio) ?? fallback.aspectRatio;
-  if (!pickString(parsed.aspectRatio)) blendedSource = 'ai+rules';
-
-  let style = pickString(parsed.style);
-  if (style && !allowedStyles.includes(style)) style = undefined;
-  const finalStyle = style ?? fallback.style;
-
-  const sizeCandidate = pickString(parsed.imageSize);
-  const imageSize: '1K' | '2K' =
-    sizeCandidate === '1K' || sizeCandidate === '2K' ? sizeCandidate : fallback.imageSize;
-  if (imageSize !== sizeCandidate) blendedSource = blendedSource === 'ai' ? blendedSource : 'ai+rules';
-
-  const qualityCandidate = pickString(parsed.quality);
-  let quality: 'LOW' | 'MEDIUM' | 'HIGH' | undefined;
-  if (qualityCandidate === 'LOW' || qualityCandidate === 'MEDIUM' || qualityCandidate === 'HIGH') {
-    quality = qualityCandidate;
-  } else {
-    quality = fallback.quality;
-  }
-
-  const peCandidate = pickString(parsed.promptEnhance)?.toUpperCase();
-  const promptEnhance: 'ON' | 'OFF' | undefined =
-    peCandidate === 'ON' || peCandidate === 'OFF' ? peCandidate : fallback.promptEnhance;
-
-  const negativePrompt = pickString(parsed.negativePrompt) ?? fallback.negativePrompt;
-
-  const reasoningRaw =
-    (parsed.reasoning && typeof parsed.reasoning === 'object'
-      ? (parsed.reasoning as Record<string, unknown>)
-      : undefined) ??
-    (parsed.reasons && typeof parsed.reasons === 'object'
-      ? (parsed.reasons as Record<string, unknown>)
-      : undefined);
-
-  const reasons: ParamSuggestionReasons = reasoningRaw
-    ? {
-        models:
-          pickString(reasoningRaw.models) ??
-          pickString(reasoningRaw.model) ??
-          fallback.reasons.models,
-        aspectRatio:
-          pickString(reasoningRaw.aspectRatio) ??
-          pickString(reasoningRaw.ratio) ??
-          fallback.reasons.aspectRatio,
-        style: pickString(reasoningRaw.style) ?? fallback.reasons.style,
-        imageSize:
-          pickString(reasoningRaw.imageSize) ??
-          pickString(reasoningRaw.size) ??
-          fallback.reasons.imageSize,
-        negativePrompt:
-          pickString(reasoningRaw.negativePrompt) ?? fallback.reasons.negativePrompt,
-        quality: pickString(reasoningRaw.quality) ?? fallback.reasons.quality,
-        promptEnhance:
-          pickString(reasoningRaw.promptEnhance) ?? fallback.reasons.promptEnhance,
-        overall:
-          pickString(reasoningRaw.overall) ??
-          pickString(reasoningRaw.summary) ??
-          pickString(reasoningRaw.explanation),
-      }
-    : { ...fallback.reasons };
-
-  if (!reasoningRaw) blendedSource = 'ai+rules';
-
-  return {
-    modelIds: finalModelIds,
-    aspectRatio,
-    style: finalStyle,
-    imageSize,
-    negativePrompt,
-    quality,
-    promptEnhance,
-    reasons,
-    priorMatchCount: fallback.priorMatchCount,
-    source: blendedSource,
-  };
-}
-
-/**
- * Build the user-facing message we send to pi. Kept as a bare string
- * so callers (tests in particular) can inspect it.
- */
-export function buildAIPromptPayload(input: SuggestParametersInput): string {
-  const {
-    prompt,
-    availableModels,
-    availableStyles,
-    savedImages,
-    excludedModelIds = ['nano-banana'],
-    modelParams = LEONARDO_MODEL_PARAMS,
-    topN = 2,
-  } = input;
-
-  const excluded = new Set(excludedModelIds);
-  const eligible = availableModels.filter(m => !excluded.has(m.id));
-  const matrix = buildModelMatrix(eligible, modelParams);
-  const priors = summarizeWinners(savedImages, tokenize(prompt));
   const styleNames = availableStyles.map(s => s.name);
-
   return [
     'You are the Leonardo.AI model-selection reasoner for MashupForge.',
-    'A user has a creative idea. Your job is to READ the MODEL DATABASE',
-    'below and SELECT the single best model (or a small shortlist) whose',
-    'capabilities fit the idea, then propose the parameters that model',
-    'accepts. You are choosing the model, not just filling a form.',
-    '',
     `USER IDEA:\n${prompt || '(empty)'}`,
     '',
-    'MODEL DATABASE — authoritative catalog of what each model supports.',
-    'These are PARAMETER SPECS (options each model accepts), not templates.',
-    'Ignore any example-style language; reason only about the options.',
-    '--- BEGIN MODEL DATABASE ---',
+    'MODEL DATABASE:',
     LEONARDO_API_DOCS,
-    '--- END MODEL DATABASE ---',
     '',
-    'IN-APP ELIGIBILITY (only these ids may appear in modelIds; nano-banana',
-    'legacy is already excluded upstream):',
-    JSON.stringify(matrix, null, 2),
-    '',
-    `AVAILABLE STYLE NAMES (pick one exactly, or omit): ${JSON.stringify(styleNames)}`,
-    '',
-    'PRIOR WINNERS ON SIMILAR IDEAS (calibration signal — do not blindly copy):',
-    JSON.stringify(priors, null, 2),
-    '',
-    'HOW TO REASON:',
-    `1. Identify what the idea actually needs (subject, medium, motion,`,
-    `   aspect, detail, reference images).`,
-    `2. Scan the MODEL DATABASE — which models can deliver that? Pick`,
-    `   up to ${topN} best-fit ids from the IN-APP ELIGIBILITY list.`,
-    `3. Choose parameters each chosen model actually accepts (check its`,
-    `   section in the database — supported dimensions, quality levels,`,
-    `   duration, style_ids, guidances).`,
-    `4. In reasoning.overall, explain WHY this model fits this idea in`,
-    `   1-2 sentences (e.g. "Nano Banana Pro handles cinematic portraits`,
-    `   at 1024×1024 with rich style_ids, which matches the crossover art").`,
+    `IN-APP ELIGIBILITY (top ${topN}): ${JSON.stringify(matrix, null, 2)}`,
+    `AVAILABLE STYLE NAMES: ${JSON.stringify(styleNames)}`,
     '',
     'HARD CONSTRAINTS:',
-    '- modelIds must appear in the IN-APP ELIGIBILITY list above.',
-    '- Aspect ratio must be one the chosen models actually support per the',
-    '  MODEL DATABASE. If every chosen model only supports 1024×1024,',
-    '  aspectRatio MUST be "1:1".',
-    '- quality (LOW/MEDIUM/HIGH) applies only if a chosen model exposes it',
-    '  (per the database — today only gpt-image-1.5).',
-    '- imageSize is "1K" or "2K" only.',
-    '- style must be exactly one of AVAILABLE STYLE NAMES, or omitted.',
-    '- promptEnhance defaults to "ON" — only set to "OFF" when the idea is',
-    '  already a long, hand-engineered prompt.',
-    '',
-    'Return ONLY a JSON object with this shape, no code fences, no commentary:',
-    '{',
-    '  "modelIds": ["..."],',
-    '  "aspectRatio": "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "3:4" | "4:3" | "4:5" | "5:4",',
-    '  "style": "<style name or omit>",',
-    '  "imageSize": "1K" | "2K",',
-    '  "quality": "LOW" | "MEDIUM" | "HIGH",   // omit when not applicable',
-    '  "promptEnhance": "ON" | "OFF",           // default ON',
-    '  "negativePrompt": "<optional>",',
-    '  "reasoning": {',
-    '    "overall": "<1-2 sentence paragraph explaining why this model fits this idea>",',
-    '    "models": "<why these models>",',
-    '    "aspectRatio": "<why this ratio>",',
-    '    "style": "<why this style, if any>",',
-    '    "imageSize": "<why this size>",',
-    '    "quality": "<why this quality, if applicable>",',
-    '    "promptEnhance": "<why ON or OFF>",',
-    '    "negativePrompt": "<why this negative prompt, if any>"',
-    '  }',
-    '}',
+    '- modelIds must appear in IN-APP ELIGIBILITY.',
+    '- Quality LOW | MEDIUM | HIGH only when supported.',
   ].join('\n');
-}
-
-async function defaultAiCall(prompt: string, signal?: AbortSignal): Promise<string> {
-  return streamAIToString(prompt, { mode: 'generate', signal });
-}
-
-/**
- * Ask pi.dev to reason about optimal parameters and return a structured
- * ParamSuggestion. On any failure (network error, thrown in stream,
- * malformed JSON, empty modelIds) falls back to the rule-based engine.
- */
-export async function suggestParametersAI(
-  input: SuggestParametersInput,
-  options: SuggestParametersAIOptions = {},
-): Promise<ParamSuggestion> {
-  const fallbackFn = options.fallback ?? suggestParameters;
-  const fallback = fallbackFn(input);
-  const caller = options.aiCall ?? defaultAiCall;
-
-  const excluded = new Set(input.excludedModelIds ?? ['nano-banana']);
-  const allowedModelIds = input.availableModels
-    .filter(m => !excluded.has(m.id))
-    .map(m => m.id);
-  const allowedStyles = input.availableStyles.map(s => s.name);
-
-  let raw: string;
-  try {
-    raw = await caller(buildAIPromptPayload(input), options.signal);
-  } catch {
-    return fallback;
-  }
-
-  const parsed = extractJsonObjectFromLLM(raw) as AIResponseShape;
-  if (!parsed || Object.keys(parsed).length === 0) return fallback;
-
-  return mergeAIWithFallback(parsed, fallback, allowedModelIds, allowedStyles);
 }

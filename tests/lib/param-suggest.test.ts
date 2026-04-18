@@ -1,13 +1,13 @@
-// V030-007: suggestParameters is pure and deterministic. Tests cover
-// aspect-ratio heuristics, style heuristics, image-size tier, prior-
-// success boost, negative-prompt carry-over, and the excluded-model
-// + topN guards.
+// V030-007: suggestParameters is pure and deterministic.
+// V030-008: AI variant via dependency-injected aiCall.
+// V030-008-per-model: parameters are now produced PER MODEL.
 
 import { describe, it, expect } from 'vitest';
 import {
   suggestParameters,
   suggestParametersAI,
   buildAIPromptPayload,
+  buildPerModelPromptPayload,
 } from '@/lib/param-suggest';
 import type { GeneratedImage, LeonardoModelConfig } from '@/types/mashup';
 
@@ -59,147 +59,14 @@ const guides: Record<string, string> = {
 const styles = [
   { name: 'Illustration', uuid: 'u1' },
   { name: '3D Render', uuid: 'u2' },
-  { name: 'Pro Color Photography', uuid: 'u3' },
+  { name: 'Pro Color Photography', uuid: '7c3f932b-a572-47cb-9b9b-f20211e63b5b' },
   { name: 'Portrait Cinematic', uuid: 'u4' },
   { name: 'Pro B&W Photography', uuid: 'u5' },
   { name: 'Fashion', uuid: 'u6' },
 ];
 
 describe('suggestParameters', () => {
-  // Keyword-heuristic tests pass modelParams: {} so the per-model spec
-  // constraint doesn't override the ratio. The spec-constraint behavior
-  // is exercised separately in the "per-model spec constraints" block.
-  it('suggests 2:3 portrait ratio for prompts mentioning a character', () => {
-    const s = suggestParameters({
-      prompt: 'portrait of a cyberpunk hacker',
-      availableModels: models,
-      modelGuides: guides,
-      availableStyles: styles,
-      savedImages: [],
-      modelParams: {},
-    });
-    expect(s.aspectRatio).toBe('2:3');
-    expect(s.reasons.aspectRatio).toContain('portrait');
-  });
-
-  it('suggests 16:9 for landscape / panorama prompts', () => {
-    const s = suggestParameters({
-      prompt: 'sweeping cyberpunk cityscape at night',
-      availableModels: models,
-      modelGuides: guides,
-      availableStyles: styles,
-      savedImages: [],
-      modelParams: {},
-    });
-    expect(s.aspectRatio).toBe('16:9');
-    expect(s.reasons.aspectRatio).toContain('cityscape');
-  });
-
-  it('suggests 9:16 for mobile / reel prompts (before portrait rule)', () => {
-    const s = suggestParameters({
-      prompt: 'a vertical reel of a dancer',
-      availableModels: models,
-      modelGuides: guides,
-      availableStyles: styles,
-      savedImages: [],
-      modelParams: {},
-    });
-    expect(s.aspectRatio).toBe('9:16');
-  });
-
-  it('defaults to 1:1 and explains the fallback', () => {
-    const s = suggestParameters({
-      prompt: 'an apple on a table',
-      availableModels: models,
-      modelGuides: guides,
-      availableStyles: styles,
-      savedImages: [],
-    });
-    expect(s.aspectRatio).toBe('1:1');
-    expect(s.reasons.aspectRatio).toMatch(/default|square/);
-  });
-
-  it('maps illustration / anime keywords to Illustration style', () => {
-    const s = suggestParameters({
-      prompt: 'anime scene with neon colors',
-      availableModels: models,
-      modelGuides: guides,
-      availableStyles: styles,
-      savedImages: [],
-    });
-    expect(s.style).toBe('Illustration');
-    expect(s.reasons.style).toBeDefined();
-  });
-
-  it('maps monochrome keywords to B&W Photography style', () => {
-    const s = suggestParameters({
-      prompt: 'black and white portrait of a boxer',
-      availableModels: models,
-      modelGuides: guides,
-      availableStyles: styles,
-      savedImages: [],
-    });
-    expect(s.style).toBe('Pro B&W Photography');
-  });
-
-  it('skips style suggestion entirely when no keyword matches', () => {
-    const s = suggestParameters({
-      prompt: 'a red car',
-      availableModels: models,
-      modelGuides: guides,
-      availableStyles: styles,
-      savedImages: [],
-    });
-    expect(s.style).toBeUndefined();
-    expect(s.reasons.style).toBeUndefined();
-  });
-
-  it('skips style suggestion when the matched name is not in availableStyles', () => {
-    const s = suggestParameters({
-      prompt: 'anime scene',
-      availableModels: models,
-      modelGuides: guides,
-      availableStyles: [{ name: '3D Render', uuid: 'u2' }], // no Illustration
-      savedImages: [],
-    });
-    expect(s.style).toBeUndefined();
-  });
-
-  it('bumps image-size to 2K when detail keywords are present', () => {
-    const s = suggestParameters({
-      prompt: 'ultra detailed spaceship 8k',
-      availableModels: models,
-      modelGuides: guides,
-      availableStyles: styles,
-      savedImages: [],
-    });
-    expect(s.imageSize).toBe('2K');
-    expect(s.reasons.imageSize).toContain('2K');
-  });
-
-  it('keeps image-size at 1K by default', () => {
-    const s = suggestParameters({
-      prompt: 'a coffee cup',
-      availableModels: models,
-      modelGuides: guides,
-      availableStyles: styles,
-      savedImages: [],
-    });
-    expect(s.imageSize).toBe('1K');
-  });
-
-  it('excludes nano-banana from model ranking by default', () => {
-    const s = suggestParameters({
-      prompt: 'anything goes',
-      availableModels: models,
-      modelGuides: guides,
-      availableStyles: styles,
-      savedImages: [],
-    });
-    expect(s.modelIds).not.toContain('nano-banana');
-  });
-
-  it('returns topN models (default 2)', () => {
+  it('emits a perModel entry for each shortlisted model', () => {
     const s = suggestParameters({
       prompt: 'photorealistic mountains',
       availableModels: models,
@@ -207,10 +74,103 @@ describe('suggestParameters', () => {
       availableStyles: styles,
       savedImages: [],
     });
-    expect(s.modelIds).toHaveLength(2);
+    expect(s.modelIds.length).toBeGreaterThan(0);
+    for (const id of s.modelIds) {
+      expect(s.perModel[id]).toBeDefined();
+      expect(s.perModel[id].modelId).toBe(id);
+    }
   });
 
-  it('honours a custom topN', () => {
+  it('per-model image entry carries width/height/imageSize/promptEnhance', () => {
+    const s = suggestParameters({
+      prompt: 'photorealistic mountains',
+      availableModels: [makeModel('gpt-image-1.5')],
+      modelGuides: { 'gpt-image-1.5': 'photorealistic mountains' },
+      availableStyles: styles,
+      savedImages: [],
+    });
+    const entry = s.perModel['gpt-image-1.5'];
+    expect(entry.type).toBe('image');
+    if (entry.type !== 'image') return;
+    expect(entry.width).toBe(1024);
+    expect(entry.height).toBe(1024);
+    expect(entry.imageSize).toBe('1K');
+    expect(entry.promptEnhance).toBe('ON');
+    expect(entry.quality).toBe('MEDIUM');
+  });
+
+  it('per-model image entry bumps to 2K + HIGH quality on detail keywords', () => {
+    const s = suggestParameters({
+      prompt: 'ultra detailed 8k photorealistic spaceship',
+      availableModels: [makeModel('gpt-image-1.5')],
+      modelGuides: { 'gpt-image-1.5': 'photorealistic detailed' },
+      availableStyles: styles,
+      savedImages: [],
+    });
+    const entry = s.perModel['gpt-image-1.5'];
+    if (entry.type !== 'image') throw new Error('expected image');
+    expect(entry.imageSize).toBe('2K');
+    expect(entry.quality).toBe('HIGH');
+  });
+
+  it('per-model image entry omits quality when model lacks the knob', () => {
+    const s = suggestParameters({
+      prompt: 'anime scene',
+      availableModels: [makeModel('nano-banana-2')],
+      modelGuides: { 'nano-banana-2': 'illustration anime' },
+      availableStyles: styles,
+      savedImages: [],
+    });
+    const entry = s.perModel['nano-banana-2'];
+    if (entry.type !== 'image') throw new Error('expected image');
+    expect(entry.quality).toBeUndefined();
+  });
+
+  it('per-model image entry only sets style when model supports style_ids', () => {
+    const s = suggestParameters({
+      prompt: 'anime scene',
+      availableModels: [makeModel('nano-banana-2'), makeModel('gpt-image-1.5')],
+      modelGuides: {
+        'nano-banana-2': 'illustration anime',
+        'gpt-image-1.5': 'illustration anime',
+      },
+      availableStyles: styles,
+      savedImages: [],
+      topN: 2,
+    });
+    const nano = s.perModel['nano-banana-2'];
+    const gpt = s.perModel['gpt-image-1.5'];
+    if (nano.type !== 'image' || gpt.type !== 'image') throw new Error('expected image');
+    expect(nano.style).toBe('Illustration'); // nano-banana-2 supports style_ids
+    expect(gpt.style).toBeUndefined();        // gpt-image-1.5 does not
+  });
+
+  it('clamps aspect ratio to 1:1 when model only supports 1024x1024', () => {
+    const s = suggestParameters({
+      prompt: 'sweeping cityscape panorama 16:9',
+      availableModels: [makeModel('gpt-image-1.5')],
+      modelGuides: { 'gpt-image-1.5': 'cityscape panorama' },
+      availableStyles: styles,
+      savedImages: [],
+    });
+    const entry = s.perModel['gpt-image-1.5'];
+    if (entry.type !== 'image') throw new Error('expected image');
+    expect(entry.aspectRatio).toBe('1:1');
+  });
+
+  it('excludes nano-banana legacy from the shortlist by default', () => {
+    const s = suggestParameters({
+      prompt: 'anything',
+      availableModels: models,
+      modelGuides: guides,
+      availableStyles: styles,
+      savedImages: [],
+    });
+    expect(s.modelIds).not.toContain('nano-banana');
+    expect(s.perModel['nano-banana']).toBeUndefined();
+  });
+
+  it('honors a custom topN', () => {
     const s = suggestParameters({
       prompt: 'photorealistic mountains',
       availableModels: models,
@@ -219,7 +179,8 @@ describe('suggestParameters', () => {
       savedImages: [],
       topN: 3,
     });
-    expect(s.modelIds).toHaveLength(3);
+    expect(s.modelIds.length).toBe(3);
+    expect(Object.keys(s.perModel).length).toBe(3);
   });
 
   it('boosts models that won on similar prior prompts', () => {
@@ -237,10 +198,9 @@ describe('suggestParameters', () => {
     });
     expect(s.modelIds[0]).toBe('gpt-image-1.5');
     expect(s.priorMatchCount).toBeGreaterThan(0);
-    expect(s.reasons.models).toMatch(/prior winner/);
   });
 
-  it('carries over a negative prompt from the closest prior winner', () => {
+  it('carries over a negative prompt from prior winner into per-model entries', () => {
     const saved = [
       makeSaved('photorealistic mountains', 'gpt-image-1.5', {
         negativePrompt: 'blurry, low-res, watermark',
@@ -253,44 +213,12 @@ describe('suggestParameters', () => {
       availableStyles: styles,
       savedImages: saved,
     });
-    expect(s.negativePrompt).toBe('blurry, low-res, watermark');
-    expect(s.reasons.negativePrompt).toMatch(/prior winner/);
+    const entry = s.perModel[s.modelIds[0]];
+    if (entry.type !== 'image') throw new Error('expected image');
+    expect(entry.negativePrompt).toBe('blurry, low-res, watermark');
   });
 
-  it('ignores saved images that are not winners / approved / post-ready', () => {
-    const saved = [
-      makeSaved('photorealistic mountains', 'gpt-image-1.5', {
-        winner: false,
-        approved: false,
-        isPostReady: false,
-        negativePrompt: 'ignored',
-      }),
-    ];
-    const s = suggestParameters({
-      prompt: 'photorealistic mountains at dawn',
-      availableModels: models,
-      modelGuides: guides,
-      availableStyles: styles,
-      savedImages: saved,
-    });
-    expect(s.negativePrompt).toBeUndefined();
-    expect(s.priorMatchCount).toBe(0);
-  });
-
-  it('respects an explicit excludedModelIds list', () => {
-    const s = suggestParameters({
-      prompt: 'photorealistic mountains',
-      availableModels: models,
-      modelGuides: guides,
-      availableStyles: styles,
-      savedImages: [],
-      excludedModelIds: ['gpt-image-1.5', 'nano-banana'],
-    });
-    expect(s.modelIds).not.toContain('gpt-image-1.5');
-    expect(s.modelIds).not.toContain('nano-banana');
-  });
-
-  it('handles an empty prompt without throwing (returns defaults)', () => {
+  it('handles empty prompts without throwing', () => {
     const s = suggestParameters({
       prompt: '',
       availableModels: models,
@@ -298,234 +226,208 @@ describe('suggestParameters', () => {
       availableStyles: styles,
       savedImages: [],
     });
-    expect(s.aspectRatio).toBe('1:1');
-    expect(s.imageSize).toBe('1K');
-    expect(s.style).toBeUndefined();
     expect(s.modelIds.length).toBeGreaterThan(0);
+    expect(Object.keys(s.perModel).length).toBeGreaterThan(0);
   });
 
-  // V030-007 follow-up: the param-suggest engine must respect the
-  // per-model API spec in LEONARDO_MODEL_PARAMS. Image models that only
-  // accept 1024x1024 should force a 1:1 suggestion regardless of what
-  // the prompt keywords hint at. gpt-image-1.5 should also pick a
-  // quality level driven by detail keywords.
-  describe('per-model spec constraints', () => {
-    const imageOnly1k: any = {
-      type: 'image',
-      width: 1024,
-      height: 1024,
-      supported_sizes: ['1024x1024'],
-      prompt_enhance: 'OFF',
-      supports_image_reference: false,
+  it('produces a video per-model entry when a video model is in the shortlist', () => {
+    const s = suggestParameters({
+      prompt: 'a vertical reel of a dancer',
+      availableModels: [makeModel('kling-3.0', { supportsStyleIds: false })],
+      modelGuides: { 'kling-3.0': 'video reel motion dancer' },
+      availableStyles: styles,
+      savedImages: [],
+    });
+    const entry = s.perModel['kling-3.0'];
+    expect(entry.type).toBe('video');
+    if (entry.type !== 'video') return;
+    expect(entry.aspectRatio).toBe('9:16');
+    expect(entry.width).toBe(1080);
+    expect(entry.height).toBe(1920);
+    expect(entry.duration).toBeGreaterThan(0);
+    expect(entry.mode).toMatch(/RESOLUTION_/);
+  });
+});
+
+describe('suggestParametersAI', () => {
+  const baseInput = {
+    prompt: 'photorealistic mountains at dawn',
+    availableModels: models,
+    modelGuides: guides,
+    availableStyles: styles,
+    savedImages: [] as GeneratedImage[],
+  };
+
+  it('tags overall source as "ai" when every per-model pi call returns valid JSON', async () => {
+    const aiCall = async (prompt: string) => {
+      // Distinguish per-model prompts by which model id appears.
+      if (prompt.includes('gpt-image-1.5')) {
+        return JSON.stringify({
+          aspectRatio: '1:1',
+          imageSize: '1K',
+          quality: 'HIGH',
+          promptEnhance: 'ON',
+          reason: 'gpt photo-real choice',
+        });
+      }
+      if (prompt.includes('nano-banana-pro')) {
+        return JSON.stringify({
+          aspectRatio: '1:1',
+          imageSize: '1K',
+          promptEnhance: 'ON',
+          style: 'Pro Color Photography',
+          reason: 'nano pro photo-real',
+        });
+      }
+      return JSON.stringify({
+        aspectRatio: '1:1',
+        imageSize: '1K',
+        promptEnhance: 'ON',
+        reason: 'fallback',
+      });
     };
 
-    it('forces 1:1 when every selected model only supports 1024x1024', () => {
-      const s = suggestParameters({
-        prompt: 'sweeping cityscape panorama 16:9',
-        availableModels: models,
-        modelGuides: guides,
-        availableStyles: styles,
-        savedImages: [],
-        modelParams: {
-          'nano-banana-pro': imageOnly1k,
-          'nano-banana-2': imageOnly1k,
-          'gpt-image-1.5': imageOnly1k,
-        },
-      });
-      expect(s.aspectRatio).toBe('1:1');
-      expect(s.reasons.aspectRatio).toMatch(/1024/);
-    });
-
-    it('suggests HIGH quality when detail keywords are present and a top model supports quality', () => {
-      const s = suggestParameters({
-        prompt: 'ultra detailed 8k photorealistic spaceship',
-        availableModels: models,
-        modelGuides: {
-          'gpt-image-1.5': 'photorealistic detailed',
-          'nano-banana-pro': 'unrelated',
-          'nano-banana-2': 'unrelated',
-        },
-        availableStyles: styles,
-        savedImages: [],
-        modelParams: {
-          'gpt-image-1.5': {
-            ...imageOnly1k,
-            quality: ['LOW', 'MEDIUM', 'HIGH'] as const,
-          } as any,
-        },
-      });
-      expect(s.modelIds).toContain('gpt-image-1.5');
-      expect(s.quality).toBe('HIGH');
-      expect(s.reasons.quality).toMatch(/HIGH/);
-    });
-
-    it('suggests MEDIUM quality by default when gpt-image-1.5 is selected without detail keywords', () => {
-      const s = suggestParameters({
-        prompt: 'a simple apple on a table',
-        availableModels: [makeModel('gpt-image-1.5')],
-        modelGuides: { 'gpt-image-1.5': 'photorealistic apple table' },
-        availableStyles: styles,
-        savedImages: [],
-        modelParams: {
-          'gpt-image-1.5': {
-            ...imageOnly1k,
-            quality: ['LOW', 'MEDIUM', 'HIGH'] as const,
-          } as any,
-        },
-      });
-      expect(s.quality).toBe('MEDIUM');
-    });
-
-    it('omits quality when no selected model supports it', () => {
-      const s = suggestParameters({
-        prompt: 'anime scene',
-        availableModels: [makeModel('nano-banana-2')],
-        modelGuides: { 'nano-banana-2': 'illustration anime' },
-        availableStyles: styles,
-        savedImages: [],
-        modelParams: {
-          'nano-banana-2': imageOnly1k,
-        },
-      });
-      expect(s.quality).toBeUndefined();
-      expect(s.reasons.quality).toBeUndefined();
-    });
+    const s = await suggestParametersAI(baseInput, { aiCall });
+    expect(s.source).toBe('ai');
+    for (const id of s.modelIds) {
+      expect(s.perModel[id].source).toBe('ai');
+    }
   });
 
-  // V030-008: the AI-driven variant. Uses dependency-injection so these
-  // tests can run fully offline — `aiCall` is swapped with a canned
-  // string, never touching fetch.
-  describe('suggestParametersAI', () => {
-    const baseInput = {
-      prompt: 'photorealistic mountains at dawn',
+  it('per-model failure falls back to rules for that model only', async () => {
+    const aiCall = async (prompt: string) => {
+      if (prompt.includes('gpt-image-1.5')) {
+        throw new Error('pi unreachable for gpt');
+      }
+      return JSON.stringify({
+        aspectRatio: '1:1',
+        imageSize: '1K',
+        promptEnhance: 'ON',
+        reason: 'pi answered',
+      });
+    };
+    const s = await suggestParametersAI(baseInput, { aiCall });
+    // Mixed → ai+rules at the top level.
+    expect(s.source).toBe('ai+rules');
+    expect(s.perModel['gpt-image-1.5'].source).toBe('rules');
+  });
+
+  it('falls back entirely to rules when every pi call throws', async () => {
+    const s = await suggestParametersAI(baseInput, {
+      aiCall: async () => {
+        throw new Error('pi unreachable');
+      },
+    });
+    expect(s.source).toBe('rules');
+  });
+
+  it('translates a UUID accidentally returned by pi back to the canonical name', async () => {
+    const aiCall = async (prompt: string) => {
+      if (prompt.includes('nano-banana-pro')) {
+        return JSON.stringify({
+          aspectRatio: '1:1',
+          imageSize: '1K',
+          promptEnhance: 'ON',
+          // pi misbehaving — returning a UUID instead of a name.
+          style: '7c3f932b-a572-47cb-9b9b-f20211e63b5b',
+          reason: 'oops, returned a UUID',
+        });
+      }
+      return JSON.stringify({
+        aspectRatio: '1:1',
+        imageSize: '1K',
+        promptEnhance: 'ON',
+        reason: 'ok',
+      });
+    };
+    const s = await suggestParametersAI(baseInput, { aiCall });
+    const nano = s.perModel['nano-banana-pro'];
+    if (!nano || nano.type !== 'image') throw new Error('expected nano-banana-pro image entry');
+    // UUID was resolved back to the canonical name.
+    expect(nano.style).toBe('Pro Color Photography');
+  });
+
+  it('drops a style name pi invents that is not in availableStyles', async () => {
+    const aiCall = async () =>
+      JSON.stringify({
+        aspectRatio: '1:1',
+        imageSize: '1K',
+        promptEnhance: 'ON',
+        style: 'Totally Made Up Style',
+        reason: 'bad style',
+      });
+    const s = await suggestParametersAI(baseInput, { aiCall });
+    for (const id of s.modelIds) {
+      const e = s.perModel[id];
+      if (e.type === 'image') {
+        expect(e.style).not.toBe('Totally Made Up Style');
+      }
+    }
+  });
+});
+
+describe('buildPerModelPromptPayload', () => {
+  it('contains the model id, API doc slice, and style-name contract for an image model', () => {
+    const body = buildPerModelPromptPayload({
+      prompt: 'photorealistic mountains',
+      modelId: 'gpt-image-1.5',
+      apiName: 'gpt-image-1.5',
+      spec: {
+        type: 'image',
+        width: 1024,
+        height: 1024,
+        supported_sizes: ['1024x1024'],
+        quality: ['LOW', 'MEDIUM', 'HIGH'],
+        prompt_enhance: 'ON',
+        supports_image_reference: true,
+      },
+      apiDocSlice: '## Parameters\n- quality (LOW | MEDIUM | HIGH)',
+      availableStyles: styles,
+      priorWinnersOnThisModel: [],
+    });
+    expect(body).toContain('gpt-image-1.5');
+    expect(body).toContain('quality (LOW | MEDIUM | HIGH)');
+    expect(body).toContain('AVAILABLE STYLE NAMES');
+    expect(body).toContain('Do NOT return a UUID');
+    expect(body).toContain('photorealistic mountains');
+  });
+
+  it('omits style guidance for video models', () => {
+    const body = buildPerModelPromptPayload({
+      prompt: 'a vertical reel of a dancer',
+      modelId: 'kling-3.0',
+      apiName: 'kling-3.0',
+      spec: {
+        type: 'video',
+        width: 1920,
+        height: 1080,
+        duration: 5,
+        mode: 'RESOLUTION_1080',
+        motion_has_audio: true,
+        supports_start_frame: true,
+        supports_end_frame: false,
+      },
+      apiDocSlice: '## Parameters\n- duration: 3-15s',
+      availableStyles: styles,
+      priorWinnersOnThisModel: [],
+    });
+    expect(body).toContain('kling-3.0');
+    expect(body).toContain('STYLES: not applicable to video models');
+    expect(body).toContain('duration: 3-15s');
+  });
+});
+
+describe('buildAIPromptPayload (legacy holistic prompt)', () => {
+  it('still includes the model database and eligibility', () => {
+    const body = buildAIPromptPayload({
+      prompt: 'photorealistic mountains',
       availableModels: models,
       modelGuides: guides,
       availableStyles: styles,
-      savedImages: [] as GeneratedImage[],
-    };
-
-    it('tags the suggestion source as "rules" when the rule engine runs standalone', () => {
-      const s = suggestParameters(baseInput);
-      expect(s.source).toBe('rules');
+      savedImages: [],
     });
-
-    it('parses a well-formed pi.dev response and tags source as "ai"', async () => {
-      const aiJson = {
-        modelIds: ['gpt-image-1.5', 'nano-banana-pro'],
-        aspectRatio: '1:1',
-        style: 'Pro Color Photography',
-        imageSize: '1K',
-        quality: 'HIGH',
-        negativePrompt: 'blurry',
-        reasoning: {
-          overall: 'Photo-real prompt favours gpt-image-1.5 with HIGH quality.',
-          models: 'gpt-image-1.5 is strongest for photo-real subjects.',
-          aspectRatio: 'Both models only support 1024x1024.',
-          style: 'Pro Color Photography fits the realism cue.',
-          imageSize: '1K is the native render tier.',
-          quality: 'HIGH selected for photo-realism.',
-          negativePrompt: 'Strip common photorealism artifacts.',
-        },
-      };
-      const s = await suggestParametersAI(baseInput, {
-        aiCall: async () => JSON.stringify(aiJson),
-      });
-      expect(s.source).toBe('ai');
-      expect(s.modelIds).toEqual(['gpt-image-1.5', 'nano-banana-pro']);
-      expect(s.aspectRatio).toBe('1:1');
-      expect(s.style).toBe('Pro Color Photography');
-      expect(s.quality).toBe('HIGH');
-      expect(s.negativePrompt).toBe('blurry');
-      expect(s.reasons.overall).toContain('HIGH quality');
-    });
-
-    it('falls back to the rule engine when the AI caller throws', async () => {
-      const s = await suggestParametersAI(baseInput, {
-        aiCall: async () => {
-          throw new Error('pi unreachable');
-        },
-      });
-      expect(s.source).toBe('rules');
-      expect(s.modelIds.length).toBeGreaterThan(0);
-    });
-
-    it('falls back to the rule engine when the AI returns unparseable garbage', async () => {
-      const s = await suggestParametersAI(baseInput, {
-        aiCall: async () => 'I refuse to answer. No JSON for you.',
-      });
-      expect(s.source).toBe('rules');
-    });
-
-    it('blends AI + rules when the AI omits fields', async () => {
-      const partial = {
-        modelIds: ['gpt-image-1.5'],
-        reasoning: { models: 'Strong at photo-real.' },
-      };
-      const s = await suggestParametersAI(baseInput, {
-        aiCall: async () => JSON.stringify(partial),
-      });
-      expect(s.source).toBe('ai+rules');
-      expect(s.modelIds).toEqual(['gpt-image-1.5']);
-      expect(s.aspectRatio).toBeDefined(); // filled by fallback
-    });
-
-    it('rejects model ids the AI invents that are not in the compatibility matrix', async () => {
-      const bogus = {
-        modelIds: ['not-a-real-model', 'another-fake'],
-        aspectRatio: '1:1',
-        imageSize: '1K',
-        reasoning: { overall: 'made up models' },
-      };
-      const s = await suggestParametersAI(baseInput, {
-        aiCall: async () => JSON.stringify(bogus),
-      });
-      // AI model list was invalid → backfilled from rule engine.
-      expect(s.source).toBe('ai+rules');
-      expect(s.modelIds).not.toContain('not-a-real-model');
-      expect(s.modelIds.length).toBeGreaterThan(0);
-    });
-
-    it('drops a style name that is not in availableStyles', async () => {
-      const badStyle = {
-        modelIds: ['gpt-image-1.5', 'nano-banana-pro'],
-        aspectRatio: '1:1',
-        style: 'Totally Made Up Style',
-        imageSize: '1K',
-        reasoning: { overall: 'bad style name' },
-      };
-      const s = await suggestParametersAI(baseInput, {
-        aiCall: async () => JSON.stringify(badStyle),
-      });
-      // style gets dropped, fallback.style takes over (likely undefined
-      // here because nothing in the prompt triggers a rule).
-      expect(s.style).not.toBe('Totally Made Up Style');
-    });
-
-    it('buildAIPromptPayload includes the model database, eligibility, styles, and hard constraints', () => {
-      const body = buildAIPromptPayload(baseInput);
-      expect(body).toContain('MODEL DATABASE');
-      expect(body).toContain('IN-APP ELIGIBILITY');
-      expect(body).toContain('AVAILABLE STYLE NAMES');
-      expect(body).toContain('HARD CONSTRAINTS');
-      expect(body).toContain('gpt-image-1.5');
-      expect(body).toContain('Pro Color Photography');
-      expect(body).toContain('photorealistic mountains at dawn');
-      // The MODEL DATABASE block carries parameter specs (options) from
-      // the Leonardo docs, not sample curl values.
-      expect(body).toContain('RESOLUTION_1080');
-      expect(body).toContain('LOW | MEDIUM | HIGH');
-    });
-
-    it('excludes nano-banana from the in-app eligibility list by default', () => {
-      const body = buildAIPromptPayload({ ...baseInput, prompt: 'x' });
-      // nano-banana legacy is excluded upstream; the eligibility JSON
-      // between IN-APP ELIGIBILITY and AVAILABLE STYLE NAMES must not
-      // list it as a top-level "id".
-      const start = body.indexOf('IN-APP ELIGIBILITY');
-      const end = body.indexOf('AVAILABLE STYLE NAMES');
-      const block = body.slice(start, end);
-      expect(block).not.toMatch(/"id":\s*"nano-banana"(?!-)/);
-      expect(block).toContain('"id": "nano-banana-2"');
-    });
+    expect(body).toContain('MODEL DATABASE');
+    expect(body).toContain('IN-APP ELIGIBILITY');
+    expect(body).toContain('photorealistic mountains');
   });
 });

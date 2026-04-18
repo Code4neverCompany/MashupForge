@@ -1346,6 +1346,13 @@ export function MainContent() {
   const handleApplySuggestion = (
     modelIds: string[],
     options: Partial<GenerateOptions>,
+    // V030-008-per-model: per-model map is plumbed in but not yet wired
+    // through to per-model state in the Compare tab — comparisonOptions
+    // is currently a single shared GenerateOptions. The map informs the
+    // user via the card; the shared options below come from the first
+    // (highest-ranked) model's resolved suggestion. Future work: thread
+    // perModel into a per-model overrides state inside the Compare tab.
+    _perModel: Record<string, unknown>,
   ) => {
     setComparisonModels(modelIds);
     setComparisonOptions(prev => ({ ...prev, ...options }));

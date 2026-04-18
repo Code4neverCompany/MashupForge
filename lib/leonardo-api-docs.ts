@@ -11,10 +11,15 @@
  * should not treat them as templates. Only the parameter catalogs
  * (accepted values, dimensions, style IDs, required vs optional) are
  * passed through so pi reasons from options, not from examples.
+ *
+ * V030-008 (per-model): exports both the full catalog (legacy
+ * shortlist-pickers can still read it) and `LEONARDO_API_DOCS_BY_MODEL`,
+ * a per-id slice. The per-model variant is what the per-model pi
+ * caller hands to each parallel pi.dev request, keeping each request
+ * focused on one model's surface only.
  */
 
-export const LEONARDO_API_DOCS = `
-========================================================================
+const GPT_IMAGE_15 = `========================================================================
 # GPT Image-1.5
 ========================================================================
 
@@ -41,8 +46,9 @@ Model identifier: "gpt-image-1.5"
 | 2:3          | 1024  | 1536   |
 | 1:1          | 1024  | 1024   |
 | 3:2          | 1536  | 1024   |
+`;
 
-========================================================================
+const NANO_BANANA_2 = `========================================================================
 # Nano Banana 2
 ========================================================================
 
@@ -83,8 +89,9 @@ Graphic Design 2D, Graphic Design 3D, Illustration, None, Portrait,
 Portrait Cinematic, Portrait Fashion, Pro B&W Photography,
 Pro Color Photography, Pro Film Photography, Ray Traced, Stock Photo,
 Watercolor.
+`;
 
-========================================================================
+const NANO_BANANA_PRO = `========================================================================
 # Nano Banana Pro (API: gemini-image-2)
 ========================================================================
 
@@ -103,9 +110,14 @@ Default 1024×1024 when unspecified. Same aspect ratio table as
 Nano Banana 2 (1:1 / 2:3 / 3:2 / 3:4 / 4:3 / 4:5 / 5:4 / 9:16 / 16:9 / 21:9).
 
 ## Style IDs
-Same palette as Nano Banana 2.
+Same palette as Nano Banana 2 (3D Render, Acrylic, Creative, Dynamic,
+Fashion, Game Concept, Graphic Design 2D, Graphic Design 3D,
+Illustration, None, Portrait, Portrait Cinematic, Portrait Fashion,
+Pro B&W Photography, Pro Color Photography, Pro Film Photography,
+Ray Traced, Stock Photo, Watercolor).
+`;
 
-========================================================================
+const KLING_30 = `========================================================================
 # Kling 3.0 (video)
 ========================================================================
 
@@ -130,8 +142,9 @@ Model identifier: "kling-3.0".
 720p: 16:9 1280×720; 1:1 960×960; 9:16 720×1280.
 1080p: 16:9 1920×1080; 1:1 1440×1440; 9:16 1080×1920.
 When width/height omitted and start_frame given, dims follow the start frame.
+`;
 
-========================================================================
+const KLING_O3 = `========================================================================
 # Kling O3 (API: kling-video-o-3)
 ========================================================================
 
@@ -152,9 +165,11 @@ Model identifier: "kling-video-o-3".
   may be combined with image_reference.
 
 ## Dimensions
-Same table as Kling 3.0.
+720p: 16:9 1280×720; 1:1 960×960; 9:16 720×1280.
+1080p: 16:9 1920×1080; 1:1 1440×1440; 9:16 1080×1920.
+`;
 
-========================================================================
+const VEO_31 = `========================================================================
 # Veo 3.1 (API: VEO3_1 | VEO3_1FAST)
 ========================================================================
 
@@ -178,3 +193,32 @@ Model identifier: "VEO3_1" or "VEO3_1FAST".
 1080p 16:9 → 1920×1080; 1080p 9:16 → 1080×1920.
 Dimensions outside these are rejected. Uploaded images are cropped to fit.
 `;
+
+/**
+ * Per-model API doc slice keyed on the in-app model id (NOT api_name).
+ * Per-model pi calls hand the relevant slice to pi so it reasons over
+ * one model's surface at a time — sharper reasoning, smaller token
+ * budget per request, and per-model parallelism becomes free.
+ */
+export const LEONARDO_API_DOCS_BY_MODEL: Record<string, string> = {
+  'gpt-image-1.5': GPT_IMAGE_15,
+  'nano-banana-2': NANO_BANANA_2,
+  'nano-banana-pro': NANO_BANANA_PRO,
+  'kling-3.0': KLING_30,
+  'kling-o3': KLING_O3,
+  'veo-3.1': VEO_31,
+};
+
+/**
+ * Full catalog (concatenated per-model slices). Kept for the legacy
+ * "single pi call picks model + params" path and for any caller that
+ * wants the holistic catalog. New per-model callers should reach for
+ * LEONARDO_API_DOCS_BY_MODEL[modelId] instead.
+ */
+export const LEONARDO_API_DOCS = `
+${GPT_IMAGE_15}
+${NANO_BANANA_2}
+${NANO_BANANA_PRO}
+${KLING_30}
+${KLING_O3}
+${VEO_31}`;
