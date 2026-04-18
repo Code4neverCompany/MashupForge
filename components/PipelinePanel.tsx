@@ -481,10 +481,14 @@ export function PipelinePanel() {
           </label>
         </div>
 
-        {/* Platform picker */}
-        {autoPost && (
+        {/* Platform picker — shown whenever scheduling or posting is on
+            (V040-HOTFIX-006). Previously gated on autoPost only, which
+            left users with the common autoSchedule=on / autoPost=off
+            config unable to pick platforms — the pipeline then aborted
+            scheduling with "No platforms configured". */}
+        {(autoPost || autoSchedule) && (
           <div className="pt-2 border-t border-[#c5a062]/15 space-y-2">
-            <p className="label-overline">Auto-post to</p>
+            <p className="label-overline">Platforms</p>
             {availablePlatforms.length === 0 ? (
               <p className="text-[11px] text-amber-400">
                 No platform credentials configured. Add Instagram or Pinterest keys in Settings.
@@ -518,6 +522,11 @@ export function PipelinePanel() {
                   );
                 })}
               </div>
+            )}
+            {availablePlatforms.length > 0 && platforms.length === 0 && (
+              <p className="text-[11px] text-amber-400">
+                Pick at least one platform — pipeline will skip scheduling otherwise.
+              </p>
             )}
           </div>
         )}
