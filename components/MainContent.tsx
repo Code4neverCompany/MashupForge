@@ -704,29 +704,40 @@ export function MainContent() {
   };
 
   /**
-   * REFACTOR-001 — single shared "AI-caption fan-out" for a carousel.
+   * REFACTOR-001 / SHOULDFIX-002 — single shared fan-out for carousel
+   * captions, covering both the "call AI on anchor, propagate" path AND
+   * the "anchor already has a caption, propagate verbatim" path.
    *
-   * Three sites used to have parallel inline copies of "call
-   * generatePostContent on the anchor, then propagate caption +
-   * hashtags to siblings": batchCaptionImages (BUG-001 + WARN-1), the
-   * captioning-view per-card Generate button, and the post-ready
-   * Regen button. The copies drifted (notably WARN-1's per-image
-   * overwrite guard existed only in batch). One helper keeps the loop
-   * body in one place; callers pass `{ force: true }` when an explicit
-   * user "Regenerate" should overwrite siblings' existing captions.
+   * Four sites used to have parallel inline copies of "get a caption
+   * for the anchor (via AI or via its existing caption), then propagate
+   * caption + hashtags to siblings": batchCaptionImages' needsAi=true
+   * branch, batchCaptionImages' needsAi=false propagation-only branch
+   * (SHOULDFIX-002), the captioning-view per-card Generate button, and
+   * the post-ready Regen button. The copies drifted (notably WARN-1's
+   * per-image overwrite guard existed only in batch).
    *
-   * The anchor is always skipped inside the loop (its caption was
-   * already persisted by generatePostContent's side effect). Returns
-   * the (possibly updated) anchor for callers that need it.
+   * Source of truth rule:
+   *   - If anchor has no caption OR caller forces regen → call AI.
+   *   - Otherwise → reuse anchor's existing caption (no AI cost).
+   *
+   * Callers pass `{ force: true }` when an explicit user "Regenerate"
+   * should overwrite siblings' existing captions AND re-call AI even
+   * when the anchor is already captioned.
+   *
+   * Returns the (possibly updated) anchor for callers that need it.
    */
   const fanCaptionToGroup = async (
     anchor: GeneratedImage,
     rest: GeneratedImage[],
     opts: { force?: boolean } = {},
   ): Promise<GeneratedImage | undefined> => {
-    const withCaption = await generatePostContent(anchor);
-    if (!withCaption?.postCaption) return withCaption;
     const force = opts.force === true;
+    // SHOULDFIX-002: if anchor already has a caption and caller didn't
+    // force regen, propagate it verbatim — no AI call. Unifies what
+    // used to be an inline branch in batchCaptionImages.
+    const useExisting = !force && !!anchor.postCaption;
+    const withCaption = useExisting ? anchor : await generatePostContent(anchor);
+    if (!withCaption?.postCaption) return withCaption;
     for (const ci of rest) {
       if (ci.id === anchor.id) continue;
       // WARN-1 guard: never overwrite a sibling's per-image caption
@@ -757,7 +768,7 @@ export function MainContent() {
   const batchCaptionImages = async (candidates: GeneratedImage[]) => {
     type Entry =
       | { kind: 'single'; img: GeneratedImage }
-      | { kind: 'carousel'; anchor: GeneratedImage; rest: GeneratedImage[]; needsAi: boolean };
+      | { kind: 'carousel'; anchor: GeneratedImage; rest: GeneratedImage[] };
 
     const entries: Entry[] = [];
     if (captioningGrouped) {
@@ -765,9 +776,11 @@ export function MainContent() {
         if (v.kind === 'carousel') {
           if (v.images.every((i) => i.postCaption)) continue;
           const [anchor, ...rest] = v.images;
-          // If anchor already has a caption, just propagate it to the rest
-          // (no AI call needed). Otherwise generate via anchor.
-          entries.push({ kind: 'carousel', anchor, rest, needsAi: !anchor.postCaption });
+          // SHOULDFIX-002: fanCaptionToGroup internally decides whether
+          // to call AI (anchor has no caption) or propagate the
+          // anchor's existing caption (no AI cost). Both branches live
+          // in the helper now — no inline divergence.
+          entries.push({ kind: 'carousel', anchor, rest });
         } else if (!v.img.postCaption) {
           entries.push({ kind: 'single', img: v.img });
         }
@@ -787,17 +800,7 @@ export function MainContent() {
         const anchor = entry.kind === 'single' ? entry.img : entry.anchor;
         setPreparingPostId(anchor.id);
         try {
-          if (entry.kind === 'carousel' && !entry.needsAi) {
-            // No-AI path: anchor already has a caption; propagate it
-            // verbatim. (Distinct from the helper, which calls AI.)
-            for (const ci of entry.rest) {
-              if (ci.postCaption) continue;
-              patchImage(ci, {
-                postCaption: anchor.postCaption,
-                postHashtags: anchor.postHashtags,
-              });
-            }
-          } else if (entry.kind === 'carousel') {
+          if (entry.kind === 'carousel') {
             await fanCaptionToGroup(anchor, entry.rest);
           } else {
             await generatePostContent(anchor);
