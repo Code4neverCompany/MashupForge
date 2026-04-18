@@ -337,6 +337,16 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // BUG-002: tauri_plugin_process exposes the JS `relaunch()` API.
+        // Frontend calls it after `update.downloadAndInstall(...)` so the
+        // OLD app exits cleanly — firing WindowEvent::CloseRequested
+        // below, which kills the Node sidecar and frees DESKTOP_PORT
+        // (19782). Without this the NSIS installer's `/R` flag spawns
+        // the new app while the old one still holds the stable port,
+        // forcing the new instance onto an ephemeral port and breaking
+        // the IndexedDB origin pin (STORY-121). See lib.rs:622+ for
+        // the sidecar-kill handler this triggers.
+        .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(log::LevelFilter::Info)

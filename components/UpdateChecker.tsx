@@ -129,8 +129,16 @@ export function UpdateChecker() {
           );
         }
       });
-      // On Windows / NSIS the installer closes the app and relaunches itself.
-      // If we're still alive past this point, fall back to "post-update" hint.
+      // BUG-002: NSIS only RELAUNCHES via `/R`, it does NOT kill the parent.
+      // Without an explicit exit the old instance keeps holding sidecar port
+      // 19782 (DESKTOP_PORT in src-tauri/src/lib.rs) and the new instance
+      // installed by NSIS falls back to an ephemeral port — which breaks
+      // the IndexedDB origin pin (STORY-121) and orphans settings.
+      // `relaunch()` from tauri-plugin-process triggers a clean exit, fires
+      // WindowEvent::CloseRequested in lib.rs, the sidecar Child is killed,
+      // port 19782 frees, and Tauri spawns the freshly installed binary.
+      const processMod = await import('@tauri-apps/plugin-process');
+      await processMod.relaunch();
     } catch (e: unknown) {
       const detail = e instanceof Error ? e.message : String(e);
       setState({ kind: 'download-error', update, message: detail });
