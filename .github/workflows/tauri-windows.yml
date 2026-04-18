@@ -145,10 +145,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tauri-nsis-bundle
-          path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/nsis/*.exe.sig
-            src-tauri/target/release/bundle/nsis/latest.json
+          # Directory path (not multi-glob). upload-artifact@v4 stores
+          # multi-glob entries relative to the workspace root, so globs
+          # under nsis/ would land at bundle/src-tauri/.../nsis/* after
+          # download — breaking `ls bundle/*.exe`. A directory path stores
+          # files relative to that directory, landing flat in bundle/.
+          path: src-tauri/target/release/bundle/nsis
           if-no-files-found: error
           retention-days: 7
 
@@ -173,6 +175,22 @@ jobs:
           EXE=$(ls bundle/*.exe 2>/dev/null | head -n1)
           SIG=$(ls bundle/*.exe.sig 2>/dev/null | head -n1)
           LATEST="bundle/latest.json"
+
+          if [ -z "$EXE" ] || [ ! -f "$EXE" ]; then
+            echo "::error::NSIS .exe not found in downloaded artifact"
+            echo "Artifact contents:"; ls -la bundle/ || true
+            exit 1
+          fi
+          if [ -z "$SIG" ] || [ ! -f "$SIG" ]; then
+            echo "::error::Signature file (.exe.sig) not found in downloaded artifact"
+            echo "Artifact contents:"; ls -la bundle/ || true
+            exit 1
+          fi
+          if [ ! -f "$LATEST" ]; then
+            echo "::error::latest.json not found in downloaded artifact"
+            echo "Artifact contents:"; ls -la bundle/ || true
+            exit 1
+          fi
 
           echo "Uploading $EXE, $SIG, and $LATEST to release $TAG"
           gh release create "$TAG" --title "MashupForge $TAG" --notes "Tauri desktop build for Windows." 2>/dev/null || true
