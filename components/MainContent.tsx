@@ -1621,25 +1621,6 @@ export function MainContent() {
             </button>
           )}
 
-          {view === 'compare' && (
-            <button
-              onClick={handleCompare}
-              disabled={isComparing || comparisonModels.length < 2 || !comparisonPrompt.trim()}
-              className="hidden md:flex items-center gap-2 px-4 py-2 bg-[#00e6ff] hover:bg-[#33eaff] text-[#050505] disabled:opacity-50 disabled:hover:bg-[#00e6ff] rounded-xl font-semibold text-sm transition-all duration-200 shadow-[0_0_16px_rgba(0,230,255,0.2)] hover:shadow-[0_0_24px_rgba(0,230,255,0.35)] shrink-0"
-            >
-              {isComparing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Comparing...
-                </>
-              ) : (
-                <>
-                  <Columns className="w-4 h-4" />
-                  Compare Models
-                </>
-              )}
-            </button>
-          )}
         </div>
       </header>
 
