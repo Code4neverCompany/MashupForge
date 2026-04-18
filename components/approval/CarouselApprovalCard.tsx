@@ -16,6 +16,7 @@ import { CarouselStatusPill, type CarouselImageState } from './CarouselStatusPil
 import { CarouselThumbnailStrip } from './CarouselThumbnailStrip';
 import { CarouselReviewPanel } from './CarouselReviewPanel';
 import { DegradeNotice } from './DegradeNotice';
+import { canRejectMoreInCarousel } from '@/lib/carousel-degrade-guard';
 
 export function CarouselApprovalCard({
   groupId,
@@ -26,7 +27,6 @@ export function CarouselApprovalCard({
   onToggleSelect,
   onApprovePost,
   onRejectPost,
-  degradeVisible = false,
 }: {
   groupId: string;
   posts: ScheduledPost[];
@@ -36,7 +36,6 @@ export function CarouselApprovalCard({
   onToggleSelect: () => void;
   onApprovePost: (postId: string) => void;
   onRejectPost: (postId: string) => void;
-  degradeVisible?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   // Local optimistic state so the user sees per-image feedback before
@@ -73,6 +72,13 @@ export function CarouselApprovalCard({
     return { pending, approved, rejected, total: images.length };
   }, [images, statuses]);
 
+  // Per-image reject is gated when the carousel is at the 2-image floor,
+  // so the user cannot accidentally degrade it to a single-image post the
+  // auto-poster would refuse to fan out. The whole-carousel reject is
+  // intentionally NOT gated — that's an explicit kill action.
+  const nonRejectedCount = counts.pending + counts.approved;
+  const rejectGuarded = !canRejectMoreInCarousel(nonRejectedCount);
+
   const approveImage = (imageId: string) => {
     const post = postByImage.get(imageId);
     if (!post) return;
@@ -81,6 +87,7 @@ export function CarouselApprovalCard({
   };
 
   const rejectImage = (imageId: string) => {
+    if (rejectGuarded) return;
     const post = postByImage.get(imageId);
     if (!post) return;
     setLocalStatus((prev) => ({ ...prev, [imageId]: 'rejected' }));
@@ -98,9 +105,15 @@ export function CarouselApprovalCard({
   };
 
   const rejectCarousel = () => {
+    // Whole-carousel reject bypasses the per-image guard — the user is
+    // explicitly killing the group, not accidentally degrading it.
     for (const img of images) {
       const st = statuses[img.id] ?? 'pending';
-      if (st !== 'rejected') rejectImage(img.id);
+      if (st === 'rejected') continue;
+      const post = postByImage.get(img.id);
+      if (!post) continue;
+      setLocalStatus((prev) => ({ ...prev, [img.id]: 'rejected' }));
+      onRejectPost(post.id);
     }
   };
 
@@ -156,6 +169,7 @@ export function CarouselApprovalCard({
           images={images}
           statuses={statuses}
           captionPreview={caption}
+          rejectGuarded={rejectGuarded}
           onApproveImage={approveImage}
           onRejectImage={rejectImage}
           onApproveRemaining={approveRemaining}
@@ -190,7 +204,7 @@ export function CarouselApprovalCard({
             )}
           </div>
 
-          <DegradeNotice visible={degradeVisible} />
+          <DegradeNotice visible={rejectGuarded} />
 
           <div className="flex items-center gap-2 pt-1">
             <button

@@ -5,11 +5,13 @@
 import { Check, X, ImageOff, ChevronUp } from 'lucide-react';
 import type { GeneratedImage } from '@/types/mashup';
 import type { CarouselImageState } from './CarouselStatusPill';
+import { DegradeNotice } from './DegradeNotice';
 
 export function CarouselReviewPanel({
   images,
   statuses,
   captionPreview,
+  rejectGuarded = false,
   onApproveImage,
   onRejectImage,
   onApproveRemaining,
@@ -19,6 +21,9 @@ export function CarouselReviewPanel({
   images: GeneratedImage[];
   statuses: Record<string, CarouselImageState>;
   captionPreview?: string;
+  /** When true, per-image reject is disabled — the carousel is at the
+   *  2-image floor and another reject would degrade it to a single. */
+  rejectGuarded?: boolean;
   onApproveImage: (imageId: string) => void;
   onRejectImage: (imageId: string) => void;
   onApproveRemaining: () => void;
@@ -84,7 +89,9 @@ export function CarouselReviewPanel({
                     <button
                       type="button"
                       onClick={() => onRejectImage(img.id)}
-                      className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 rounded-lg text-red-300 text-xs font-medium transition-colors"
+                      disabled={rejectGuarded}
+                      title={rejectGuarded ? 'Carousel needs at least 2 images' : undefined}
+                      className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-600/20 rounded-lg text-red-300 text-xs font-medium transition-colors"
                     >
                       <X className="w-3.5 h-3.5" />
                       Reject
@@ -102,6 +109,8 @@ export function CarouselReviewPanel({
           );
         })}
       </div>
+
+      <DegradeNotice visible={rejectGuarded} />
 
       <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-indigo-500/20">
         <button
