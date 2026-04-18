@@ -265,6 +265,14 @@ export async function processIdea(
           pipelinePlatforms,
           settings.pipelineAutoApprove,
         );
+        // V040-HOTFIX-004: keep CarouselGroup.status in sync with the
+        // per-post status. CarouselGroup has no `pending_approval`
+        // value of its own, so a queue of posts that still need
+        // approval is represented as `draft` — accurate to the
+        // CarouselGroup type and consistent with how user-built
+        // groups in the gallery start out (also 'draft').
+        const carouselGroupStatus: 'scheduled' | 'draft' =
+          carouselStatus === 'scheduled' ? 'scheduled' : 'draft';
         const newPosts: ScheduledPost[] = readyImages.map((img, idx) => ({
           id: `post-${nowStamp}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
           imageId: img.id,
@@ -289,7 +297,7 @@ export async function processIdea(
               scheduledDate: slot.date,
               scheduledTime: slot.time,
               platforms: pipelinePlatforms,
-              status: 'scheduled' as const,
+              status: carouselGroupStatus,
             },
           ],
         }));

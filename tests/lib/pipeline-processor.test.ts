@@ -230,6 +230,48 @@ describe('processIdea — carousel mode', () => {
     expect(deps.updateIdeaStatus).toHaveBeenCalledWith(expect.any(String), 'done');
   });
 
+  it('sets CarouselGroup.status = scheduled when every platform auto-approves (V040-HOTFIX-004)', async () => {
+    const images = [makeImage(), makeImage()];
+    const deps = makeDeps({ waitForImages: vi.fn().mockResolvedValue(images) });
+    const settings = makeSettings({
+      pipelineCarouselMode: true,
+      pipelinePlatforms: ['twitter', 'discord'],
+      pipelineAutoApprove: { twitter: true, discord: true },
+    });
+
+    await processIdea(makeIdea(), 0, 1, makeEngagement(), [], settings, deps);
+
+    const updaterCall = (deps.updateSettings as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([arg]) => typeof arg === 'function',
+    );
+    expect(updaterCall).toBeDefined();
+    const patch = (updaterCall![0] as (prev: Partial<UserSettings>) => Partial<UserSettings>)({});
+    expect(patch.carouselGroups).toHaveLength(1);
+    expect(patch.carouselGroups![0].status).toBe('scheduled');
+    expect(patch.scheduledPosts!.every((p) => p.status === 'scheduled')).toBe(true);
+  });
+
+  it('sets CarouselGroup.status = draft when any platform requires manual approval (V040-HOTFIX-004)', async () => {
+    const images = [makeImage(), makeImage()];
+    const deps = makeDeps({ waitForImages: vi.fn().mockResolvedValue(images) });
+    const settings = makeSettings({
+      pipelineCarouselMode: true,
+      pipelinePlatforms: ['instagram', 'twitter'],
+      pipelineAutoApprove: { instagram: false, twitter: true },
+    });
+
+    await processIdea(makeIdea(), 0, 1, makeEngagement(), [], settings, deps);
+
+    const updaterCall = (deps.updateSettings as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([arg]) => typeof arg === 'function',
+    );
+    expect(updaterCall).toBeDefined();
+    const patch = (updaterCall![0] as (prev: Partial<UserSettings>) => Partial<UserSettings>)({});
+    expect(patch.carouselGroups).toHaveLength(1);
+    expect(patch.carouselGroups![0].status).toBe('draft');
+    expect(patch.scheduledPosts!.every((p) => p.status === 'pending_approval')).toBe(true);
+  });
+
   it('falls back to expandedPrompt when carousel generatePostContent returns undefined', async () => {
     const images = [makeImage(), makeImage()];
     const expandedPrompt = 'Epic neon battle';
