@@ -803,17 +803,47 @@ export function MainContent() {
     const useExisting = !force && !!anchor.postCaption;
     const withCaption = useExisting ? anchor : await generatePostContent(anchor);
     if (!withCaption?.postCaption) return withCaption;
-    for (const ci of rest) {
-      if (ci.id === anchor.id) continue;
-      // WARN-1 guard: never overwrite a sibling's per-image caption
-      // unless the caller explicitly opted in (force regenerate).
-      if (!force && ci.postCaption) continue;
-      patchImage(ci, {
-        postCaption: withCaption.postCaption,
-        postHashtags: withCaption.postHashtags,
-      });
-    }
+    // V040-003: route the sibling fan-out through the shared verbatim
+    // propagator so the WARN-1 "don't overwrite a manually-edited
+    // sibling caption" guard lives in exactly one place.
+    propagateCaptionToGroup(rest, withCaption.postCaption, withCaption.postHashtags, {
+      skipExisting: !force,
+      excludeId: anchor.id,
+    });
     return withCaption;
+  };
+
+  /**
+   * V040-003: verbatim caption propagation across a carousel group.
+   * Single helper for every "set this caption on every image in the
+   * group" action — captioning-view and post-ready-view textarea
+   * onChange (where the user just typed something), plus
+   * fanCaptionToGroup's sibling fan-out after AI generation.
+   *
+   * - `skipExisting`: when true, leaves images that already carry a
+   *   `postCaption` untouched. Matches fanCaptionToGroup's WARN-1
+   *   guard. Live-typing call sites pass false (or omit) so every
+   *   image stays in sync with the editor.
+   * - `excludeId`: when set, skips the image with that id entirely.
+   *   fanCaptionToGroup uses it to avoid re-patching the anchor
+   *   (which `generatePostContent` already wrote).
+   * - `hashtags === undefined` leaves each image's hashtags intact —
+   *   the textarea callers don't touch hashtags.
+   */
+  const propagateCaptionToGroup = (
+    group: GeneratedImage[],
+    caption: string,
+    hashtags: string[] | undefined,
+    opts: { skipExisting?: boolean; excludeId?: string } = {},
+  ) => {
+    const { skipExisting = false, excludeId } = opts;
+    for (const ci of group) {
+      if (excludeId && ci.id === excludeId) continue;
+      if (skipExisting && ci.postCaption) continue;
+      const patch: Partial<GeneratedImage> = { postCaption: caption };
+      if (hashtags !== undefined) patch.postHashtags = hashtags;
+      patchImage(ci, patch);
+    }
   };
 
   /** Remove one hashtag by index and persist. */
@@ -2571,9 +2601,7 @@ export function MainContent() {
                                       onChange={(e) => {
                                         // Fan edits to every image so Post Now
                                         // and Copy All pick up the same text.
-                                        for (const ci of entry.images) {
-                                          patchImage(ci, { postCaption: e.target.value });
-                                        }
+                                        propagateCaptionToGroup(entry.images, e.target.value, undefined);
                                       }}
                                       placeholder="No caption yet…"
                                       minRows={2}
@@ -3787,9 +3815,7 @@ export function MainContent() {
                                       onChange={(e) => {
                                         // Edit caption on every image in the carousel
                                         // so the route sends a consistent copy.
-                                        for (const ci of item.images) {
-                                          patchImage(ci, { postCaption: e.target.value });
-                                        }
+                                        propagateCaptionToGroup(item.images, e.target.value, undefined);
                                       }}
                                       placeholder="No caption yet…"
                                       minRows={2}
