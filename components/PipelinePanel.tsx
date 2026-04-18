@@ -562,7 +562,7 @@ export function PipelinePanel() {
             Pipeline-produced posts land as <span className="text-zinc-400">scheduled</span> only when
             <span className="text-emerald-400"> all</span> their platforms are set to auto. If any platform on the post
             requires manual review, the whole post enters the approval queue.
-            Instagram defaults to <span className="text-amber-400">manual</span>.
+            All platforms default to <span className="text-emerald-400">auto</span> — toggle off the ones you want to review by hand.
           </p>
         </div>
 

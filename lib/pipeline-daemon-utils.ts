@@ -4,15 +4,23 @@ type AutoApproveMap = UserSettings['pipelineAutoApprove'];
 type PlatformKey = 'instagram' | 'pinterest' | 'twitter' | 'discord';
 
 /**
- * V040-008: per-platform approval defaults. Instagram defaults to
- * requiring manual approval because its Graph API most often flags
- * content / rate-limits unpredictably; auto-posting there without a
- * human pause tends to produce surprising outcomes. Other platforms
- * default to auto-approval to preserve the pre-V040-008 behavior for
- * users who never open the new setting.
+ * V040-008 + V040-HOTFIX-001: per-platform approval defaults.
+ *
+ * All platforms default to auto-approval. The original V040-008 shipped
+ * with `instagram: false` for safety reasons (the Graph API is the most
+ * failure-prone integration), but that silently flipped behavior for
+ * existing 0.3.x users on upgrade — Instagram posts started piling up
+ * in the approval queue with no in-app explanation. The hotfix flips
+ * the default back to auto so upgrades are non-breaking; users who
+ * want manual gating must opt in via the PipelinePanel checkboxes.
+ *
+ * `applyV040AutoApproveMigration` (below) writes the explicit
+ * auto-everywhere config into a legacy user's saved settings on first
+ * post-upgrade load, so their state shows up in the settings UI rather
+ * than relying on an undefined-fallback that could shift again later.
  */
 const DEFAULT_AUTO_APPROVE: Record<PlatformKey, boolean> = {
-  instagram: false,
+  instagram: true,
   pinterest: true,
   twitter: true,
   discord: true,
@@ -79,6 +87,39 @@ export function countFutureScheduledPosts(
     const t = new Date(`${p.date}T${p.time}:00`).getTime();
     return t >= now && t <= horizon;
   }).length;
+}
+
+/**
+ * V040-HOTFIX-001: legacy-user migration shim.
+ *
+ * Applied once on settings load. If `pipelineAutoApprove` is absent
+ * from the saved payload (the case for every 0.3.x user on first
+ * upgrade), persist an explicit auto-everywhere map. This:
+ *   1. Locks in the user's pre-upgrade behavior — every platform stays
+ *      auto-approved even if the future shifts the runtime default.
+ *   2. Makes the user's choices visible in the PipelinePanel checkbox
+ *      grid instead of hiding them behind undefined-fallback semantics.
+ *
+ * Idempotent: returns the input unchanged when `pipelineAutoApprove`
+ * is already an object (the user has either explicitly configured it
+ * or has already been migrated). Safe to run on every load.
+ *
+ * Returns the input reference unchanged when no migration is needed,
+ * so consumers can use referential equality to skip re-renders.
+ */
+export function applyV040AutoApproveMigration<T extends { pipelineAutoApprove?: AutoApproveMap }>(
+  settings: T,
+): T {
+  if (settings.pipelineAutoApprove !== undefined) return settings;
+  return {
+    ...settings,
+    pipelineAutoApprove: {
+      instagram: true,
+      pinterest: true,
+      twitter: true,
+      discord: true,
+    },
+  };
 }
 
 /** Hard timeout error thrown by the per-idea race in usePipelineDaemon. */

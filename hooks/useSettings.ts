@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { get, set } from 'idb-keyval';
 import { type UserSettings, defaultSettings } from '../types/mashup';
+import { applyV040AutoApproveMigration } from '../lib/pipeline-daemon-utils';
 
 // Deep-merge a loaded payload into the current settings, preserving defaults
 // for any fields that are missing or explicitly undefined in the payload.
@@ -59,11 +60,17 @@ export function useSettings() {
           const parsed = JSON.parse(storedSettings);
           await set('mashup_settings', parsed);
           localStorage.removeItem('mashup_settings');
-          setSettings(prev => mergeSettings(prev, parsed as Partial<UserSettings>));
+          setSettings(prev => applyV040AutoApproveMigration(mergeSettings(prev, parsed as Partial<UserSettings>)));
         } else {
           const idbSettings = await get('mashup_settings');
           if (idbSettings && typeof idbSettings === 'object') {
-            setSettings(prev => mergeSettings(prev, idbSettings as Partial<UserSettings>));
+            setSettings(prev => applyV040AutoApproveMigration(mergeSettings(prev, idbSettings as Partial<UserSettings>)));
+          } else {
+            // Fresh install with no saved settings still gets the explicit
+            // auto-everywhere map written so the PipelinePanel checkbox grid
+            // shows the active state immediately rather than waiting for the
+            // user's first toggle to materialize the field.
+            setSettings(prev => applyV040AutoApproveMigration(prev));
           }
         }
       } catch {
