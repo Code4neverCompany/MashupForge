@@ -16,6 +16,7 @@ import { CarouselStatusPill, type CarouselImageState } from './CarouselStatusPil
 import { CarouselThumbnailStrip } from './CarouselThumbnailStrip';
 import { CarouselReviewPanel } from './CarouselReviewPanel';
 import { DegradeNotice } from './DegradeNotice';
+import { InlineCaptionEditor } from './InlineCaptionEditor';
 import { canRejectMoreInCarousel } from '@/lib/carousel-degrade-guard';
 import {
   GHOST_TTL_MS,
@@ -34,6 +35,7 @@ export function CarouselApprovalCard({
   onToggleSelect,
   onApprovePost,
   onRejectPost,
+  onUpdateCaption,
 }: {
   groupId: string;
   posts: ScheduledPost[];
@@ -43,6 +45,9 @@ export function CarouselApprovalCard({
   onToggleSelect: () => void;
   onApprovePost: (postId: string) => void;
   onRejectPost: (postId: string) => void;
+  /** V050-005: edit the carousel's shared caption. Parent fans out to
+   *  every sibling post and the matching CarouselGroup. */
+  onUpdateCaption?: (next: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   // Local optimistic state so the user sees per-image feedback before
@@ -263,9 +268,13 @@ export function CarouselApprovalCard({
             </div>
           )}
 
-          <p className="text-xs text-zinc-300 line-clamp-2 min-h-[2rem]">
-            {caption || <span className="text-zinc-600 italic">No caption</span>}
-          </p>
+          {onUpdateCaption ? (
+            <InlineCaptionEditor caption={caption} onSave={onUpdateCaption} />
+          ) : (
+            <p className="text-xs text-zinc-300 line-clamp-2 min-h-[2rem]">
+              {caption || <span className="text-zinc-600 italic">No caption</span>}
+            </p>
+          )}
 
           <div className="flex items-center justify-between text-[10px] text-zinc-500">
             <span>{date} {time}</span>

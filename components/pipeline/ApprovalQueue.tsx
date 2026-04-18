@@ -5,6 +5,7 @@ import { Calendar, Check, X, Lightbulb, ImageOff, CheckCircle2 } from 'lucide-re
 import type { GeneratedImage, Idea, ScheduledPost } from '@/types/mashup';
 import { groupApprovalPosts } from '@/lib/approval-grouping';
 import { CarouselApprovalCard } from '@/components/approval/CarouselApprovalCard';
+import { InlineCaptionEditor } from '@/components/approval/InlineCaptionEditor';
 
 export function ApprovalQueue({
   posts,
@@ -14,6 +15,7 @@ export function ApprovalQueue({
   onReject,
   onBulkApprove,
   onBulkReject,
+  onUpdateCaption,
 }: {
   posts: ScheduledPost[];
   images: GeneratedImage[];
@@ -22,6 +24,9 @@ export function ApprovalQueue({
   onReject: (id: string) => void;
   onBulkApprove: (ids: string[]) => void;
   onBulkReject: (ids: string[]) => void;
+  /** V050-005: inline caption edit. ids carries one for a single
+   *  post, or every sibling id for a carousel. */
+  onUpdateCaption: (ids: string[], next: string) => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [ideaFilter, setIdeaFilter] = useState<string | null>(null);
@@ -364,6 +369,7 @@ export function ApprovalQueue({
                   onReject(id);
                   triggerFlash('reject', 1);
                 }}
+                onUpdateCaption={(next) => onUpdateCaption(postIds, next)}
               />
             );
           }
@@ -413,9 +419,10 @@ export function ApprovalQueue({
                 </div>
               )}
 
-              <p className="text-xs text-zinc-300 line-clamp-2 min-h-[2rem]">
-                {post.caption || <span className="text-zinc-600 italic">No caption</span>}
-              </p>
+              <InlineCaptionEditor
+                caption={post.caption}
+                onSave={(next) => onUpdateCaption([post.id], next)}
+              />
 
               <div className="flex items-center justify-between text-[10px] text-zinc-500">
                 <span>{post.date} {post.time}</span>

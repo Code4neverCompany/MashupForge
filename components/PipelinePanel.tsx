@@ -78,6 +78,7 @@ export function PipelinePanel() {
     rejectScheduledPost,
     bulkApproveScheduledPosts,
     bulkRejectScheduledPosts,
+    updateScheduledPostsCaption,
     pipelineContinuous,
     toggleContinuous,
     pipelineInterval,
@@ -756,6 +757,7 @@ export function PipelinePanel() {
         onReject={rejectScheduledPost}
         onBulkApprove={onBulkApproveWithAutoContinue}
         onBulkReject={onBulkRejectWithUndo}
+        onUpdateCaption={updateScheduledPostsCaption}
       />
 
       {undoState && undoState.snapshots.length > 0 && (

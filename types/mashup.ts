@@ -823,6 +823,17 @@ export interface MashupContextType {
   bulkApproveScheduledPosts: (postIds: string[]) => void;
   /** Bulk-reject N pending_approval posts in a single state pass. */
   bulkRejectScheduledPosts: (postIds: string[]) => void;
+  /**
+   * V050-005: edit the caption of one or more scheduled posts in a
+   * single state pass. Pass [postId] for a single post or
+   * carousel.posts.map(p => p.id) for a carousel — every sibling
+   * post in a carousel shares the same caption visually, so they
+   * must update together to stay consistent.
+   *
+   * Also patches the matching CarouselGroup.caption (if any) so the
+   * group's persisted caption stays in sync with its sibling posts.
+   */
+  updateScheduledPostsCaption: (postIds: string[], caption: string) => void;
   /** FEAT-006: surviving checkpoint from the previous run, if any.
    *  Set on mount when IDB has a record; null otherwise. */
   pendingResume: import('../lib/pipeline-checkpoint').PipelineCheckpoint | null;

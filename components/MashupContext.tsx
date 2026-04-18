@@ -41,6 +41,7 @@ import { useIdeas } from '../hooks/useIdeas';
 import { useSocial } from '../hooks/useSocial';
 import { usePipeline } from '../hooks/usePipeline';
 import { collectFinalizeTargets, finalizePipelineImage } from '../lib/pipeline-finalize';
+import { applyCaptionEdit } from '../lib/caption-edit';
 
 const MashupContext = createContext<MashupContextType | null>(null);
 
@@ -238,6 +239,20 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  // V050-005: inline caption editing from the approval queue. Updates
+  // every targeted post's caption and the matching CarouselGroup's
+  // caption (if all the post ids belong to one) in a single
+  // updateSettings pass so the UI never sees a half-applied state.
+  const updateScheduledPostsCaption = (postIds: string[], caption: string) => {
+    if (postIds.length === 0) return;
+    updateSettings((prev) => applyCaptionEdit(
+      prev.scheduledPosts || [],
+      prev.carouselGroups || [],
+      postIds,
+      caption,
+    ));
+  };
+
   // Compose loading state
   const isLoaded = isSettingsLoaded && isImagesLoaded && isCollectionsLoaded && ideasHook.isIdeasLoaded;
 
@@ -335,6 +350,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     rejectScheduledPost,
     bulkApproveScheduledPosts,
     bulkRejectScheduledPosts,
+    updateScheduledPostsCaption,
     pendingResume: pipelineHook.pendingResume,
     acceptResume: pipelineHook.acceptResume,
     dismissResume: pipelineHook.dismissResume,
