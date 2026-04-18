@@ -48,6 +48,17 @@ export async function GET() {
     }
   }
 
+  // MUSTFIX-002: FEAT-006 replaced AUTO_UPDATE_ON_LAUNCH ('on'/'off') with
+  // UPDATE_BEHAVIOR ('auto'/'notify'/'off'). Users who opted out on v0.2.1
+  // had AUTO_UPDATE_ON_LAUNCH='off' in config.json; without this migration
+  // they'd silently regress to the default 'notify' and start seeing
+  // banners. Carry the opt-out forward. On-disk file is not rewritten —
+  // PATCH-time writes will persist UPDATE_BEHAVIOR; the legacy key
+  // becomes dead data once the user touches any setting.
+  if (keys.UPDATE_BEHAVIOR === undefined && keys.AUTO_UPDATE_ON_LAUNCH === 'off') {
+    keys.UPDATE_BEHAVIOR = 'off';
+  }
+
   return NextResponse.json({ isDesktop: true, configPath, keys });
 }
 
