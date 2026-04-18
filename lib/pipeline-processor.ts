@@ -19,6 +19,7 @@ import {
   type PipelineProgress,
 } from '@/types/mashup';
 import type { CachedEngagement } from '@/lib/smartScheduler';
+import { resolvePipelinePostStatus } from '@/lib/pipeline-daemon-utils';
 
 /** Typed replacement for the __SKIP_IDEA__ string sentinel. */
 export class SkipIdeaSignal extends Error {
@@ -260,6 +261,10 @@ export async function processIdea(
           pipelinePlatforms,
           settings.pipelineDailyCaps,
         );
+        const carouselStatus = resolvePipelinePostStatus(
+          pipelinePlatforms,
+          settings.pipelineAutoApprove,
+        );
         const newPosts: ScheduledPost[] = readyImages.map((img, idx) => ({
           id: `post-${nowStamp}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
           imageId: img.id,
@@ -267,7 +272,7 @@ export async function processIdea(
           time: slot.time,
           platforms: pipelinePlatforms,
           caption: sharedCaption,
-          status: 'pending_approval' as const,
+          status: carouselStatus,
           carouselGroupId: groupId,
           sourceIdeaId: idea.id,
         }));
@@ -358,7 +363,10 @@ export async function processIdea(
             time: slot.time,
             platforms: pipelinePlatforms,
             caption: captionedImg.postCaption || '',
-            status: 'pending_approval',
+            status: resolvePipelinePostStatus(
+              pipelinePlatforms,
+              settings.pipelineAutoApprove,
+            ),
             sourceIdeaId: idea.id,
           };
           scheduledPostId = newPost.id;

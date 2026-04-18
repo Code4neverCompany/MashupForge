@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useMashup } from './MashupContext';
 import type { ScheduledPost, UserSettings } from '@/types/mashup';
+import { isPlatformAutoApproved } from '@/lib/pipeline-daemon-utils';
 import { UndoToast } from './UndoToast';
 import { useDesktopConfig } from '@/hooks/useDesktopConfig';
 import { BestTimesWidget } from './pipeline/BestTimesWidget';
@@ -204,6 +205,11 @@ export function PipelinePanel() {
   const togglePlatform = (p: PipelinePlatform) => {
     const next = platforms.includes(p) ? platforms.filter((x) => x !== p) : [...platforms, p];
     updateSettings({ pipelinePlatforms: next });
+  };
+
+  const autoApprove = settings.pipelineAutoApprove || {};
+  const setAutoApprove = (p: PipelinePlatform, value: boolean) => {
+    updateSettings({ pipelineAutoApprove: { ...autoApprove, [p]: value } });
   };
 
   const dailyCaps = settings.pipelineDailyCaps || {};
@@ -515,6 +521,50 @@ export function PipelinePanel() {
             )}
           </div>
         )}
+
+        {/* Per-platform approval gating (V040-008) */}
+        <div className="pt-2 border-t border-[#c5a062]/15 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="label-overline">Auto-Approve (per platform)</p>
+            <span className="text-[10px] text-zinc-500">off = manual review</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(['instagram', 'pinterest', 'twitter', 'discord'] as PipelinePlatform[]).map((p) => {
+              const isAuto = isPlatformAutoApproved(p, autoApprove);
+              const colour =
+                p === 'instagram'
+                  ? 'text-pink-300 border-pink-500/30'
+                  : p === 'pinterest'
+                    ? 'text-red-300 border-red-500/30'
+                    : p === 'twitter'
+                      ? 'text-sky-300 border-sky-500/30'
+                      : 'text-indigo-300 border-indigo-500/30';
+              return (
+                <label
+                  key={p}
+                  className={`flex items-center gap-2 px-3 py-2 bg-zinc-800/40 border rounded-xl cursor-pointer hover:bg-zinc-800/60 transition-colors ${colour}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isAuto}
+                    onChange={(e) => setAutoApprove(p, e.target.checked)}
+                    className="w-3.5 h-3.5 accent-[#c5a062] cursor-pointer"
+                  />
+                  <span className="text-[11px] capitalize flex-1">{p}</span>
+                  <span className={`text-[9px] uppercase tracking-wider ${isAuto ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {isAuto ? 'auto' : 'manual'}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-zinc-500">
+            Pipeline-produced posts land as <span className="text-zinc-400">scheduled</span> only when
+            <span className="text-emerald-400"> all</span> their platforms are set to auto. If any platform on the post
+            requires manual review, the whole post enters the approval queue.
+            Instagram defaults to <span className="text-amber-400">manual</span>.
+          </p>
+        </div>
 
         {/* Per-platform daily caps */}
         <div className="pt-2 border-t border-[#c5a062]/15 space-y-2">

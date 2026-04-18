@@ -204,6 +204,21 @@ export interface UserSettings {
   /** Platforms the pipeline should publish to when pipelineAutoPost is on. */
   pipelinePlatforms?: string[];
   /**
+   * V040-008: per-platform approval gating. When a pipeline-produced
+   * post's platforms include any platform whose toggle is `false`,
+   * the post enters as `pending_approval` and waits for explicit user
+   * approval. When ALL of a post's platforms are `true`, it lands
+   * directly as `scheduled`. Missing entry resolves via defaults —
+   * Instagram defaults to manual approval (false); all others default
+   * to auto (true). The Instagram default is intentional: its Graph
+   * API is the one that most often surfaces flagged content or
+   * rate-limit issues, and silent auto-post surprises aren't worth
+   * the convenience.
+   */
+  pipelineAutoApprove?: Partial<
+    Record<'instagram' | 'pinterest' | 'twitter' | 'discord', boolean>
+  >;
+  /**
    * Per-platform daily post caps for the smart scheduler. When set,
    * the scheduler refuses to place a new post on a day where the
    * count of same-platform `scheduled` / `pending_approval` posts
