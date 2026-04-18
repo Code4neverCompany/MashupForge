@@ -69,6 +69,7 @@ import {
 } from './MashupContext';
 import { LEONARDO_SHARED_STYLES } from '@/types/mashup';
 import { suggestParametersAI, type ParamSuggestion } from '@/lib/param-suggest';
+import { pushIdeaToStudio } from '@/lib/push-idea-to-studio';
 import { ParamSuggestionCard } from './ParamSuggestionCard';
 import { KebabMenu, type KebabMenuItem } from './KebabMenu';
 import { PipelineStatusStrip } from './PipelineStatusStrip';
@@ -1062,47 +1063,22 @@ export function MainContent() {
   const pendingIdeaCarouselRef = useRef(false);
 
   const handlePushIdeaToCompare = async (prompt: string) => {
-    setIsPushing(true);
-    setView('compare');
-    // Arm the carousel watcher — if the user has carousel mode on, the
-    // Compare results from this run will auto-group. Harmless if mode
-    // is off; the watcher just clears the flag.
-    pendingIdeaCarouselRef.current = true;
-    setComparisonPrompt(prompt);
-    try {
-      // V041-HOTFIX-PARAM: route Push to Studio through the same param-suggest
-      // engine the manual "Suggest" button uses, so each active model gets the
-      // best aspect/style/size/quality/negative-prompt for this idea — not the
-      // legacy single-shot enhance prompt that ignored per-model API surfaces.
-      // suggestParametersAI falls back to the rule engine on AI failure, so the
-      // user always gets a populated card.
-      const suggestion = await suggestParametersAI({
-        prompt,
-        availableModels: LEONARDO_MODELS,
-        modelGuides: MODEL_PROMPT_GUIDES,
-        availableStyles: LEONARDO_SHARED_STYLES,
-        savedImages,
-      });
-      setComparisonModels(suggestion.modelIds);
-      setComparisonOptions(prev => ({
-        ...prev,
-        aspectRatio: suggestion.aspectRatio,
-        imageSize: suggestion.imageSize,
-        negativePrompt: suggestion.negativePrompt ?? prev.negativePrompt ?? '',
-        style: suggestion.style ?? prev.style,
-        quality: suggestion.quality,
-        promptEnhance: suggestion.promptEnhance,
-      }));
-      // Surface the per-model card so the user can review each model's
-      // resolved knobs before generating. Apply button on the card is a
-      // no-op confirmation (params are already set above).
-      setParamSuggestion(suggestion);
-    } catch {
-      // Suggestion failed entirely — prompt is still set; user can pick
-      // params manually or hit the Suggest button to retry.
-    } finally {
-      setIsPushing(false);
-    }
+    // V050-006: body extracted to lib/push-idea-to-studio.ts so the
+    // wiring (param-suggest call, state setter fan-out) is unit-testable.
+    await pushIdeaToStudio(prompt, {
+      setIsPushing,
+      setView,
+      setComparisonPrompt,
+      setComparisonModels,
+      setComparisonOptions,
+      setParamSuggestion,
+      armCarouselWatcher: () => { pendingIdeaCarouselRef.current = true; },
+      suggest: suggestParametersAI,
+      availableModels: LEONARDO_MODELS,
+      modelGuides: MODEL_PROMPT_GUIDES,
+      availableStyles: LEONARDO_SHARED_STYLES,
+      savedImages,
+    });
   };
 
   /**
