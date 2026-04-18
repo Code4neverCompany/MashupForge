@@ -9,10 +9,15 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "precommit": "tsc --noEmit && vitest run",
+    "prepare": "simple-git-hooks",
     "clean": "next clean",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "npm run precommit"
   },
   "dependencies": {
     "@mariozechner/pi-ai": "0.67.6",
@@ -43,6 +48,7 @@
     "@types/react-dom": "^19",
     "eslint": "9.39.1",
     "eslint-config-next": "^16.2.3",
+    "simple-git-hooks": "^2.13.1",
     "tailwindcss": "4.1.11",
     "typescript": "5.9.3",
     "vitest": "^4.1.4"
