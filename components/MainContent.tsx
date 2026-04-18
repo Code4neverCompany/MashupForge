@@ -118,6 +118,12 @@ import { LazyImg } from './LazyImg';
 import { AspectPreview } from './postready/AspectPreview';
 import { EmptyGalleryState } from './EmptyGalleryState';
 import { GalleryCard } from './GalleryCard';
+// V050-002 Phase 1: per-view modules under components/views. Phase 1
+// extracts the two simplest views (Ideas, Pipeline) as a proof of the
+// presentational/props-bag pattern. Phase 2 (post-ready, captioning,
+// gallery, studio/compare) is tracked in docs/bmad/reviews/V050-002.md.
+import { IdeasView } from './views/IdeasView';
+import { PipelineView } from './views/PipelineView';
 // TECHDEBT-001: ui tokens are imported aliased to `ui*` to avoid
 // collision with `status` field names that local handlers iterate over.
 import { status as uiStatus, gold as uiGold, surface as uiSurface } from '@/lib/ui-tokens';
@@ -1909,165 +1915,15 @@ export function MainContent() {
               )}
 
               {view === 'ideas' && (
-                <div className="space-y-6 h-full flex flex-col">
-                  {/* Section header */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="icon-box-gold">
-                        <Lightbulb className="w-5 h-5 text-[#c5a062]" />
-                      </div>
-                      <div>
-                        <h2 className="type-title">Ideas Board</h2>
-                        <p className="type-muted">Review, approve, and push brainstormed ideas to the Studio</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={clearIdeas}
-                      className="px-3 py-1.5 text-xs bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-xl font-medium transition-colors flex items-center gap-1.5"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Clear All
-                    </button>
-                  </div>
-
-                  {/* V040-005: morning-briefing surface above the kanban */}
-                  <DailyDigest setView={setView} />
-
-                  {/* Kanban columns */}
-                  <div className="flex flex-col md:flex-row gap-6 flex-1 min-h-[500px]">
-                    {(['idea', 'in-work', 'done'] as const).map((status) => {
-                      const statusCfg = {
-                        'idea': {
-                          icon: Lightbulb,
-                          label: 'Idea',
-                          iconColor: 'text-amber-400',
-                          iconBg: 'bg-amber-600/20 border-amber-500/30',
-                          hoverBorder: 'hover:border-amber-500/30',
-                        },
-                        'in-work': {
-                          icon: Zap,
-                          label: 'In Work',
-                          iconColor: 'text-emerald-400',
-                          iconBg: 'bg-emerald-600/20 border-emerald-500/30',
-                          hoverBorder: 'hover:border-emerald-500/30',
-                        },
-                        'done': {
-                          icon: CheckCircle2,
-                          label: 'Done',
-                          iconColor: 'text-zinc-300',
-                          iconBg: 'bg-zinc-800/80 border-zinc-700/60',
-                          hoverBorder: 'hover:border-zinc-500/30',
-                        },
-                      }[status];
-                      const StatusIcon = statusCfg.icon;
-                      return (
-                        <div
-                          key={status}
-                          className="flex-1 card p-4 flex flex-col gap-4"
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            // STORY-132: explicit move effect — without
-                            // this Chromium shows a no-entry cursor and
-                            // refuses the drop even with a handler bound.
-                            e.dataTransfer.dropEffect = 'move';
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            // STORY-132 followup: WebView2 and some sandboxed
-                            // Chromium contexts strip non-MIME type keys on
-                            // drop, so getData('ideaId') returned empty even
-                            // when dragstart set it. Read 'text/plain' with a
-                            // prefix and fall back to the legacy key for any
-                            // cached old build still in someone's DOM.
-                            const raw =
-                              e.dataTransfer.getData('text/plain') ||
-                              e.dataTransfer.getData('ideaId');
-                            const ideaId = raw.startsWith('idea:') ? raw.slice(5) : raw;
-                            if (ideaId) updateIdeaStatus(ideaId, status);
-                          }}
-                        >
-                          <h3 className="flex items-center justify-between">
-                            <span className="flex items-center gap-2">
-                              <span className={`w-7 h-7 rounded-lg border flex items-center justify-center ${statusCfg.iconBg}`}>
-                                <StatusIcon className={`w-3.5 h-3.5 ${statusCfg.iconColor}`} />
-                              </span>
-                              <span className="text-sm font-semibold text-white">{statusCfg.label}</span>
-                            </span>
-                            <span className="bg-zinc-800/80 text-zinc-400 rounded-full px-2 py-0.5 text-[10px]">
-                              {ideas.filter((i) => i.status === status).length}
-                            </span>
-                          </h3>
-                          <div className="flex flex-col gap-3 overflow-y-auto hide-scrollbar flex-1">
-                            {ideas.filter((i) => i.status === status).length === 0 && (
-                              <div className="flex-1 flex flex-col items-center justify-center py-10 border-2 border-dashed border-zinc-800/60 rounded-xl text-zinc-600 text-xs gap-2 select-none">
-                                <StatusIcon className={`w-6 h-6 ${statusCfg.iconColor} opacity-30`} />
-                                {status === 'idea' ? 'No ideas yet — generate some in the sidebar' : `Drag cards here`}
-                              </div>
-                            )}
-                            {ideas.filter((i) => i.status === status).map((idea) => (
-                              <div
-                                key={idea.id}
-                                draggable
-                                onDragStart={(e) => {
-                                  // STORY-132 followup: use 'text/plain' with
-                                  // a prefix so WebView2 doesn't strip the
-                                  // payload on drop. Keep the legacy key for
-                                  // one release as a belt-and-suspenders.
-                                  e.dataTransfer.setData('text/plain', `idea:${idea.id}`);
-                                  e.dataTransfer.setData('ideaId', idea.id);
-                                  e.dataTransfer.effectAllowed = 'move';
-                                }}
-                                className={`card p-4 flex flex-col gap-3 cursor-grab active:cursor-grabbing transition-all duration-200 ${statusCfg.hoverBorder}`}
-                              >
-                                {idea.context && <h4 className="text-sm font-bold text-amber-400">{idea.context}</h4>}
-                                <p className="text-xs text-zinc-300 line-clamp-4">{idea.concept}</p>
-                                <div className="flex items-center justify-between mt-auto pt-3 border-t border-[#c5a062]/15">
-                                  <span className="text-[10px] text-zinc-500">
-                                    {new Date(idea.createdAt).toLocaleDateString()}
-                                  </span>
-                                  <div className="flex gap-1">
-                                    {status === 'idea' && (
-                                      <button
-                                        onClick={() => updateIdeaStatus(idea.id, 'in-work')}
-                                        className="btn-blue-sm text-[10px] py-1 px-2 rounded-lg"
-                                      >
-                                        Approve
-                                      </button>
-                                    )}
-                                    {status === 'in-work' && (
-                                      <>
-                                        <button
-                                          onClick={() => handlePushIdeaToCompare(idea.concept)}
-                                          disabled={isPushing}
-                                          className="btn-blue-sm text-[10px] py-1 px-2 rounded-lg gap-1"
-                                        >
-                                          {isPushing ? <Loader2 className="w-2 h-2 animate-spin" /> : <Zap className="w-2 h-2" />}
-                                          To Studio
-                                        </button>
-                                        <button
-                                          onClick={() => updateIdeaStatus(idea.id, 'done')}
-                                          className="btn-blue-sm text-[10px] py-1 px-2 rounded-lg"
-                                        >
-                                          Done
-                                        </button>
-                                      </>
-                                    )}
-                                    <button
-                                      onClick={() => deleteIdea(idea.id)}
-                                      className="text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-400 px-2 py-1 rounded-lg"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                <IdeasView
+                  ideas={ideas}
+                  isPushing={isPushing}
+                  setView={setView}
+                  clearIdeas={clearIdeas}
+                  updateIdeaStatus={updateIdeaStatus}
+                  deleteIdea={deleteIdea}
+                  handlePushIdeaToCompare={handlePushIdeaToCompare}
+                />
               )}
 
               {view === 'compare' && (
@@ -4275,7 +4131,7 @@ export function MainContent() {
                   </div>
                 );
               })()}
-              {view === 'pipeline' && <PipelinePanel />}
+              {view === 'pipeline' && <PipelineView panel={<PipelinePanel />} />}
 
               {/* Carousel multi-source picker modal — lifted out of the
                   Captioning view so Post-Ready (and any other tab) can
