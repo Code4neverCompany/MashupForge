@@ -72,6 +72,7 @@ import { suggestParametersAI, type ParamSuggestion } from '@/lib/param-suggest';
 import { ParamSuggestionCard } from './ParamSuggestionCard';
 import { KebabMenu, type KebabMenuItem } from './KebabMenu';
 import { PipelineStatusStrip } from './PipelineStatusStrip';
+import { DailyDigest } from './ideas/DailyDigest';
 // Lazy-loaded — the Pipeline tab pulls in smart-scheduler logic +
 // its own local state tree and isn't needed on first paint. ssr:false
 // because it reads localStorage during initial render.
@@ -1939,6 +1940,9 @@ export function MainContent() {
                       Clear All
                     </button>
                   </div>
+
+                  {/* V040-005: morning-briefing surface above the kanban */}
+                  <DailyDigest setView={setView} />
 
                   {/* Kanban columns */}
                   <div className="flex flex-col md:flex-row gap-6 flex-1 min-h-[500px]">
