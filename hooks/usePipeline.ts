@@ -21,6 +21,7 @@ import {
   clearCheckpoint,
   type PipelineCheckpoint,
 } from '@/lib/pipeline-checkpoint';
+import { applyResumeCheckpoint } from '@/lib/resume-checkpoint';
 
 interface UsePipelineDeps {
   ideas: Idea[];
@@ -849,29 +850,23 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
     void clearCheckpoint();
   }, [processIdea, addLog, updateIdeaStatus, autoGenerateIdeas, addIdea]);
 
-  // FEAT-006: resume helpers exposed via context.
+  // FEAT-006: resume helpers exposed via context. Side-effect logic
+  // lives in lib/resume-checkpoint.ts so it's unit-testable.
   const acceptResume = useCallback(() => {
-    const cp = pendingResume;
-    if (!cp) return;
-    // Apply the snapshotted pipeline settings so resume uses the same
-    // delay/continuous/interval the user had configured at first run.
-    // Update refs synchronously too — startPipeline reads from refs and
-    // the ref-syncing useEffects don't fire until next render.
-    setPipelineDelayState(cp.settings.delay);
-    pipelineDelayRef.current = cp.settings.delay;
-    setPipelineContinuous(cp.settings.continuous);
-    pipelineContinuousRef.current = cp.settings.continuous;
-    setPipelineIntervalState(cp.settings.interval);
-    pipelineIntervalRef.current = cp.settings.interval;
-    setPipelineTargetDaysState(cp.settings.targetDays);
-    pipelineTargetDaysRef.current = cp.settings.targetDays;
-    // Flip the in-flight idea back to 'idea' so startPipeline picks it
-    // up from the top of processIdea (mid-step async state isn't
-    // restorable, so we re-run the affected idea from scratch).
-    const idea = ideasRef.current.find((i) => i.id === cp.ideaId);
-    if (idea && idea.status === 'in-work') updateIdeaStatus(cp.ideaId, 'idea');
-    setPendingResume(null);
-    void startPipeline();
+    applyResumeCheckpoint(pendingResume, {
+      setPipelineDelayState,
+      setPipelineContinuous,
+      setPipelineIntervalState,
+      setPipelineTargetDaysState,
+      pipelineDelayRef,
+      pipelineContinuousRef,
+      pipelineIntervalRef,
+      pipelineTargetDaysRef,
+      ideasRef,
+      updateIdeaStatus,
+      setPendingResume,
+      startPipeline,
+    });
   }, [pendingResume, startPipeline, updateIdeaStatus]);
 
   const dismissResume = useCallback(() => {

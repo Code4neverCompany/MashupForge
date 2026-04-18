@@ -5,6 +5,11 @@ import { Download, Loader2, X, CheckCircle2, AlertTriangle, RotateCw, Clock } fr
 import { useDesktopConfig } from '../hooks/useDesktopConfig';
 import { isPipelineBusy, subscribePipelineBusy } from '@/lib/pipeline-busy';
 import { UPDATE_BEHAVIOR_DEFAULT, type UpdateBehavior } from '@/lib/desktop-config-keys';
+import {
+  PIPELINE_POSTPONE_POLL_MS,
+  computePostponeDeadline,
+  shouldFireInstall,
+} from '@/lib/update-postpone';
 
 // Local minimal shape for the Tauri updater Update object — typed loosely
 // because we import the real type dynamically and only touch a few fields.
@@ -31,12 +36,8 @@ const LAST_SEEN_KEY = 'mashup_update_last_seen_version';
 // FEAT-002: surfaced in the Updates subsection of DesktopSettingsPanel.
 export const LAST_CHECKED_AT_KEY = 'mashup_update_last_checked_at';
 
-// FEAT-006: max time to postpone an install when a pipeline run is in
-// flight. After this elapses, install fires regardless — the update is
-// always more important than the in-flight idea after 2h of waiting.
-const PIPELINE_POSTPONE_MAX_MS = 120 * 60 * 1000;
-// Poll cadence while postponed. Cheap — just reads a module-level flag.
-const PIPELINE_POSTPONE_POLL_MS = 60 * 1000;
+// FEAT-006: postpone-related constants + decision logic live in
+// lib/update-postpone.ts so vitest can exercise them without jsdom.
 
 export function UpdateChecker() {
   const { isDesktop } = useDesktopConfig();
@@ -181,7 +182,7 @@ export function UpdateChecker() {
       setState({
         kind: 'postponed',
         update,
-        deadline: Date.now() + PIPELINE_POSTPONE_MAX_MS,
+        deadline: computePostponeDeadline(Date.now()),
       });
       return;
     }
@@ -200,9 +201,7 @@ export function UpdateChecker() {
     let fired = false;
     const tryInstall = () => {
       if (fired) return;
-      const idle = !isPipelineBusy();
-      const expired = Date.now() >= deadline;
-      if (idle || expired) {
+      if (shouldFireInstall(Date.now(), deadline, isPipelineBusy())) {
         fired = true;
         void performInstall(update);
       }
