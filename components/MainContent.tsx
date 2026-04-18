@@ -116,6 +116,7 @@ import { ImageDetailModal } from './ImageDetailModal';
 import { BulkTagModal } from './BulkTagModal';
 import { LazyImg } from './LazyImg';
 import { AspectPreview } from './postready/AspectPreview';
+import { EmptyGalleryState } from './EmptyGalleryState';
 import { GalleryCard } from './GalleryCard';
 // TECHDEBT-001: ui tokens are imported aliased to `ui*` to avoid
 // collision with `status` field names that local handlers iterate over.
@@ -4422,24 +4423,33 @@ export function MainContent() {
 
               {(view === 'studio' || view === 'gallery') && (
                 displayedImages.length === 0 && !isGenerating ? (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.4 }}
-              className="h-full flex flex-col items-center justify-center text-zinc-500 py-20"
-            >
-              <div className="w-24 h-24 mb-6 rounded-full bg-zinc-900/50 border border-zinc-800/60 flex items-center justify-center">
-                {view === 'gallery' ? <Bookmark className="w-10 h-10 text-zinc-700" /> : <ImageIcon className="w-10 h-10 text-zinc-700" />}
-              </div>
-              <h2 className="text-xl font-medium text-zinc-300 mb-2">
-                {view === 'gallery' ? 'Your Gallery is Empty' : 'No Images Generated Yet'}
-              </h2>
-              <p className="text-sm max-w-md text-center text-zinc-500">
-                {view === 'gallery'
-                  ? 'Save your favorite mashups from the Studio to build your collection.'
-                  : 'Click "Generate Mashup" to create 4 unique crossover images from famous fantasy universes using Leonardo.AI.'}
-              </p>
-            </motion.div>
+            view === 'gallery' ? (
+              <EmptyGalleryState
+                firstRun={
+                  savedImages.length === 0 &&
+                  images.length === 0 &&
+                  ideas.length === 0 &&
+                  (settings.scheduledPosts ?? []).length === 0
+                }
+                ideaCount={ideas.filter((i) => i.status === 'idea').length}
+                setView={setView}
+              />
+            ) : (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.4 }}
+                className="h-full flex flex-col items-center justify-center text-zinc-500 py-20"
+              >
+                <div className="w-24 h-24 mb-6 rounded-full bg-zinc-900/50 border border-zinc-800/60 flex items-center justify-center">
+                  <ImageIcon className="w-10 h-10 text-zinc-700" />
+                </div>
+                <h2 className="text-xl font-medium text-zinc-300 mb-2">No Images Generated Yet</h2>
+                <p className="text-sm max-w-md text-center text-zinc-500">
+                  Click &quot;Generate Mashup&quot; to create 4 unique crossover images from famous fantasy universes using Leonardo.AI.
+                </p>
+              </motion.div>
+            )
           ) : (
             <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 pb-12`}>
               {displayedImages.map((img, idx) => {
