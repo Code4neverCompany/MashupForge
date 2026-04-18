@@ -131,11 +131,35 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Build Tauri bundle
+      # MUSTFIX-001: v0.2.2 CI run (24604871387) failed here with
+      # "npm error could not determine executable to run". Root cause:
+      # Bun does not populate node_modules/.bin the way npm does, so
+      # `npx tauri` can't resolve the CLI when Bun did the install.
+      # `bunx` reads from Bun's own bin layout, which IS populated.
+      # continue-on-error so a real tauri build failure (not a CLI
+      # resolution issue) drops to the npm fallback below.
+      - name: Build Tauri bundle (Bun)
+        id: tauri_bun
+        continue-on-error: true
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npx tauri build
+        run: bunx tauri build
+
+      # MUSTFIX-001: real fallback. Fires if EITHER the JS build OR the
+      # Tauri build under Bun failed. `npm ci` rebuilds node_modules in
+      # the npm-shaped layout (with .bin shims) so `npx tauri` resolves.
+      # No continue-on-error here: if this step fails, the job fails.
+      - name: Build Tauri bundle (npm fallback)
+        if: steps.tauri_bun.outcome == 'failure' || steps.bun_build.outcome == 'failure'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          echo "::warning::Bun-driven Tauri build failed (bun_build=${{ steps.bun_build.outcome }} tauri_bun=${{ steps.tauri_bun.outcome }}). Reinstalling with npm and retrying."
+          npm ci
+          npx tauri build
 
       - name: Synthesize latest.json if Tauri didn't emit one
         shell: bash
