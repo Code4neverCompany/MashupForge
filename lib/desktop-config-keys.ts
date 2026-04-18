@@ -47,6 +47,6 @@ export const DESKTOP_CONFIG_KEYS: readonly DesktopConfigFieldMeta[] = [
   { key: 'PINTEREST_ACCESS_TOKEN', label: 'Pinterest Access Token', hint: 'From developers.pinterest.com (pins:write scope)' },
   { key: 'PINTEREST_BOARD_ID',     label: 'Pinterest Board ID',     hint: 'Target board ID (optional — defaults to first board)' },
   { key: 'DISCORD_WEBHOOK_URL',    label: 'Discord Webhook URL',    hint: 'Channel webhook URL from Server Settings → Integrations' },
-];
+] as const;
 
 export type DesktopConfigKey = typeof DESKTOP_CONFIG_KEYS[number]['key'];
