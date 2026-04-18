@@ -308,8 +308,25 @@ function UpdatesSection({ behavior, onBehaviorChange }: UpdatesSectionProps) {
         }
       });
     } catch (e: unknown) {
+      // BUG-ACL-005: tauri-plugin-updater v2.10.1 sometimes raises
+      // "plugin:updater|check not allowed by ACL" on Windows even
+      // though updater:allow-check is in capabilities/default.json.
+      // Surface a friendly sentence instead of the raw ACL string so
+      // the panel stays usable; console has the underlying detail.
       const detail = e instanceof Error ? e.message : String(e);
-      setResult({ kind: 'error', message: detail });
+      if (/not allowed by ACL/i.test(detail)) {
+        console.warn(
+          '[UpdatesSection] updater ACL denied check() — likely plugin bug; reinstall of the latest release may resolve.',
+          detail,
+        );
+        setResult({
+          kind: 'error',
+          message:
+            'Auto-update check unavailable — please check for a new release manually.',
+        });
+      } else {
+        setResult({ kind: 'error', message: detail });
+      }
     }
   }, []);
 

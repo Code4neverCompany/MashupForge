@@ -122,10 +122,25 @@ export function UpdateChecker() {
           setState({ kind: 'available', update });
         }
       } catch (e: unknown) {
-        // Plugin unavailable, network failure, manifest missing — log to a
-        // background error state. We don't surface this to the user because
-        // an update-check failure is not actionable from here.
+        // Plugin unavailable, network failure, manifest missing, or ACL
+        // denied — none are actionable from the banner, so we log loudly
+        // and swallow. The Settings panel's manual Check Now button is
+        // the recovery path.
+        //
+        // BUG-ACL-005: tauri-plugin-updater v2.10.1 sporadically raises
+        // "plugin:updater|check not allowed by ACL" on Windows even when
+        // updater:allow-check is explicitly granted (also implied by
+        // updater:default). Suspected plugin-side bug. We log with a
+        // distinct prefix so it's searchable in the console.
         const detail = e instanceof Error ? e.message : String(e);
+        if (/not allowed by ACL/i.test(detail)) {
+          console.warn(
+            '[UpdateChecker] updater ACL denied check() — capability is granted in source; likely tauri-plugin-updater v2.10.1 bug. Manual check in Settings still works.',
+            detail,
+          );
+        } else {
+          console.warn('[UpdateChecker] update check failed:', detail);
+        }
         if (!cancelled) setState({ kind: 'error', message: detail });
       }
     };
