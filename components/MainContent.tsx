@@ -115,6 +115,7 @@ import { CollectionModal } from './CollectionModal';
 import { ImageDetailModal } from './ImageDetailModal';
 import { BulkTagModal } from './BulkTagModal';
 import { LazyImg } from './LazyImg';
+import { AspectPreview } from './postready/AspectPreview';
 import { GalleryCard } from './GalleryCard';
 // TECHDEBT-001: ui tokens are imported aliased to `ui*` to avoid
 // collision with `status` field names that local handlers iterate over.
@@ -4026,46 +4027,43 @@ export function MainContent() {
                               key={img.id}
                               className="bg-zinc-900/80 backdrop-blur-sm border border-[#c5a062]/20 rounded-2xl overflow-hidden flex flex-col md:flex-row hover:border-[#c5a062]/40 transition-all duration-300"
                             >
-                              {/* Image */}
-                              <div className="relative md:w-48 md:shrink-0 aspect-square bg-zinc-950">
-                                {img.url ? (
-                                  <LazyImg
-                                    src={img.url}
-                                    alt={img.prompt}
-                                    onClick={() => setSelectedImage(img)}
-                                    className="w-full h-full object-cover cursor-zoom-in"
-                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                  />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center">
-                                    <ImageOff className="w-8 h-8 text-zinc-700" />
-                                  </div>
-                                )}
-                                <span className={`absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 ${badge.color}/90 text-[10px] font-medium text-white rounded-full`}>
-                                  <Check className="w-3 h-3" /> {badge.text}
-                                </span>
-                                {/* Carousel-grouping checkbox — top-right.
-                                    Lets users multi-select single cards
-                                    and bulk-group them via the header
-                                    "Group Selected" button. */}
-                                <label
-                                  className="absolute top-2 right-2 z-10 flex items-center justify-center w-6 h-6 bg-black/60 backdrop-blur-sm rounded cursor-pointer hover:bg-black/80 transition-colors"
-                                  onClick={(e) => e.stopPropagation()}
-                                  title="Select for grouping"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={postReadySelected.has(img.id)}
-                                    onChange={(e) => {
-                                      const next = new Set(postReadySelected);
-                                      if (e.target.checked) next.add(img.id);
-                                      else next.delete(img.id);
-                                      setPostReadySelected(next);
-                                    }}
-                                    className="w-4 h-4 accent-[#00e6ff] cursor-pointer"
-                                  />
-                                </label>
-                              </div>
+                              {/* Image — V040-009: aspect crop preview reflects
+                                  the platforms the user has selected on the
+                                  card so they see how it'll appear in feed. */}
+                              <AspectPreview
+                                src={img.url}
+                                alt={img.prompt}
+                                selectedPlatforms={selPlatforms}
+                                onClick={() => setSelectedImage(img)}
+                                overlay={
+                                  <>
+                                    <span className={`absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 ${badge.color}/90 text-[10px] font-medium text-white rounded-full`}>
+                                      <Check className="w-3 h-3" /> {badge.text}
+                                    </span>
+                                    {/* Carousel-grouping checkbox — top-right.
+                                        Lets users multi-select single cards
+                                        and bulk-group them via the header
+                                        "Group Selected" button. */}
+                                    <label
+                                      className="absolute top-2 right-2 z-10 flex items-center justify-center w-6 h-6 bg-black/60 backdrop-blur-sm rounded cursor-pointer hover:bg-black/80 transition-colors"
+                                      onClick={(e) => e.stopPropagation()}
+                                      title="Select for grouping"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={postReadySelected.has(img.id)}
+                                        onChange={(e) => {
+                                          const next = new Set(postReadySelected);
+                                          if (e.target.checked) next.add(img.id);
+                                          else next.delete(img.id);
+                                          setPostReadySelected(next);
+                                        }}
+                                        className="w-4 h-4 accent-[#00e6ff] cursor-pointer"
+                                      />
+                                    </label>
+                                  </>
+                                }
+                              />
 
                               {/* Right column */}
                               <div className="flex-1 flex flex-col">
