@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar, Check, X, Lightbulb, ImageOff, CheckCircle2 } from 'lucide-react';
 import type { GeneratedImage, Idea, ScheduledPost } from '@/types/mashup';
+import { groupApprovalPosts } from '@/lib/approval-grouping';
+import { CarouselApprovalCard } from '@/components/approval/CarouselApprovalCard';
 
 export function ApprovalQueue({
   posts,
@@ -154,7 +156,7 @@ export function ApprovalQueue({
   }
 
   return (
-    <div className="bg-amber-500/10 rounded-2xl border border-amber-500/30 p-4 sm:p-5 space-y-4">
+    <div className="bg-indigo-500/10 rounded-2xl border border-indigo-500/30 p-4 sm:p-5 space-y-4">
       {flash && (
         <div
           role="status"
@@ -179,11 +181,11 @@ export function ApprovalQueue({
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-amber-400" />
-          <span className="text-sm font-medium text-amber-300">
-            Approval Queue ({posts.length})
+          <CheckCircle2 className="w-4 h-4 text-indigo-300" />
+          <span className="text-sm font-medium text-indigo-200">
+            Pipeline Approval ({posts.length})
             {filtered.length !== posts.length && (
-              <span className="text-amber-400/70"> · {filtered.length} shown</span>
+              <span className="text-indigo-300/70"> · {filtered.length} shown</span>
             )}
           </span>
         </div>
@@ -222,7 +224,7 @@ export function ApprovalQueue({
                 onClick={() => setIdeaFilter(null)}
                 className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
                   ideaFilter === null
-                    ? 'bg-amber-500/20 text-amber-200 border-amber-500/40'
+                    ? 'bg-indigo-500/20 text-indigo-200 border-indigo-500/40'
                     : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
                 }`}
               >
@@ -234,7 +236,7 @@ export function ApprovalQueue({
                   onClick={() => setIdeaFilter(id)}
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
                     ideaFilter === id
-                      ? 'bg-amber-500/20 text-amber-200 border-amber-500/40'
+                      ? 'bg-indigo-500/20 text-indigo-200 border-indigo-500/40'
                       : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
                   }`}
                   title={ideaById.get(id)?.concept || id}
@@ -307,8 +309,8 @@ export function ApprovalQueue({
 
       {/* Bulk action bar — shown only when items are selected */}
       {selectedCount > 0 && (
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-amber-500/20">
-          <span className="text-xs text-amber-200">{selectedCount} selected</span>
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#c5a062]/20">
+          <span className="text-xs text-[#c5a062]">{selectedCount} selected</span>
           <button
             onClick={handleBulkApprove}
             className="text-xs px-3 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 rounded-xl border border-emerald-500/40 transition-colors"
@@ -326,9 +328,46 @@ export function ApprovalQueue({
         </div>
       )}
 
-      {/* Card grid */}
+      {/* Card grid — V040-DES-003: groups carousel posts into one card,
+          singles render as before. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {filtered.map((post) => {
+        {groupApprovalPosts(filtered).map((item) => {
+          if (item.kind === 'carousel') {
+            const postIds = item.posts.map((p) => p.id);
+            const anyInGroupSelected = postIds.some((id) => selected.has(id));
+            const firstIdeaId = item.posts.find((p) => p.sourceIdeaId)?.sourceIdeaId;
+            const idea = firstIdeaId ? ideaById.get(firstIdeaId) : undefined;
+            return (
+              <CarouselApprovalCard
+                key={item.groupId}
+                groupId={item.groupId}
+                posts={item.posts}
+                imagesById={imageById}
+                idea={idea}
+                selected={anyInGroupSelected}
+                onToggleSelect={() => {
+                  setSelected((prev) => {
+                    const next = new Set(prev);
+                    if (anyInGroupSelected) {
+                      for (const id of postIds) next.delete(id);
+                    } else {
+                      for (const id of postIds) next.add(id);
+                    }
+                    return next;
+                  });
+                }}
+                onApprovePost={(id) => {
+                  onApprove(id);
+                  triggerFlash('approve', 1);
+                }}
+                onRejectPost={(id) => {
+                  onReject(id);
+                  triggerFlash('reject', 1);
+                }}
+              />
+            );
+          }
+          const post = item.post;
           const img = imageById.get(post.imageId);
           const idea = post.sourceIdeaId ? ideaById.get(post.sourceIdeaId) : undefined;
           const isSelected = selected.has(post.id);
@@ -338,7 +377,7 @@ export function ApprovalQueue({
               key={post.id}
               className={`relative bg-zinc-900/60 rounded-xl border p-3 space-y-2 transition-all ${
                 isSelected
-                  ? 'border-amber-500/60 shadow-[0_0_12px_rgba(245,158,11,0.15)]'
+                  ? 'border-[#c5a062]/60 shadow-[0_0_12px_rgba(197,160,98,0.18)]'
                   : 'border-[#c5a062]/20 hover:border-[#c5a062]/40'
               }`}
             >
@@ -347,7 +386,7 @@ export function ApprovalQueue({
                   type="checkbox"
                   checked={isSelected}
                   onChange={() => toggleSelect(post.id)}
-                  className="w-4 h-4 accent-amber-500 cursor-pointer"
+                  className="w-4 h-4 accent-[#c5a062] cursor-pointer"
                 />
               </label>
 
@@ -368,7 +407,7 @@ export function ApprovalQueue({
               </div>
 
               {idea && (
-                <div className="flex items-center gap-1 text-[10px] text-amber-300/80">
+                <div className="flex items-center gap-1 text-[10px] text-[#c5a062]/80">
                   <Lightbulb className="w-3 h-3" />
                   <span className="truncate">{idea.concept}</span>
                 </div>
