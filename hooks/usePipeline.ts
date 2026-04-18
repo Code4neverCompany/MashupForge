@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { applyResumeCheckpoint } from '@/lib/resume-checkpoint';
-import { usePipelineDaemon } from './usePipelineDaemon';
+import { usePipelineDaemon, type PipelineResumeHint } from './usePipelineDaemon';
 import { useIdeaProcessor } from './useIdeaProcessor';
 import type { Idea, UserSettings, GeneratedImage, GenerateOptions } from '../types/mashup';
 
@@ -66,7 +66,8 @@ export function usePipeline(deps: UsePipelineDeps) {
   });
 
   const startPipeline = useCallback(
-    () => daemon.runOuterLoop(processor.processIdea),
+    (resumeHint?: PipelineResumeHint) =>
+      daemon.runOuterLoop(processor.processIdea, resumeHint),
     [daemon, processor.processIdea],
   );
 
@@ -77,11 +78,14 @@ export function usePipeline(deps: UsePipelineDeps) {
       setPipelineIntervalState: daemon.setPipelineIntervalState,
       setPipelineTargetDaysState: daemon.setPipelineTargetDaysState,
       getIdeas: daemon.getIdeas,
+      // V050-001: live reader over the saved gallery so the resume helper
+      // can hydrate pre-generated images from checkpoint.imageIds.
+      getSavedImages: () => savedImages,
       updateIdeaStatus,
       setPendingResume: daemon.setPendingResume,
       startPipeline,
     });
-  }, [daemon, updateIdeaStatus, startPipeline]);
+  }, [daemon, updateIdeaStatus, startPipeline, savedImages]);
 
   return {
     pipelineEnabled: daemon.pipelineEnabled,

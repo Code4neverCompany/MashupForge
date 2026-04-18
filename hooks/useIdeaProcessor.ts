@@ -21,6 +21,7 @@ import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import {
   processIdea as processIdeaFn,
   type ProcessIdeaDeps,
+  type ResumeContext,
 } from '@/lib/pipeline-processor';
 import { awaitImagesOrSkip } from '@/lib/image-readiness';
 import type { WriteCheckpointBase } from './usePipelineDaemon';
@@ -126,6 +127,7 @@ Return ONLY the prompt text, nothing else.`;
       accumulatedPosts: ScheduledPost[],
       skipSignal: AbortSignal,
       writeCheckpointBase: WriteCheckpointBase,
+      resumeFrom?: ResumeContext,
     ): Promise<void> => {
       const perIdeaImageIds: string[] = [];
       const checkpoint = (step: string) =>
@@ -184,6 +186,15 @@ Return ONLY the prompt text, nothing else.`;
         desktopCreds: isDesktop ? desktopCreds : undefined,
       };
 
+      // V050-001: seed perIdeaImageIds with the resume payload so the next
+      // checkpoint write keeps tracking the same image set (otherwise a
+      // crash mid-resume would lose the imageIds and force a full re-gen).
+      if (resumeFrom) {
+        for (const img of resumeFrom.images) {
+          if (!perIdeaImageIds.includes(img.id)) perIdeaImageIds.push(img.id);
+        }
+      }
+
       await processIdeaFn(
         idea,
         index,
@@ -192,6 +203,7 @@ Return ONLY the prompt text, nothing else.`;
         accumulatedPosts,
         getSettings(),
         processorDeps,
+        resumeFrom,
       );
     },
     [

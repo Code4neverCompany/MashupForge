@@ -35,6 +35,17 @@ export class SkipIdeaSignal extends Error {
   }
 }
 
+/**
+ * V050-001: credit-preserving resume payload. When the daemon detects a
+ * checkpoint with stored imageIds, it looks those images up in the saved
+ * gallery and forwards them here so processIdea skips the (expensive)
+ * Leonardo generation steps and resumes at captioning.
+ */
+export interface ResumeContext {
+  /** Pre-generated images for this idea, already in the gallery. */
+  images: GeneratedImage[];
+}
+
 export interface ProcessIdeaDeps {
   /**
    * Fetch trending context for the idea (wraps /api/trending).
@@ -103,6 +114,7 @@ export async function processIdea(
   accumulatedPosts: ScheduledPost[],
   settings: UserSettings,
   deps: ProcessIdeaDeps,
+  resumeFrom?: ResumeContext,
 ): Promise<void> {
   const {
     fetchTrendingContext,
@@ -121,7 +133,9 @@ export async function processIdea(
     getScheduledPosts,
   } = deps;
 
-  writeCheckpoint('starting');
+  const resuming = !!(resumeFrom && resumeFrom.images.length > 0);
+
+  writeCheckpoint(resuming ? 'Resuming at captioning' : 'starting');
 
   const autoCaption = settings.pipelineAutoCaption ?? true;
   const autoSchedule = settings.pipelineAutoSchedule ?? true;
@@ -152,77 +166,105 @@ export async function processIdea(
   const savePipelineImage = (img: GeneratedImage) =>
     saveImage(pipelinePending ? { ...img, pipelinePending: true } : img);
 
-  // Step a — mark in-work
-  setPipelineProgress({
-    current: index + 1,
-    total,
-    currentStep: 'Updating status',
-    currentIdea: idea.concept,
-    currentIdeaId: idea.id,
-  });
-  updateIdeaStatus(idea.id, 'in-work');
-  addLog('status-update', idea.id, 'success', `Marked "${idea.concept}" as in-work`);
-  writeCheckpoint('Updating status');
-
-  // Step b — trending context (recoverable)
-  let trendingContext = '';
-  setPipelineProgress({
-    current: index + 1,
-    total,
-    currentStep: 'Researching trending topics',
-    currentIdea: idea.concept,
-    currentIdeaId: idea.id,
-  });
-  writeCheckpoint('Researching trending topics');
-  try {
-    trendingContext = await fetchTrendingContext(idea);
-    if (trendingContext) {
-      addLog('trending', idea.id, 'success', `Trending context fetched`);
-    } else {
-      addLog('trending', idea.id, 'success', 'No trending data found — proceeding without');
-    }
-  } catch {
-    addLog('trending', idea.id, 'error', 'Trending research failed — proceeding without');
-  }
-
-  // Step c — expand prompt (fatal on failure)
-  setPipelineProgress({
-    current: index + 1,
-    total,
-    currentStep: 'Expanding idea to prompt',
-    currentIdea: idea.concept,
-    currentIdeaId: idea.id,
-  });
-  writeCheckpoint('Expanding prompt');
   let expandedPrompt: string;
-  try {
-    expandedPrompt = await expandIdeaToPrompt(idea, trendingContext);
-    addLog('prompt-expand', idea.id, 'success', `Expanded: "${expandedPrompt.slice(0, 80)}..."`);
-  } catch (e) {
-    addLog('prompt-expand', idea.id, 'error', 'Failed to expand prompt');
-    throw e;
-  }
+  let readyImages: GeneratedImage[];
 
-  // Step d — generate images (fatal on failure)
-  const allModelIds = LEONARDO_MODELS.filter((m) => m.id !== 'nano-banana').map((m) => m.id);
-  setPipelineProgress({
-    current: index + 1,
-    total,
-    currentStep: `Generating with ${allModelIds.length} models`,
-    currentIdea: idea.concept,
-    currentIdeaId: idea.id,
-  });
-  writeCheckpoint('Generating images');
-  try {
-    await triggerImageGeneration(expandedPrompt, allModelIds);
-    addLog('image-gen', idea.id, 'success', `Image generation started with ${allModelIds.length} models`);
-  } catch (e) {
-    addLog('image-gen', idea.id, 'error', 'Image generation failed');
-    throw e;
-  }
+  if (resuming) {
+    // V050-001: credit-preserving resume. Images already exist in the
+    // gallery from the prior interrupted run — skip status flip, trending,
+    // expand, and generation. Use idea.concept as the prompt fallback for
+    // any caption-failure path below; pi.dev re-expand would be cheap but
+    // we avoid even that to keep resume instant.
+    setPipelineProgress({
+      current: index + 1,
+      total,
+      currentStep: `Resuming at captioning (${resumeFrom!.images.length} images)`,
+      currentIdea: idea.concept,
+      currentIdeaId: idea.id,
+    });
+    updateIdeaStatus(idea.id, 'in-work');
+    addLog(
+      'resume',
+      idea.id,
+      'success',
+      `Resumed at captioning — ${resumeFrom!.images.length} pre-generated image${
+        resumeFrom!.images.length === 1 ? '' : 's'
+      } reused, no Leonardo credits spent`,
+    );
+    expandedPrompt = idea.concept;
+    readyImages = resumeFrom!.images;
+  } else {
+    // Step a — mark in-work
+    setPipelineProgress({
+      current: index + 1,
+      total,
+      currentStep: 'Updating status',
+      currentIdea: idea.concept,
+      currentIdeaId: idea.id,
+    });
+    updateIdeaStatus(idea.id, 'in-work');
+    addLog('status-update', idea.id, 'success', `Marked "${idea.concept}" as in-work`);
+    writeCheckpoint('Updating status');
 
-  // Wait for images to appear (injectable — tests mock this to return immediately)
-  const readyImages = await waitForImages(allModelIds.length);
+    // Step b — trending context (recoverable)
+    let trendingContext = '';
+    setPipelineProgress({
+      current: index + 1,
+      total,
+      currentStep: 'Researching trending topics',
+      currentIdea: idea.concept,
+      currentIdeaId: idea.id,
+    });
+    writeCheckpoint('Researching trending topics');
+    try {
+      trendingContext = await fetchTrendingContext(idea);
+      if (trendingContext) {
+        addLog('trending', idea.id, 'success', `Trending context fetched`);
+      } else {
+        addLog('trending', idea.id, 'success', 'No trending data found — proceeding without');
+      }
+    } catch {
+      addLog('trending', idea.id, 'error', 'Trending research failed — proceeding without');
+    }
+
+    // Step c — expand prompt (fatal on failure)
+    setPipelineProgress({
+      current: index + 1,
+      total,
+      currentStep: 'Expanding idea to prompt',
+      currentIdea: idea.concept,
+      currentIdeaId: idea.id,
+    });
+    writeCheckpoint('Expanding prompt');
+    try {
+      expandedPrompt = await expandIdeaToPrompt(idea, trendingContext);
+      addLog('prompt-expand', idea.id, 'success', `Expanded: "${expandedPrompt.slice(0, 80)}..."`);
+    } catch (e) {
+      addLog('prompt-expand', idea.id, 'error', 'Failed to expand prompt');
+      throw e;
+    }
+
+    // Step d — generate images (fatal on failure)
+    const allModelIds = LEONARDO_MODELS.filter((m) => m.id !== 'nano-banana').map((m) => m.id);
+    setPipelineProgress({
+      current: index + 1,
+      total,
+      currentStep: `Generating with ${allModelIds.length} models`,
+      currentIdea: idea.concept,
+      currentIdeaId: idea.id,
+    });
+    writeCheckpoint('Generating images');
+    try {
+      await triggerImageGeneration(expandedPrompt, allModelIds);
+      addLog('image-gen', idea.id, 'success', `Image generation started with ${allModelIds.length} models`);
+    } catch (e) {
+      addLog('image-gen', idea.id, 'error', 'Image generation failed');
+      throw e;
+    }
+
+    // Wait for images to appear (injectable — tests mock this to return immediately)
+    readyImages = await waitForImages(allModelIds.length);
+  }
   const carouselMode = settings.pipelineCarouselMode ?? false;
 
   if (readyImages.length === 0) {

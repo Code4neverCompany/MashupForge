@@ -24,7 +24,7 @@ import {
   clearCheckpoint,
   type PipelineCheckpoint,
 } from '@/lib/pipeline-checkpoint';
-import { SkipIdeaSignal } from '@/lib/pipeline-processor';
+import { SkipIdeaSignal, type ResumeContext } from '@/lib/pipeline-processor';
 import { withPipelineRunning } from '@/lib/pipeline-runner';
 import {
   savePipelineLog,
@@ -94,7 +94,18 @@ export type ProcessIdeaFn = (
   accumulatedPosts: ScheduledPost[],
   skipSignal: AbortSignal,
   writeCheckpointBase: WriteCheckpointBase,
+  resumeFrom?: ResumeContext,
 ) => Promise<void>;
+
+/**
+ * V050-001: credit-preserving resume hint forwarded from acceptResume into
+ * the daemon's outer loop. The hint is consumed by the FIRST matching idea
+ * (by id) processed during this run; subsequent ideas run normally.
+ */
+export interface PipelineResumeHint {
+  ideaId: string;
+  images: GeneratedImage[];
+}
 
 export interface UsePipelineDaemonDeps {
   ideas: Idea[];
@@ -330,11 +341,16 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
    * latestPropsRef — no per-field refs are created here.
    */
   const runOuterLoop = useCallback(
-    (processIdea: ProcessIdeaFn): Promise<void> =>
+    (processIdea: ProcessIdeaFn, resumeHint?: PipelineResumeHint): Promise<void> =>
       withPipelineRunning(setPipelineRunning, async () => {
         // Fresh AbortControllers for this run.
         const runAbort = new AbortController();
         setRunCtrl(runAbort);
+
+        // V050-001: scoped to this run. Cleared after the matching idea is
+        // dispatched so subsequent ideas (and subsequent cycles in
+        // continuous mode) run normally.
+        let pendingResumeHint: PipelineResumeHint | undefined = resumeHint;
 
         // V030-004: one-shot latch so the week-filled event logs at most
         // once per run, not every sleep cycle.
@@ -548,6 +564,14 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
               }, PER_IDEA_TIMEOUT_MS);
             });
 
+            // V050-001: only the resumed idea (by id) gets the resume
+            // payload; consume the hint so the next idea runs from scratch.
+            let resumeForThisIdea: ResumeContext | undefined;
+            if (pendingResumeHint && pendingResumeHint.ideaId === idea.id) {
+              resumeForThisIdea = { images: pendingResumeHint.images };
+              pendingResumeHint = undefined;
+            }
+
             try {
               await Promise.race([
                 processIdea(
@@ -558,6 +582,7 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
                   accumulatedPosts,
                   skipAbort.signal,
                   writeCheckpointBase,
+                  resumeForThisIdea,
                 ),
                 timeoutPromise,
               ]);

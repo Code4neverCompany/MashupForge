@@ -180,6 +180,129 @@ describe('useIdeaProcessor deps-bag — writeCheckpoint delegation', () => {
   });
 });
 
+// ─── V050-001 credit-preserving resume ────────────────────────────────────────
+
+describe('processIdea — V050-001 credit-preserving resume', () => {
+  it('skips trending/expand/generate when resumeFrom.images present', async () => {
+    const idea = makeIdea({ id: 'idea-resume', concept: 'Sherlock × Dune' });
+    const preGen = [makeImage({ id: 'img-pre-1' }), makeImage({ id: 'img-pre-2' })];
+
+    const fetchTrendingContext = vi.fn().mockResolvedValue('');
+    const expandIdeaToPrompt = vi.fn().mockResolvedValue('expanded');
+    const triggerImageGeneration = vi.fn().mockResolvedValue(undefined);
+    const waitForImages = vi.fn().mockResolvedValue([]);
+
+    const deps = makeDeps({
+      fetchTrendingContext,
+      expandIdeaToPrompt,
+      triggerImageGeneration,
+      waitForImages,
+    });
+
+    await processIdeaFn(
+      idea,
+      0,
+      1,
+      makeEngagement(),
+      [],
+      makeSettings({ pipelineCarouselMode: false }),
+      deps,
+      { images: preGen },
+    );
+
+    // None of the pre-image steps should have run.
+    expect(fetchTrendingContext).not.toHaveBeenCalled();
+    expect(expandIdeaToPrompt).not.toHaveBeenCalled();
+    expect(triggerImageGeneration).not.toHaveBeenCalled();
+    expect(waitForImages).not.toHaveBeenCalled();
+    // Idea is still flipped in-work then done.
+    expect(deps.updateIdeaStatus).toHaveBeenCalledWith('idea-resume', 'in-work');
+    expect(deps.updateIdeaStatus).toHaveBeenCalledWith('idea-resume', 'done');
+  });
+
+  it('captioning runs over the pre-generated images (per-model mode)', async () => {
+    const preGen = [makeImage({ id: 'img-pre-1' }), makeImage({ id: 'img-pre-2' })];
+    const generatePostContent = vi.fn().mockImplementation(async (img: GeneratedImage) => ({
+      ...img,
+      postCaption: `caption for ${img.id}`,
+    }));
+
+    const deps = makeDeps({ generatePostContent });
+
+    await processIdeaFn(
+      makeIdea(),
+      0,
+      1,
+      makeEngagement(),
+      [],
+      makeSettings({ pipelineCarouselMode: false }),
+      deps,
+      { images: preGen },
+    );
+
+    // Captioning ran for each pre-generated image.
+    expect(generatePostContent).toHaveBeenCalledTimes(2);
+    const callIds = (generatePostContent.mock.calls as Array<[GeneratedImage]>).map(
+      ([img]) => img.id,
+    );
+    expect(callIds).toEqual(expect.arrayContaining(['img-pre-1', 'img-pre-2']));
+  });
+
+  it('logs a "resume" entry indicating no credits spent', async () => {
+    const addLog = vi.fn();
+    const preGen = [makeImage({ id: 'img-pre-1' })];
+
+    const deps = makeDeps({ addLog });
+
+    await processIdeaFn(
+      makeIdea(),
+      0,
+      1,
+      makeEngagement(),
+      [],
+      makeSettings({ pipelineCarouselMode: false }),
+      deps,
+      { images: preGen },
+    );
+
+    const resumeCall = addLog.mock.calls.find(call => call[0] === 'resume');
+    expect(resumeCall).toBeDefined();
+    expect(resumeCall![3]).toMatch(/no leonardo credits/i);
+  });
+
+  it('empty resumeFrom.images falls back to normal flow (treated as no resume)', async () => {
+    const triggerImageGeneration = vi.fn().mockResolvedValue(undefined);
+    const expandIdeaToPrompt = vi.fn().mockResolvedValue('expanded');
+    const waitForImages = vi.fn().mockResolvedValue([makeImage()]);
+
+    const deps = makeDeps({ triggerImageGeneration, expandIdeaToPrompt, waitForImages });
+
+    await processIdeaFn(
+      makeIdea(),
+      0,
+      1,
+      makeEngagement(),
+      [],
+      makeSettings(),
+      deps,
+      { images: [] }, // empty — should NOT trigger resume branch
+    );
+
+    expect(expandIdeaToPrompt).toHaveBeenCalled();
+    expect(triggerImageGeneration).toHaveBeenCalled();
+    expect(waitForImages).toHaveBeenCalled();
+  });
+
+  it('no resumeFrom arg → original flow (regression guard)', async () => {
+    const expandIdeaToPrompt = vi.fn().mockResolvedValue('expanded');
+    const deps = makeDeps({ expandIdeaToPrompt });
+
+    await processIdeaFn(makeIdea(), 0, 1, makeEngagement(), [], makeSettings(), deps);
+
+    expect(expandIdeaToPrompt).toHaveBeenCalled();
+  });
+});
+
 // ─── perIdeaImageIds accumulation via saveImage ───────────────────────────────
 
 describe('useIdeaProcessor deps-bag — perIdeaImageIds accumulation', () => {
