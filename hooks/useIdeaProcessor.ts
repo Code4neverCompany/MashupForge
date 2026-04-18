@@ -20,19 +20,18 @@ import {
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import {
   processIdea as processIdeaFn,
-  SkipIdeaSignal,
   type ProcessIdeaDeps,
 } from '@/lib/pipeline-processor';
+import { awaitImagesOrSkip } from '@/lib/image-readiness';
 import type { WriteCheckpointBase } from './usePipelineDaemon';
 
 export interface UseIdeaProcessorDeps {
   getSettings: () => UserSettings;
-  getImages: () => GeneratedImage[];
   generateComparison: (
     prompt: string,
     modelIds: string[],
     options?: GenerateOptions,
-  ) => Promise<void>;
+  ) => Promise<GeneratedImage[]>;
   generatePostContent: (img: GeneratedImage) => Promise<GeneratedImage | undefined>;
   saveImage: (img: GeneratedImage) => void;
   updateIdeaStatus: (id: string, status: 'idea' | 'in-work' | 'done') => void;
@@ -47,8 +46,6 @@ export interface UseIdeaProcessorDeps {
   ) => void;
   setPipelineProgress: (p: PipelineProgress | null) => void;
 }
-
-const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 function findNextAvailableSlot(
   existingPosts: ScheduledPost[],
@@ -83,7 +80,6 @@ function findNextAvailableSlot(
 export function useIdeaProcessor(deps: UseIdeaProcessorDeps) {
   const {
     getSettings,
-    getImages,
     generateComparison,
     generatePostContent,
     saveImage,
@@ -128,6 +124,11 @@ Return ONLY the prompt text, nothing else.`;
       const checkpoint = (step: string) =>
         writeCheckpointBase(idea.id, idea.concept, step, perIdeaImageIds);
 
+      // V030-006: capture the generator's own Promise instead of polling a
+      // parallel image store. triggerImageGeneration fires the call and
+      // stashes the Promise; waitForImages awaits it (racing skipSignal).
+      let imageReadyPromise: Promise<GeneratedImage[]> | null = null;
+
       const processorDeps: ProcessIdeaDeps = {
         fetchTrendingContext: async ideaArg => {
           const s = getSettings();
@@ -146,25 +147,15 @@ Return ONLY the prompt text, nothing else.`;
           return '';
         },
         expandIdeaToPrompt,
-        triggerImageGeneration: (prompt, modelIds) =>
-          generateComparison(prompt, modelIds, { skipEnhance: false }),
-        waitForImages: async modelCount => {
-          await wait(3000);
-          const beforeIds = new Set(getImages().map(i => i.id));
-          let attempts = 0;
-          let readyImages: GeneratedImage[] = [];
-          while (attempts < 90) {
-            if (skipSignal.aborted) throw new SkipIdeaSignal();
-            readyImages = getImages().filter(
-              img =>
-                !beforeIds.has(img.id) &&
-                img.status === 'ready' &&
-                (img.base64 || img.url),
-            );
-            if (readyImages.length >= modelCount) break;
-            attempts++;
-            await wait(3000);
-          }
+        triggerImageGeneration: (prompt, modelIds) => {
+          imageReadyPromise = generateComparison(prompt, modelIds, { skipEnhance: false });
+          // Swallow the images here — processor contract is Promise<void>.
+          // waitForImages reads the captured Promise next.
+          return imageReadyPromise.then(() => undefined);
+        },
+        waitForImages: async () => {
+          if (!imageReadyPromise) return [];
+          const readyImages = await awaitImagesOrSkip(imageReadyPromise, skipSignal);
           for (const img of readyImages) {
             if (!perIdeaImageIds.includes(img.id)) perIdeaImageIds.push(img.id);
           }
@@ -197,7 +188,6 @@ Return ONLY the prompt text, nothing else.`;
     },
     [
       getSettings,
-      getImages,
       generateComparison,
       generatePostContent,
       saveImage,

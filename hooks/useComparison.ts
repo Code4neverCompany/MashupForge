@@ -70,10 +70,11 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
     modelIds: string[],
     options?: GenerateOptions,
     cachedEnhancements?: Record<string, CachedEnhancement>
-  ) => {
+  ): Promise<GeneratedImage[]> => {
     setIsGenerating(true);
     setComparisonError(null);
     const comparisonId = `comp-group-${Date.now()}`;
+    const readyImages: GeneratedImage[] = [];
 
     let finalPrompt = prompt;
     if (options?.style || options?.lighting || options?.angle) {
@@ -208,6 +209,7 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
               modelInfo: { provider: 'leonardo', modelId, modelName }
             };
             setComparisonResults(prev => prev.map(img => img.id === placeholders[i].id ? newImg : img));
+            readyImages.push(newImg);
           } else {
             setComparisonResults(prev => prev.filter(img => img.id !== placeholders[i].id));
           }
@@ -222,6 +224,7 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
     } finally {
       setIsGenerating(false);
     }
+    return readyImages;
   };
 
   const pickComparisonWinner = async (id: string) => {

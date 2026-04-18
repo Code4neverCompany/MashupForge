@@ -436,7 +436,6 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
           `Scheduler: ${engagement.source === 'instagram' ? 'IG insights' : 'research defaults'} — top hours: ${topHours.join(', ')}`,
         );
 
-        const accumulatedPosts: ScheduledPost[] = [];
         let cycle = 0;
 
         // Functional-setState peek reads the latest committed value for
@@ -456,6 +455,10 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
 
         do {
           cycle++;
+          // V030-006: reset per cycle. Prior-cycle posts are already in
+          // settings.scheduledPosts; keeping them here too would balloon
+          // memory across a long-running continuous run.
+          const accumulatedPosts: ScheduledPost[] = [];
 
           let pendingIdeas = latestPropsRef.current.ideas.filter(i => i.status === 'idea');
 

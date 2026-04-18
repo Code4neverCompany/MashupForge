@@ -19,7 +19,7 @@ interface UsePipelineDeps {
     modelIds: string[],
     options?: GenerateOptions,
     cachedEnhancements?: Record<string, import('./useComparison').CachedEnhancement>,
-  ) => Promise<void>;
+  ) => Promise<GeneratedImage[]>;
   generatePostContent: (image: GeneratedImage) => Promise<GeneratedImage | undefined>;
   saveImage: (img: GeneratedImage) => void;
   savedImages: GeneratedImage[];
@@ -56,7 +56,6 @@ export function usePipeline(deps: UsePipelineDeps) {
 
   const processor = useIdeaProcessor({
     getSettings: daemon.getSettings,
-    getImages: daemon.getImages,
     generateComparison,
     generatePostContent,
     saveImage,
