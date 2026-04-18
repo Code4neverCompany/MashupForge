@@ -14,6 +14,13 @@ import {
 import { findBestSlot, findBestSlots, fetchInstagramEngagement, loadEngagementData, type CachedEngagement, type EngagementHour, type EngagementDay } from '@/lib/smartScheduler';
 import { getErrorMessage } from '@/lib/errors';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
+import { setPipelineBusy } from '@/lib/pipeline-busy';
+import {
+  saveCheckpoint,
+  loadCheckpoint,
+  clearCheckpoint,
+  type PipelineCheckpoint,
+} from '@/lib/pipeline-checkpoint';
 
 interface UsePipelineDeps {
   ideas: Idea[];
@@ -137,6 +144,35 @@ export function usePipeline(deps: UsePipelineDeps) {
   useEffect(() => { pipelineTargetDaysRef.current = pipelineTargetDays; }, [pipelineTargetDays]);
   useEffect(() => { pipelineDelayRef.current = pipelineDelay; }, [pipelineDelay]);
 
+  // FEAT-006: publish busy state so UpdateChecker (in root layout, outside
+  // MashupProvider) can postpone auto-install while a run is in flight.
+  useEffect(() => { setPipelineBusy(pipelineRunning); }, [pipelineRunning]);
+
+  // FEAT-006: resume-after-restart. usePipeline writes a checkpoint at every
+  // step boundary inside processIdea; if the app is killed mid-run the
+  // checkpoint survives. On mount we load it, expose pendingResume so the UI
+  // can prompt "Continue pipeline? Yes/No". Live image ids accumulated
+  // during the in-flight idea so the checkpoint can carry them.
+  const [pendingResume, setPendingResume] = useState<PipelineCheckpoint | null>(null);
+  const checkpointImagesRef = useRef<string[]>([]);
+  // Snapshot of pipeline settings at run start — written into every
+  // checkpoint so a resume uses the same delay/continuous/etc.
+  const checkpointSettingsRef = useRef<PipelineCheckpoint['settings']>({
+    delay: pipelineDelay,
+    continuous: pipelineContinuous,
+    interval: pipelineInterval,
+    targetDays: pipelineTargetDays,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadCheckpoint().then((cp) => {
+      if (cancelled || !cp) return;
+      setPendingResume(cp);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   // Persist state changes
   useEffect(() => {
     persistState({
@@ -203,6 +239,20 @@ Return ONLY the prompt text, nothing else.`;
     // Reset skip-flag at the start of each idea so a stale request from
     // a previous idea can't make us bail out before doing any work.
     skipCurrentIdeaRef.current = false;
+    // FEAT-006: per-idea checkpoint. Reset image accumulator and write an
+    // initial entry so even an immediate crash leaves a resumable record.
+    checkpointImagesRef.current = [];
+    const writeCheckpoint = (step: string) => {
+      void saveCheckpoint({
+        ideaId: idea.id,
+        step,
+        concept: idea.concept,
+        ts: new Date().toISOString(),
+        settings: checkpointSettingsRef.current,
+        imageIds: [...checkpointImagesRef.current],
+      });
+    };
+    writeCheckpoint('starting');
     // Tiny inline helper — throws a sentinel string that the outer
     // try/catch in startPipeline turns into a "skipped" log entry.
     const checkSkip = () => {
@@ -226,10 +276,12 @@ Return ONLY the prompt text, nothing else.`;
     setPipelineProgress({ current: index + 1, total, currentStep: 'Updating status', currentIdea: idea.concept, currentIdeaId: idea.id });
     updateIdeaStatus(idea.id, 'in-work');
     addLog('status-update', idea.id, 'success', `Marked "${idea.concept}" as in-work`);
+    writeCheckpoint('Updating status');
 
     // Step b: Research trending topics for tags/niches
     let trendingContext = '';
     setPipelineProgress({ current: index + 1, total, currentStep: 'Researching trending topics', currentIdea: idea.concept, currentIdeaId: idea.id });
+    writeCheckpoint('Researching trending topics');
     try {
       const res = await fetchWithRetry('/api/trending', {
         method: 'POST',
@@ -256,6 +308,7 @@ Return ONLY the prompt text, nothing else.`;
 
     // Step c: Expand idea to prompt (with trending context)
     setPipelineProgress({ current: index + 1, total, currentStep: 'Expanding idea to prompt', currentIdea: idea.concept, currentIdeaId: idea.id });
+    writeCheckpoint('Expanding prompt');
     let expandedPrompt: string;
     try {
       expandedPrompt = await expandIdeaToPrompt(idea, trendingContext);
@@ -269,6 +322,7 @@ Return ONLY the prompt text, nothing else.`;
     // Each model gets its own pi-optimized prompt via modelOptimizer.
     const allModelIds = LEONARDO_MODELS.filter(m => m.id !== 'nano-banana').map(m => m.id);
     setPipelineProgress({ current: index + 1, total, currentStep: `Generating with ${allModelIds.length} models`, currentIdea: idea.concept, currentIdeaId: idea.id });
+    writeCheckpoint('Generating images');
     try {
       await generateComparison(expandedPrompt, allModelIds, { skipEnhance: false });
       addLog('image-gen', idea.id, 'success', `Image generation started with ${allModelIds.length} models`);
@@ -307,7 +361,11 @@ Return ONLY the prompt text, nothing else.`;
       addLog('image-ready', idea.id, 'success', `${readyImages.length} image(s) ready — carousel mode`);
 
       // Save all images to gallery so they show up in Gallery + Captioning
-      for (const img of readyImages) saveImage(img);
+      for (const img of readyImages) {
+        saveImage(img);
+        checkpointImagesRef.current.push(img.id);
+      }
+      writeCheckpoint('Captioning carousel');
 
       // Caption only the first image; the rest share it
       let sharedCaption = '';
@@ -397,6 +455,8 @@ Return ONLY the prompt text, nothing else.`;
 
         // Save to Gallery so the image appears in Gallery + Captioning tabs
         saveImage(latestImage);
+        checkpointImagesRef.current.push(latestImage.id);
+        writeCheckpoint(`Captioning ${modelLabel}`);
 
         // Step e: Generate caption
         let captionedImg = latestImage;
@@ -599,6 +659,17 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
   const startPipeline = useCallback(async () => {
     stopRequestedRef.current = false;
     setPipelineRunning(true);
+    // FEAT-006: snapshot pipeline settings at run start so every checkpoint
+    // written during this run carries the same config (resume uses these).
+    checkpointSettingsRef.current = {
+      delay: pipelineDelayRef.current,
+      continuous: pipelineContinuousRef.current,
+      interval: pipelineIntervalRef.current,
+      targetDays: pipelineTargetDaysRef.current,
+    };
+    // Clear any leftover prompt — once the user starts a fresh run, the
+    // old "continue?" prompt is moot.
+    setPendingResume(null);
     addLog('pipeline-start', '', 'success', `Pipeline started${pipelineContinuousRef.current ? ' (continuous mode)' : ''}`);
 
     // AUDIT-011: pi.dev pre-check. The pipeline calls pi for trending
@@ -772,7 +843,41 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
     setPipelineQueue([]);
     setPipelineProgress(null);
     addLog('pipeline-end', '', 'success', `Pipeline finished after ${cycle} cycle${cycle === 1 ? '' : 's'}`);
+    // FEAT-006: clean exit — drop the checkpoint so we don't prompt to
+    // resume on next launch. A crash skips this line, leaving the last
+    // mid-step checkpoint intact for the resume prompt.
+    void clearCheckpoint();
   }, [processIdea, addLog, updateIdeaStatus, autoGenerateIdeas, addIdea]);
+
+  // FEAT-006: resume helpers exposed via context.
+  const acceptResume = useCallback(() => {
+    const cp = pendingResume;
+    if (!cp) return;
+    // Apply the snapshotted pipeline settings so resume uses the same
+    // delay/continuous/interval the user had configured at first run.
+    // Update refs synchronously too — startPipeline reads from refs and
+    // the ref-syncing useEffects don't fire until next render.
+    setPipelineDelayState(cp.settings.delay);
+    pipelineDelayRef.current = cp.settings.delay;
+    setPipelineContinuous(cp.settings.continuous);
+    pipelineContinuousRef.current = cp.settings.continuous;
+    setPipelineIntervalState(cp.settings.interval);
+    pipelineIntervalRef.current = cp.settings.interval;
+    setPipelineTargetDaysState(cp.settings.targetDays);
+    pipelineTargetDaysRef.current = cp.settings.targetDays;
+    // Flip the in-flight idea back to 'idea' so startPipeline picks it
+    // up from the top of processIdea (mid-step async state isn't
+    // restorable, so we re-run the affected idea from scratch).
+    const idea = ideasRef.current.find((i) => i.id === cp.ideaId);
+    if (idea && idea.status === 'in-work') updateIdeaStatus(cp.ideaId, 'idea');
+    setPendingResume(null);
+    void startPipeline();
+  }, [pendingResume, startPipeline, updateIdeaStatus]);
+
+  const dismissResume = useCallback(() => {
+    setPendingResume(null);
+    void clearCheckpoint();
+  }, []);
 
   const stopPipeline = useCallback(() => {
     stopRequestedRef.current = true;
@@ -826,5 +931,8 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
     pipelineTargetDays,
     setPipelineTargetDays,
     clearPipelineLog,
+    pendingResume,
+    acceptResume,
+    dismissResume,
   };
 }

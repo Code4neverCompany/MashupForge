@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { MashupProvider, useMashup } from './MashupContext';
 import { ErrorBoundary } from './ErrorBoundary';
 import { DesktopLoadingScreen } from './DesktopLoadingScreen';
+import { PipelineResumePrompt } from './PipelineResumePrompt';
 import { ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -49,6 +50,7 @@ function MashupApp() {
       <ErrorBoundary section="MainContent">
         <MainContent />
       </ErrorBoundary>
+      <PipelineResumePrompt />
     </div>
   );
 }

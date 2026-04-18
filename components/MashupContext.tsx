@@ -288,6 +288,9 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     rejectScheduledPost,
     bulkApproveScheduledPosts,
     bulkRejectScheduledPosts,
+    pendingResume: pipelineHook.pendingResume,
+    acceptResume: pipelineHook.acceptResume,
+    dismissResume: pipelineHook.dismissResume,
   };
 
   return (

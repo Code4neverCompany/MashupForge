@@ -629,4 +629,11 @@ export interface MashupContextType {
   bulkApproveScheduledPosts: (postIds: string[]) => void;
   /** Bulk-reject N pending_approval posts in a single state pass. */
   bulkRejectScheduledPosts: (postIds: string[]) => void;
+  /** FEAT-006: surviving checkpoint from the previous run, if any.
+   *  Set on mount when IDB has a record; null otherwise. */
+  pendingResume: import('../lib/pipeline-checkpoint').PipelineCheckpoint | null;
+  /** Accept the resume prompt — restart the pipeline from the saved idea. */
+  acceptResume: () => void;
+  /** Dismiss the resume prompt and drop the checkpoint. */
+  dismissResume: () => void;
 }

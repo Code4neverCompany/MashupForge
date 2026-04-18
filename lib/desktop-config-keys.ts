@@ -47,14 +47,22 @@ export const DESKTOP_CONFIG_KEYS: readonly DesktopConfigFieldMeta[] = [
   { key: 'PINTEREST_ACCESS_TOKEN', label: 'Pinterest Access Token', hint: 'From developers.pinterest.com (pins:write scope)' },
   { key: 'PINTEREST_BOARD_ID',     label: 'Pinterest Board ID',     hint: 'Target board ID (optional — defaults to first board)' },
   { key: 'DISCORD_WEBHOOK_URL',    label: 'Discord Webhook URL',    hint: 'Channel webhook URL from Server Settings → Integrations' },
-  // FEAT-002: gate for UpdateChecker's launch-time check. Rendered by the
-  // dedicated Updates subsection in DesktopSettingsPanel, NOT by the
-  // generic field loop — see UPDATER_KEYS filter.
-  { key: 'AUTO_UPDATE_ON_LAUNCH',  label: 'Auto-update on launch',  hint: 'When on, MashupForge checks for updates each time it starts.', kind: 'select', options: ['on', 'off'] },
+  // FEAT-006: tri-state gate for UpdateChecker's launch-time behavior.
+  // 'auto'   → silently download + relaunch on every launch
+  // 'notify' → show banner with "Update Now" button (default)
+  // 'off'    → never check on launch (Settings → "Check for updates" still works)
+  // Rendered by the dedicated Updates subsection in DesktopSettingsPanel,
+  // NOT by the generic field loop — see UPDATER_KEYS filter.
+  { key: 'UPDATE_BEHAVIOR',        label: 'Update behavior',        hint: 'Auto: install silently. Notify: show banner. Off: only manual checks.', kind: 'select', options: ['auto', 'notify', 'off'] },
 ] as const;
 
 // Keys owned by a dedicated subsection in DesktopSettingsPanel. The
 // generic FieldRouter loop filters these out so they don't render twice.
-export const UPDATER_KEYS: ReadonlySet<string> = new Set(['AUTO_UPDATE_ON_LAUNCH']);
+export const UPDATER_KEYS: ReadonlySet<string> = new Set(['UPDATE_BEHAVIOR']);
+
+// Default when UPDATE_BEHAVIOR is missing from config.json — safe choice
+// (user is informed before any download happens).
+export const UPDATE_BEHAVIOR_DEFAULT = 'notify' as const;
+export type UpdateBehavior = 'auto' | 'notify' | 'off';
 
 export type DesktopConfigKey = typeof DESKTOP_CONFIG_KEYS[number]['key'];

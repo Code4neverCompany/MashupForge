@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Download, Loader2, X, CheckCircle2, AlertTriangle, RotateCw } from 'lucide-react';
+import { Download, Loader2, X, CheckCircle2, AlertTriangle, RotateCw, Clock } from 'lucide-react';
 import { useDesktopConfig } from '../hooks/useDesktopConfig';
+import { isPipelineBusy, subscribePipelineBusy } from '@/lib/pipeline-busy';
+import { UPDATE_BEHAVIOR_DEFAULT, type UpdateBehavior } from '@/lib/desktop-config-keys';
 
 // Local minimal shape for the Tauri updater Update object — typed loosely
 // because we import the real type dynamically and only touch a few fields.
@@ -18,6 +20,7 @@ interface UpdateLike {
 type State =
   | { kind: 'idle' }
   | { kind: 'available'; update: UpdateLike }
+  | { kind: 'postponed'; update: UpdateLike; deadline: number }
   | { kind: 'downloading'; update: UpdateLike; downloaded: number; total: number | null }
   | { kind: 'download-error'; update: UpdateLike; message: string }
   | { kind: 'error'; message: string }
@@ -28,10 +31,21 @@ const LAST_SEEN_KEY = 'mashup_update_last_seen_version';
 // FEAT-002: surfaced in the Updates subsection of DesktopSettingsPanel.
 export const LAST_CHECKED_AT_KEY = 'mashup_update_last_checked_at';
 
+// FEAT-006: max time to postpone an install when a pipeline run is in
+// flight. After this elapses, install fires regardless — the update is
+// always more important than the in-flight idea after 2h of waiting.
+const PIPELINE_POSTPONE_MAX_MS = 120 * 60 * 1000;
+// Poll cadence while postponed. Cheap — just reads a module-level flag.
+const PIPELINE_POSTPONE_POLL_MS = 60 * 1000;
+
 export function UpdateChecker() {
   const { isDesktop } = useDesktopConfig();
   const [state, setState] = useState<State>({ kind: 'idle' });
   const ranRef = useRef(false);
+  // FEAT-006: when the launch-time check resolves an update under 'auto'
+  // mode, this ref is flipped so the auto-trigger effect knows to fire
+  // handleUpdate as soon as state becomes 'available'.
+  const autoInstallRef = useRef(false);
 
   // Run the check + post-update toast detection once per mount in desktop mode.
   useEffect(() => {
@@ -71,15 +85,20 @@ export function UpdateChecker() {
         } catch { /* storage quota / private mode — silent */ }
       }
 
-      // FEAT-002: respect user preference. AUTO_UPDATE_ON_LAUNCH lives in
-      // config.json (managed via /api/desktop/config). Default = on; only
-      // a literal 'off' suppresses the launch-time check. Manual checks
-      // from the Settings panel always run regardless of this flag.
+      // FEAT-006: respect user preference. UPDATE_BEHAVIOR is one of
+      // 'auto' / 'notify' / 'off', stored in config.json via
+      // /api/desktop/config. Default = 'notify' (safe — user is informed
+      // before any download). Manual checks from the Settings panel
+      // always run regardless of this flag.
+      let behavior: UpdateBehavior = UPDATE_BEHAVIOR_DEFAULT;
       try {
         const cfgRes = await fetch('/api/desktop/config');
         const cfg = (await cfgRes.json()) as { keys?: Record<string, string> };
-        if (cfg.keys?.AUTO_UPDATE_ON_LAUNCH === 'off') return;
-      } catch { /* fall through and check anyway */ }
+        const raw = cfg.keys?.UPDATE_BEHAVIOR;
+        if (raw === 'auto' || raw === 'notify' || raw === 'off') behavior = raw;
+      } catch { /* fall through with default */ }
+
+      if (behavior === 'off') return;
 
       try {
         const updaterMod = await import('@tauri-apps/plugin-updater');
@@ -92,7 +111,15 @@ export function UpdateChecker() {
           if (localStorage.getItem(DISMISS_KEY(update.version)) === '1') return;
         } catch { /* ignore */ }
 
-        setState({ kind: 'available', update });
+        if (behavior === 'auto') {
+          // Silent path — the install gate (handleUpdate) handles the
+          // pipeline-busy postponement before downloadAndInstall fires.
+          setState({ kind: 'available', update });
+          autoInstallRef.current = true;
+        } else {
+          // 'notify' — show the banner, user clicks Update Now.
+          setState({ kind: 'available', update });
+        }
       } catch (e: unknown) {
         // Plugin unavailable, network failure, manifest missing — log to a
         // background error state. We don't surface this to the user because
@@ -109,9 +136,7 @@ export function UpdateChecker() {
     };
   }, [isDesktop]);
 
-  const handleUpdate = useCallback(async () => {
-    if (state.kind !== 'available') return;
-    const update = state.update;
+  const performInstall = useCallback(async (update: UpdateLike) => {
     setState({ kind: 'downloading', update, downloaded: 0, total: null });
     try {
       await update.downloadAndInstall((event) => {
@@ -143,7 +168,70 @@ export function UpdateChecker() {
       const detail = e instanceof Error ? e.message : String(e);
       setState({ kind: 'download-error', update, message: detail });
     }
-  }, [state]);
+  }, []);
+
+  const handleUpdate = useCallback(async () => {
+    if (state.kind !== 'available') return;
+    const update = state.update;
+    // FEAT-006: never interrupt a running pipeline. If a run is in flight
+    // we postpone the install — the postponement effect below polls every
+    // minute and fires performInstall() the moment the pipeline goes
+    // idle, OR when the 120-min cap is reached (whichever comes first).
+    if (isPipelineBusy()) {
+      setState({
+        kind: 'postponed',
+        update,
+        deadline: Date.now() + PIPELINE_POSTPONE_MAX_MS,
+      });
+      return;
+    }
+    await performInstall(update);
+  }, [state, performInstall]);
+
+  // FEAT-006: postponement watchdog. While in 'postponed' state, fire
+  // performInstall as soon as the pipeline becomes idle OR the 120-min
+  // deadline elapses. We subscribe to the busy pub/sub for the
+  // edge-trigger AND set up an interval as a defensive backstop.
+  useEffect(() => {
+    if (state.kind !== 'postponed') return;
+    const update = state.update;
+    const deadline = state.deadline;
+
+    let fired = false;
+    const tryInstall = () => {
+      if (fired) return;
+      const idle = !isPipelineBusy();
+      const expired = Date.now() >= deadline;
+      if (idle || expired) {
+        fired = true;
+        void performInstall(update);
+      }
+    };
+
+    const unsub = subscribePipelineBusy((busy) => {
+      if (!busy) tryInstall();
+    });
+    const interval = window.setInterval(tryInstall, PIPELINE_POSTPONE_POLL_MS);
+    // Also try immediately in case the pipeline finished between
+    // handleUpdate's check and this effect mounting.
+    tryInstall();
+
+    return () => {
+      unsub();
+      window.clearInterval(interval);
+    };
+  }, [state, performInstall]);
+
+  // FEAT-006: auto-mode trigger. When the launch-time check sets state
+  // to 'available' under 'auto' behavior, fire handleUpdate without
+  // waiting for a user click. handleUpdate itself respects the
+  // pipeline-busy gate, so this is safe even mid-run.
+  useEffect(() => {
+    if (state.kind !== 'available') return;
+    if (!autoInstallRef.current) return;
+    autoInstallRef.current = false;
+    void handleUpdate();
+  }, [state, handleUpdate]);
 
   const handleRetry = useCallback(() => {
     if (state.kind !== 'download-error') return;
@@ -218,6 +306,30 @@ export function UpdateChecker() {
           <span className="text-xs text-zinc-200">
             Updated to <span className="font-mono text-emerald-300">v{state.version}</span>
           </span>
+        </div>
+      </div>
+    );
+  }
+
+  // FEAT-006: postponed banner — non-dismissable, lets the user know the
+  // update will install as soon as the pipeline finishes (or in 2h).
+  if (state.kind === 'postponed') {
+    const minutesLeft = Math.max(0, Math.round((state.deadline - Date.now()) / 60000));
+    return (
+      <div className="fixed bottom-4 right-4 z-[100] max-w-sm w-[calc(100%-2rem)] sm:w-96">
+        <div className="rounded-xl border border-[#c5a062]/30 bg-[#050505]/95 backdrop-blur-md shadow-xl p-4">
+          <div className="flex items-start gap-2">
+            <Clock className="w-4 h-4 text-[#c5a062] mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-white">
+                Update <span className="font-mono text-[#c5a062]">v{state.update.version}</span> waiting
+              </p>
+              <p className="text-[11px] text-zinc-400 mt-1">
+                Pipeline is running. Install will start as soon as the current run finishes
+                {minutesLeft > 0 ? ` or in ${minutesLeft} min` : ' (or now — deadline reached)'}.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     );

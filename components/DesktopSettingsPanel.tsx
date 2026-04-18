@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power, Download, RefreshCw } from 'lucide-react';
-import { DESKTOP_CONFIG_KEYS, UPDATER_KEYS, type DesktopConfigFieldMeta } from '@/lib/desktop-config-keys';
+import {
+  DESKTOP_CONFIG_KEYS,
+  UPDATER_KEYS,
+  UPDATE_BEHAVIOR_DEFAULT,
+  type DesktopConfigFieldMeta,
+  type UpdateBehavior,
+} from '@/lib/desktop-config-keys';
 import { LAST_CHECKED_AT_KEY } from './UpdateChecker';
 import { PortConflictBanner } from './PortConflictBanner';
 
@@ -220,9 +226,21 @@ function FieldRouter({
 // ── FEAT-002: Updates subsection ─────────────────────────────────────────────
 
 interface UpdatesSectionProps {
-  autoOnLaunch: boolean;
-  onAutoOnLaunchChange: (on: boolean) => void;
+  behavior: UpdateBehavior;
+  onBehaviorChange: (next: UpdateBehavior) => void;
 }
+
+const UPDATE_BEHAVIOR_OPTIONS: readonly UpdateBehavior[] = ['auto', 'notify', 'off'] as const;
+const UPDATE_BEHAVIOR_LABELS: Record<UpdateBehavior, string> = {
+  auto: 'Auto-update',
+  notify: 'Notify',
+  off: 'Off',
+};
+const UPDATE_BEHAVIOR_DESCRIPTIONS: Record<UpdateBehavior, string> = {
+  auto: 'Download and install silently when an update is available.',
+  notify: 'Show a banner so you can review and click Update Now.',
+  off: 'Don\u2019t check on launch \u2014 use the button below to check manually.',
+};
 
 type CheckResult =
   | { kind: 'idle' }
@@ -243,7 +261,7 @@ interface UpdaterModule {
   } | null>;
 }
 
-function UpdatesSection({ autoOnLaunch, onAutoOnLaunchChange }: UpdatesSectionProps) {
+function UpdatesSection({ behavior, onBehaviorChange }: UpdatesSectionProps) {
   const [version, setVersion] = useState<string | null>(null);
   const [lastCheckedAt, setLastCheckedAt] = useState<number | null>(null);
   const [result, setResult] = useState<CheckResult>({ kind: 'idle' });
@@ -324,26 +342,32 @@ function UpdatesSection({ autoOnLaunch, onAutoOnLaunchChange }: UpdatesSectionPr
         )}
       </div>
 
-      {/* Auto-on-launch toggle */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs text-zinc-300">Check on launch</p>
-          <p className="text-[10px] text-zinc-600">
-            When on, MashupForge checks for updates each time it starts.
-          </p>
+      {/* FEAT-006: tri-state launch-time behavior. */}
+      <div className="space-y-1.5">
+        <p className="text-xs text-zinc-300">On launch</p>
+        <div role="radiogroup" aria-label="Update behavior on launch" className="grid grid-cols-3 gap-1.5">
+          {UPDATE_BEHAVIOR_OPTIONS.map((opt) => {
+            const selected = behavior === opt;
+            return (
+              <button
+                key={opt}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => onBehaviorChange(opt)}
+                className={[
+                  'flex items-center justify-center rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors',
+                  selected
+                    ? 'border-[#c5a062] bg-[#c5a062]/10 text-[#c5a062]'
+                    : 'border-zinc-800/60 bg-[#050505] text-zinc-400 hover:border-[#c5a062]/30 hover:text-zinc-200',
+                ].join(' ')}
+              >
+                {UPDATE_BEHAVIOR_LABELS[opt]}
+              </button>
+            );
+          })}
         </div>
-        <button
-          type="button"
-          onClick={() => onAutoOnLaunchChange(!autoOnLaunch)}
-          aria-pressed={autoOnLaunch}
-          aria-label={autoOnLaunch ? 'Disable auto-update on launch' : 'Enable auto-update on launch'}
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent
-            transition-colors focus:outline-none focus:ring-2 focus:ring-[#c5a062]/40
-            ${autoOnLaunch ? 'bg-[#c5a062]' : 'bg-zinc-700'}`}
-        >
-          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform
-            ${autoOnLaunch ? 'translate-x-4' : 'translate-x-0'}`} />
-        </button>
+        <p className="text-[10px] text-zinc-600">{UPDATE_BEHAVIOR_DESCRIPTIONS[behavior]}</p>
       </div>
 
       {/* Manual check + status */}
@@ -580,14 +604,18 @@ export function DesktopSettingsPanel() {
         ))}
       </div>
 
-      {/* FEAT-002: Updates subsection — version readout, manual check,
-          and the AUTO_UPDATE_ON_LAUNCH toggle. The toggle drives
+      {/* FEAT-006: Updates subsection — version readout, manual check,
+          and the UPDATE_BEHAVIOR tri-state. The dropdown drives
           UpdateChecker's launch-time behavior; manual checks here run
           regardless. */}
       <UpdatesSection
-        autoOnLaunch={(draft.AUTO_UPDATE_ON_LAUNCH ?? 'on') !== 'off'}
-        onAutoOnLaunchChange={(on) =>
-          setDraft((prev) => ({ ...prev, AUTO_UPDATE_ON_LAUNCH: on ? 'on' : 'off' }))
+        behavior={
+          (UPDATE_BEHAVIOR_OPTIONS as readonly string[]).includes(draft.UPDATE_BEHAVIOR ?? '')
+            ? (draft.UPDATE_BEHAVIOR as UpdateBehavior)
+            : UPDATE_BEHAVIOR_DEFAULT
+        }
+        onBehaviorChange={(next) =>
+          setDraft((prev) => ({ ...prev, UPDATE_BEHAVIOR: next }))
         }
       />
 
