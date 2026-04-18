@@ -291,6 +291,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     pendingResume: pipelineHook.pendingResume,
     acceptResume: pipelineHook.acceptResume,
     dismissResume: pipelineHook.dismissResume,
+    weekFillStatus: pipelineHook.weekFillStatus,
   };
 
   return (

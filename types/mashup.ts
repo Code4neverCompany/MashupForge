@@ -208,6 +208,13 @@ export interface UserSettings {
    */
   pipelineDailyCaps?: Partial<Record<'instagram' | 'pinterest' | 'twitter' | 'discord', number>>;
   /**
+   * V030-004: target posts-per-day the week-fill strategy aims for.
+   * Drives the "schedule target met" decision in continuous mode and
+   * the Week Progress meter. Unset → default of 2/day for back-compat
+   * with the pre-V030-004 hard-coded rate.
+   */
+  pipelinePostsPerDay?: number;
+  /**
    * When on, pipeline runs collapse all ready images from a single idea
    * into ONE carousel post: one shared caption, one scheduled slot, and
    * N ScheduledPosts that share a carouselGroupId (the auto-poster then
@@ -636,4 +643,6 @@ export interface MashupContextType {
   acceptResume: () => void;
   /** Dismiss the resume prompt and drop the checkpoint. */
   dismissResume: () => void;
+  /** V030-004: reactive week-fill status for the progress meter UI. */
+  weekFillStatus: import('../lib/weekly-fill').WeekFillStatus;
 }

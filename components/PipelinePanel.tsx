@@ -22,6 +22,7 @@ import { useDesktopConfig } from '@/hooks/useDesktopConfig';
 import { BestTimesWidget } from './pipeline/BestTimesWidget';
 import { ActiveIdeaCard } from './pipeline/ActiveIdeaCard';
 import { ApprovalQueue } from './pipeline/ApprovalQueue';
+import { WeekProgressMeter } from './pipeline/WeekProgressMeter';
 import { STAGES } from './pipeline/stages';
 
 type PipelinePlatform = 'instagram' | 'pinterest' | 'twitter' | 'discord';
@@ -45,6 +46,8 @@ const STEP_LABELS: Record<string, string> = {
   'pipeline-cycle':  'Cycle',
   'pipeline-end':    'End',
   'pipeline-error':  'Error',
+  'pipeline-timeout':    'Timeout',
+  'pipeline-week-filled': 'Week Filled',
   'complete':        'Complete',
 };
 
@@ -321,6 +324,9 @@ export function PipelinePanel() {
             </>
           )}
         </div>
+
+        {/* V030-004: week-ahead progress meter */}
+        <WeekProgressMeter />
 
         {/* Best posting times */}
         <BestTimesWidget settings={settings} />

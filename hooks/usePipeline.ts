@@ -106,5 +106,6 @@ export function usePipeline(deps: UsePipelineDeps) {
     pendingResume: daemon.pendingResume,
     acceptResume,
     dismissResume: daemon.dismissResume,
+    weekFillStatus: daemon.weekFillStatus,
   };
 }

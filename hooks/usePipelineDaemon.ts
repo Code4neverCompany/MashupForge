@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { streamAIToString, extractJsonArrayFromLLM, extractJsonObjectFromLLM } from '@/lib/aiClient';
 import {
   type Idea,
@@ -31,6 +31,11 @@ import {
   loadPipelineLog,
   clearPipelineLog as clearPipelineLogStore,
 } from '@/lib/pipeline-log-store';
+import {
+  countFutureScheduledPosts,
+  IdeaTimeoutError,
+} from '@/lib/pipeline-daemon-utils';
+import { computeWeekFillStatus, type WeekFillStatus } from '@/lib/weekly-fill';
 
 const PIPELINE_STORAGE_KEY = 'mashup_pipeline_state';
 
@@ -69,32 +74,10 @@ function persistConfig(state: PersistedPipelineConfig) {
   }
 }
 
-function countFutureScheduledPosts(
-  posts: ScheduledPost[] | undefined,
-  daysAhead: number,
-): number {
-  if (!posts || posts.length === 0) return 0;
-  const now = Date.now();
-  const horizon = now + daysAhead * 24 * 60 * 60 * 1000;
-  return posts.filter(p => {
-    if (p.status === 'posted' || p.status === 'failed') return false;
-    const t = new Date(`${p.date}T${p.time}:00`).getTime();
-    return t >= now && t <= horizon;
-  }).length;
-}
-
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 /** V030-002: hard cap per idea so a stuck step can't pin the daemon. */
 const PER_IDEA_TIMEOUT_MS = 10 * 60 * 1000;
-
-class IdeaTimeoutError extends Error {
-  readonly kind = 'timeout' as const;
-  constructor() {
-    super('__IDEA_TIMEOUT__');
-    this.name = 'IdeaTimeoutError';
-  }
-}
 
 export type WriteCheckpointBase = (
   ideaId: string,
@@ -352,6 +335,10 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
         // Fresh AbortControllers for this run.
         const runAbort = new AbortController();
         setRunCtrl(runAbort);
+
+        // V030-004: one-shot latch so the week-filled event logs at most
+        // once per run, not every sleep cycle.
+        let weekFilledPromptedThisRun = false;
 
         // Snapshot settings at run start for checkpoint continuity. Captured
         // in a local so writeCheckpointBase closes over stable values — no ref.
@@ -620,7 +607,10 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
               ...accumulatedPosts,
             ];
             const futurePosts = countFutureScheduledPosts(allPosts, targetDays);
-            const targetPerDay = 2;
+            // V030-004: per-day target is now user-configurable via
+            // pipelinePostsPerDay. Defaults to 2 for back-compat.
+            const targetPerDay =
+              latestPropsRef.current.settings.pipelinePostsPerDay ?? 2;
             const targetTotal = targetDays * targetPerDay;
 
             if (futurePosts < targetTotal) {
@@ -631,6 +621,18 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
                 `Schedule has ${futurePosts}/${targetTotal} posts in next ${targetDays}d — will continue after sleep`,
               );
             } else {
+              // V030-004: fire the week-filled prompt once per run so the
+              // UI can react (e.g. show "ready for next week"). The daemon
+              // itself still sleeps — whether to continue is the user's call.
+              if (!weekFilledPromptedThisRun) {
+                addLog(
+                  'pipeline-week-filled',
+                  '',
+                  'success',
+                  `Week filled: ${futurePosts}/${targetTotal} posts across ${targetDays}d — continue to next week?`,
+                );
+                weekFilledPromptedThisRun = true;
+              }
               addLog(
                 'daemon',
                 '',
@@ -724,6 +726,18 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
     void clearCheckpoint();
   }, []);
 
+  // V030-004: reactive week-fill status for the UI meter. Recomputes on
+  // any change to the scheduled post list, targetDays, or postsPerDay.
+  const weekFillStatus: WeekFillStatus = useMemo(
+    () =>
+      computeWeekFillStatus(
+        deps.settings.scheduledPosts,
+        pipelineTargetDays,
+        deps.settings.pipelinePostsPerDay ?? 2,
+      ),
+    [deps.settings.scheduledPosts, deps.settings.pipelinePostsPerDay, pipelineTargetDays],
+  );
+
   return {
     // State
     pipelineEnabled,
@@ -736,6 +750,7 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
     pipelineInterval,
     pipelineTargetDays,
     pendingResume,
+    weekFillStatus,
 
     // Setters exposed for composer-built helpers (e.g. acceptResume)
     setPipelineDelayState,
