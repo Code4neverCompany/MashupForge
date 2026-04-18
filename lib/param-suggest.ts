@@ -13,7 +13,12 @@
  *  - overridable (the UI is the source of truth once the user edits)
  */
 
-import type { GeneratedImage, LeonardoModelConfig } from '@/types/mashup';
+import type {
+  GeneratedImage,
+  LeonardoModelConfig,
+  LeonardoModelSpec,
+} from '@/types/mashup';
+import { LEONARDO_MODEL_PARAMS } from '@/types/mashup';
 
 export interface ParamSuggestionReasons {
   models: string;
@@ -21,6 +26,7 @@ export interface ParamSuggestionReasons {
   style?: string;
   imageSize: string;
   negativePrompt?: string;
+  quality?: string;
 }
 
 export interface ParamSuggestion {
@@ -29,6 +35,8 @@ export interface ParamSuggestion {
   style?: string;
   imageSize: '1K' | '2K';
   negativePrompt?: string;
+  /** Only set when a top-ranked model supports quality (gpt-image-1.5). */
+  quality?: 'LOW' | 'MEDIUM' | 'HIGH';
   reasons: ParamSuggestionReasons;
   priorMatchCount: number;
 }
@@ -43,6 +51,12 @@ export interface SuggestParametersInput {
   topN?: number;
   /** Models to exclude from ranking. Defaults to nano-banana (pipeline skips it). */
   excludedModelIds?: readonly string[];
+  /**
+   * Per-model API parameter spec. Defaults to LEONARDO_MODEL_PARAMS.
+   * Exposed for tests to inject a minimal spec; production callers
+   * should leave this unset.
+   */
+  modelParams?: Record<string, LeonardoModelSpec>;
 }
 
 interface AspectRule {
@@ -115,6 +129,7 @@ export function suggestParameters(input: SuggestParametersInput): ParamSuggestio
     savedImages,
     topN = 2,
     excludedModelIds = ['nano-banana'],
+    modelParams = LEONARDO_MODEL_PARAMS,
   } = input;
 
   const promptTokens = tokenize(prompt);
@@ -204,18 +219,57 @@ export function suggestParameters(input: SuggestParametersInput): ParamSuggestio
     negativeReason = `carried over from prior winner "${snippet}${priorWithNeg.img.prompt.length > 40 ? '…' : ''}"`;
   }
 
+  // ── Per-model spec constraints ────────────────────────────────────────────
+  // The Leonardo v2 API accepts a fixed set of sizes per model. If every
+  // top-ranked model only supports 1024x1024 we override the keyword-
+  // derived ratio to 1:1 so the suggestion matches what the API will
+  // actually accept. Same idea applies to quality: only gpt-image-1.5
+  // exposes LOW/MEDIUM/HIGH today, so we only emit a quality suggestion
+  // when one of the top models has that capability.
+  const topSpecs = modelIds
+    .map(id => modelParams[id])
+    .filter((s): s is LeonardoModelSpec => Boolean(s));
+
+  const imageSpecs = topSpecs.filter(
+    (s): s is Extract<LeonardoModelSpec, { type: 'image' }> => s.type === 'image',
+  );
+  const allOnly1k1k =
+    imageSpecs.length > 0 &&
+    imageSpecs.every(
+      s => s.supported_sizes.length === 1 && s.supported_sizes[0] === '1024x1024',
+    );
+  if (allOnly1k1k && aspectRatio !== '1:1') {
+    aspectReason = `${aspectRatio} unsupported — ${imageSpecs.map(s => s.api_name ?? '').filter(Boolean).join(', ') || 'selected models'} only accept 1024×1024`;
+    aspectRatio = '1:1';
+  }
+
+  // Quality — only meaningful for gpt-image-1.5 (the one model with a
+  // LOW/MEDIUM/HIGH knob). Detail keywords in the prompt push it to HIGH;
+  // everything else stays MEDIUM.
+  let quality: 'LOW' | 'MEDIUM' | 'HIGH' | undefined;
+  let qualityReason: string | undefined;
+  const modelWithQuality = imageSpecs.find(s => s.quality && s.quality.length > 0);
+  if (modelWithQuality) {
+    quality = detailHit ? 'HIGH' : 'MEDIUM';
+    qualityReason = detailHit
+      ? `"${detailHit}" → HIGH quality for detail rendering`
+      : 'MEDIUM — default for balanced cost / quality';
+  }
+
   return {
     modelIds,
     aspectRatio,
     style,
     imageSize,
     negativePrompt,
+    quality,
     reasons: {
       models: modelsReason,
       aspectRatio: aspectReason,
       style: styleReason,
       imageSize: imageSizeReason,
       negativePrompt: negativeReason,
+      quality: qualityReason,
     },
     priorMatchCount: scoredWinners.length,
   };

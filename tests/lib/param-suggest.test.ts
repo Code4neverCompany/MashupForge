@@ -62,6 +62,9 @@ const styles = [
 ];
 
 describe('suggestParameters', () => {
+  // Keyword-heuristic tests pass modelParams: {} so the per-model spec
+  // constraint doesn't override the ratio. The spec-constraint behavior
+  // is exercised separately in the "per-model spec constraints" block.
   it('suggests 2:3 portrait ratio for prompts mentioning a character', () => {
     const s = suggestParameters({
       prompt: 'portrait of a cyberpunk hacker',
@@ -69,6 +72,7 @@ describe('suggestParameters', () => {
       modelGuides: guides,
       availableStyles: styles,
       savedImages: [],
+      modelParams: {},
     });
     expect(s.aspectRatio).toBe('2:3');
     expect(s.reasons.aspectRatio).toContain('portrait');
@@ -81,6 +85,7 @@ describe('suggestParameters', () => {
       modelGuides: guides,
       availableStyles: styles,
       savedImages: [],
+      modelParams: {},
     });
     expect(s.aspectRatio).toBe('16:9');
     expect(s.reasons.aspectRatio).toContain('cityscape');
@@ -93,6 +98,7 @@ describe('suggestParameters', () => {
       modelGuides: guides,
       availableStyles: styles,
       savedImages: [],
+      modelParams: {},
     });
     expect(s.aspectRatio).toBe('9:16');
   });
@@ -292,5 +298,93 @@ describe('suggestParameters', () => {
     expect(s.imageSize).toBe('1K');
     expect(s.style).toBeUndefined();
     expect(s.modelIds.length).toBeGreaterThan(0);
+  });
+
+  // V030-007 follow-up: the param-suggest engine must respect the
+  // per-model API spec in LEONARDO_MODEL_PARAMS. Image models that only
+  // accept 1024x1024 should force a 1:1 suggestion regardless of what
+  // the prompt keywords hint at. gpt-image-1.5 should also pick a
+  // quality level driven by detail keywords.
+  describe('per-model spec constraints', () => {
+    const imageOnly1k: any = {
+      type: 'image',
+      width: 1024,
+      height: 1024,
+      supported_sizes: ['1024x1024'],
+      prompt_enhance: 'OFF',
+      supports_image_reference: false,
+    };
+
+    it('forces 1:1 when every selected model only supports 1024x1024', () => {
+      const s = suggestParameters({
+        prompt: 'sweeping cityscape panorama 16:9',
+        availableModels: models,
+        modelGuides: guides,
+        availableStyles: styles,
+        savedImages: [],
+        modelParams: {
+          'nano-banana-pro': imageOnly1k,
+          'nano-banana-2': imageOnly1k,
+          'gpt-image-1.5': imageOnly1k,
+        },
+      });
+      expect(s.aspectRatio).toBe('1:1');
+      expect(s.reasons.aspectRatio).toMatch(/1024/);
+    });
+
+    it('suggests HIGH quality when detail keywords are present and a top model supports quality', () => {
+      const s = suggestParameters({
+        prompt: 'ultra detailed 8k photorealistic spaceship',
+        availableModels: models,
+        modelGuides: {
+          'gpt-image-1.5': 'photorealistic detailed',
+          'nano-banana-pro': 'unrelated',
+          'nano-banana-2': 'unrelated',
+        },
+        availableStyles: styles,
+        savedImages: [],
+        modelParams: {
+          'gpt-image-1.5': {
+            ...imageOnly1k,
+            quality: ['LOW', 'MEDIUM', 'HIGH'] as const,
+          } as any,
+        },
+      });
+      expect(s.modelIds).toContain('gpt-image-1.5');
+      expect(s.quality).toBe('HIGH');
+      expect(s.reasons.quality).toMatch(/HIGH/);
+    });
+
+    it('suggests MEDIUM quality by default when gpt-image-1.5 is selected without detail keywords', () => {
+      const s = suggestParameters({
+        prompt: 'a simple apple on a table',
+        availableModels: [makeModel('gpt-image-1.5')],
+        modelGuides: { 'gpt-image-1.5': 'photorealistic apple table' },
+        availableStyles: styles,
+        savedImages: [],
+        modelParams: {
+          'gpt-image-1.5': {
+            ...imageOnly1k,
+            quality: ['LOW', 'MEDIUM', 'HIGH'] as const,
+          } as any,
+        },
+      });
+      expect(s.quality).toBe('MEDIUM');
+    });
+
+    it('omits quality when no selected model supports it', () => {
+      const s = suggestParameters({
+        prompt: 'anime scene',
+        availableModels: [makeModel('nano-banana-2')],
+        modelGuides: { 'nano-banana-2': 'illustration anime' },
+        availableStyles: styles,
+        savedImages: [],
+        modelParams: {
+          'nano-banana-2': imageOnly1k,
+        },
+      });
+      expect(s.quality).toBeUndefined();
+      expect(s.reasons.quality).toBeUndefined();
+    });
   });
 });

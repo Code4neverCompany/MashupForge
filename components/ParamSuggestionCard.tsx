@@ -32,6 +32,9 @@ export function ParamSuggestionCard({
   const [negativePrompt, setNegativePrompt] = useState<string>(
     suggestion.negativePrompt ?? '',
   );
+  const [quality, setQuality] = useState<'LOW' | 'MEDIUM' | 'HIGH' | undefined>(
+    suggestion.quality,
+  );
 
   const toggleModel = (id: string) => {
     setModelIds(prev => (prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]));
@@ -43,11 +46,13 @@ export function ParamSuggestionCard({
       style,
       imageSize,
       negativePrompt: negativePrompt.trim() || undefined,
+      quality,
     });
   };
 
   const aspectOptions = ['1:1', '2:3', '3:2', '9:16', '16:9', '3:4', '4:3', '4:5', '5:4'];
   const sizeOptions: ('1K' | '2K')[] = ['1K', '2K'];
+  const qualityOptions: ('LOW' | 'MEDIUM' | 'HIGH')[] = ['LOW', 'MEDIUM', 'HIGH'];
 
   return (
     <div className="bg-[#0a1a1f]/80 border border-[#00e6ff]/25 rounded-xl p-4 space-y-3 shadow-[0_0_18px_rgba(0,230,255,0.08)]">
@@ -89,6 +94,9 @@ export function ParamSuggestionCard({
             <SuggestionRow label="Style" value={style} reason={suggestion.reasons.style} />
           )}
           <SuggestionRow label="Image Size" value={imageSize} reason={suggestion.reasons.imageSize} />
+          {quality && (
+            <SuggestionRow label="Quality" value={quality} reason={suggestion.reasons.quality} />
+          )}
           {negativePrompt && (
             <SuggestionRow
               label="Negative Prompt"
@@ -150,6 +158,25 @@ export function ParamSuggestionCard({
               </select>
             </div>
           </div>
+
+          {quality !== undefined && (
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
+                Quality <span className="text-zinc-600 normal-case">(gpt-image-1.5)</span>
+              </label>
+              <select
+                value={quality}
+                onChange={e => setQuality(e.target.value as 'LOW' | 'MEDIUM' | 'HIGH')}
+                className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
+              >
+                {qualityOptions.map(q => (
+                  <option key={q} value={q}>
+                    {q}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Style</label>

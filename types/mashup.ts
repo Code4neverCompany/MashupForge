@@ -448,6 +448,153 @@ export const MODEL_PROMPT_GUIDES: Record<string, string> = {
 - Avoid negative prompts — not well supported`,
 };
 
+// V030-007-followup: Authoritative per-model API parameter spec from
+// Maurice's model-params.json. This is the source of truth for what
+// the Leonardo v2 API actually accepts per model — width/height,
+// supported sizes, quality levels, durations, and frame capabilities.
+// Smart pre-fill in lib/param-suggest.ts consults this map to avoid
+// suggesting values the API will reject.
+export interface LeonardoImageModelSpec {
+  type: 'image';
+  width: number;
+  height: number;
+  supported_sizes: readonly string[];
+  quality?: readonly ('LOW' | 'MEDIUM' | 'HIGH')[];
+  style_ids?: boolean;
+  prompt_enhance: 'OFF' | 'ON';
+  supports_image_reference: boolean;
+  /** API name if different from the public id (e.g. gemini-image-2). */
+  api_name?: string;
+}
+
+export interface LeonardoVideoModelSpec {
+  type: 'video';
+  width: number;
+  height: number;
+  duration: number;
+  mode: string;
+  motion_has_audio?: boolean;
+  supports_start_frame: boolean;
+  supports_end_frame: boolean;
+  /** API name if different from the public id (e.g. VEO3_1). */
+  api_name?: string;
+}
+
+export type LeonardoModelSpec = LeonardoImageModelSpec | LeonardoVideoModelSpec;
+
+export const LEONARDO_MODEL_PARAMS: Record<string, LeonardoModelSpec> = {
+  'gpt-image-1.5': {
+    type: 'image',
+    width: 1024,
+    height: 1024,
+    supported_sizes: ['1024x1024'],
+    quality: ['LOW', 'MEDIUM', 'HIGH'],
+    prompt_enhance: 'OFF',
+    supports_image_reference: true,
+  },
+  'nano-banana-2': {
+    type: 'image',
+    width: 1024,
+    height: 1024,
+    supported_sizes: ['1024x1024'],
+    style_ids: true,
+    prompt_enhance: 'OFF',
+    supports_image_reference: false,
+  },
+  'nano-banana-pro': {
+    type: 'image',
+    api_name: 'gemini-image-2',
+    width: 1024,
+    height: 1024,
+    supported_sizes: ['1024x1024'],
+    style_ids: true,
+    prompt_enhance: 'OFF',
+    supports_image_reference: false,
+  },
+  'kling-3.0': {
+    type: 'video',
+    width: 1920,
+    height: 1080,
+    duration: 5,
+    mode: 'RESOLUTION_1080',
+    motion_has_audio: true,
+    supports_start_frame: true,
+    supports_end_frame: false,
+  },
+  'kling-o3': {
+    type: 'video',
+    api_name: 'kling-video-o-3',
+    width: 1920,
+    height: 1080,
+    duration: 3,
+    mode: 'RESOLUTION_1080',
+    motion_has_audio: true,
+    supports_start_frame: true,
+    supports_end_frame: false,
+  },
+  'veo-3.1': {
+    type: 'video',
+    api_name: 'VEO3_1',
+    width: 1920,
+    height: 1080,
+    duration: 8,
+    mode: 'RESOLUTION_1080',
+    supports_start_frame: true,
+    supports_end_frame: true,
+  },
+};
+
+// Video model configs, analogous to LEONARDO_MODELS but carrying the
+// duration/frame-support shape the pipeline and Compare tab need. Kept
+// separate because image and video models don't share a UI list.
+export interface LeonardoVideoModelConfig {
+  id: string;
+  name: string;
+  apiModelId: string;
+  duration: number;
+  width: number;
+  height: number;
+  supportsStartFrame: boolean;
+  supportsEndFrame: boolean;
+  motionHasAudio: boolean;
+}
+
+export const LEONARDO_VIDEO_MODELS: LeonardoVideoModelConfig[] = [
+  {
+    id: 'kling-3.0',
+    name: 'Kling 3.0',
+    apiModelId: 'kling-3.0',
+    duration: 5,
+    width: 1920,
+    height: 1080,
+    supportsStartFrame: true,
+    supportsEndFrame: false,
+    motionHasAudio: true,
+  },
+  {
+    id: 'kling-o3',
+    name: 'Kling o3',
+    apiModelId: 'kling-video-o-3',
+    duration: 3,
+    width: 1920,
+    height: 1080,
+    supportsStartFrame: true,
+    supportsEndFrame: false,
+    motionHasAudio: true,
+  },
+  {
+    id: 'veo-3.1',
+    name: 'Veo 3.1',
+    apiModelId: 'VEO3_1',
+    duration: 8,
+    width: 1920,
+    height: 1080,
+    supportsStartFrame: true,
+    supportsEndFrame: true,
+    motionHasAudio: false,
+  },
+];
+
 /** Get a Leonardo model config by its id */
 export function getLeonardoModel(modelId: string): LeonardoModelConfig | undefined {
   return LEONARDO_MODELS.find(m => m.id === modelId || m.apiModelId === modelId);
