@@ -9,7 +9,7 @@
 // visual + interaction layer cleanly on top of whatever state the
 // parent feeds it.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check, X, ChevronDown, Layers, Lightbulb } from 'lucide-react';
 import type { GeneratedImage, Idea, ScheduledPost } from '@/types/mashup';
 import { CarouselStatusPill, type CarouselImageState } from './CarouselStatusPill';
@@ -17,6 +17,13 @@ import { CarouselThumbnailStrip } from './CarouselThumbnailStrip';
 import { CarouselReviewPanel } from './CarouselReviewPanel';
 import { DegradeNotice } from './DegradeNotice';
 import { canRejectMoreInCarousel } from '@/lib/carousel-degrade-guard';
+import {
+  GHOST_TTL_MS,
+  pruneExpiredGhosts,
+  nextGhostExpiry,
+  type CarouselGhost,
+  type CarouselGhostState,
+} from '@/lib/carousel-ghost';
 
 export function CarouselApprovalCard({
   groupId,
@@ -43,10 +50,63 @@ export function CarouselApprovalCard({
   // local state; absent = 'pending'.
   const [localStatus, setLocalStatus] = useState<Record<string, CarouselImageState>>({});
 
-  const images = useMemo(
+  // V040-HOTFIX-003: ghost memory. Approve/reject removes the post from
+  // the parent's queue, which removes the image from `liveImages` on
+  // the next render — so the user never sees their own checkmark land.
+  // Ghost entries hold onto the image (and its just-acted state) for
+  // GHOST_TTL_MS so the row stays visible long enough to register.
+  const [ghosts, setGhosts] = useState<Record<string, CarouselGhost<GeneratedImage>>>({});
+  // Append-only ordered cache of every image we've ever seen in this
+  // carousel. Used to keep ghost rows in their original strip position
+  // instead of jumping to the end after the parent re-renders.
+  const [seenOrder, setSeenOrder] = useState<Map<string, GeneratedImage>>(new Map());
+
+  const liveImages = useMemo(
     () => posts.map((p) => imagesById.get(p.imageId)).filter((i): i is GeneratedImage => !!i),
     [posts, imagesById],
   );
+  const liveIds = useMemo(() => new Set(liveImages.map((i) => i.id)), [liveImages]);
+
+  // Grow seenOrder as new live images appear. Never shrinks — the
+  // displayImages filter below drops anything that's neither live
+  // nor ghosted, so stale entries just sit dormant.
+  useEffect(() => {
+    setSeenOrder((prev) => {
+      let mutated = false;
+      const next = new Map(prev);
+      for (const img of liveImages) {
+        if (!next.has(img.id)) {
+          next.set(img.id, img);
+          mutated = true;
+        }
+      }
+      return mutated ? next : prev;
+    });
+  }, [liveImages]);
+
+  // Sweep expired ghosts. Schedule one timer to the next expiry; the
+  // effect re-runs whenever `ghosts` changes (any add or sweep) and
+  // re-arms the timer.
+  useEffect(() => {
+    const next = nextGhostExpiry(ghosts);
+    if (next === null) return;
+    const wait = Math.max(0, next - Date.now()) + 50;
+    const t = setTimeout(() => {
+      setGhosts((prev) => pruneExpiredGhosts(prev, Date.now()));
+    }, wait);
+    return () => clearTimeout(t);
+  }, [ghosts]);
+
+  // Display = images in original-seen order, kept if still live OR
+  // currently ghosted. Position is preserved across the live → ghost
+  // → gone transition.
+  const images = useMemo(() => {
+    const out: GeneratedImage[] = [];
+    for (const [id, img] of seenOrder) {
+      if (liveIds.has(id) || ghosts[id]) out.push(img);
+    }
+    return out;
+  }, [seenOrder, liveIds, ghosts]);
 
   // Map imageId → the owning post (so we can fire approve/reject by post.id)
   const postByImage = useMemo(() => {
@@ -55,11 +115,19 @@ export function CarouselApprovalCard({
     return m;
   }, [posts]);
 
+  // Live images consult `localStatus` (which is meaningful pre-removal);
+  // ghosted images consult their captured ghost state.
   const statuses: Record<string, CarouselImageState> = useMemo(() => {
     const out: Record<string, CarouselImageState> = {};
-    for (const img of images) out[img.id] = localStatus[img.id] ?? 'pending';
+    for (const img of images) {
+      if (liveIds.has(img.id)) {
+        out[img.id] = localStatus[img.id] ?? 'pending';
+      } else {
+        out[img.id] = ghosts[img.id]?.state ?? 'pending';
+      }
+    }
     return out;
-  }, [images, localStatus]);
+  }, [images, liveIds, localStatus, ghosts]);
 
   const counts = useMemo(() => {
     let pending = 0, approved = 0, rejected = 0;
@@ -72,17 +140,24 @@ export function CarouselApprovalCard({
     return { pending, approved, rejected, total: images.length };
   }, [images, statuses]);
 
-  // Per-image reject is gated when the carousel is at the 2-image floor,
-  // so the user cannot accidentally degrade it to a single-image post the
-  // auto-poster would refuse to fan out. The whole-carousel reject is
-  // intentionally NOT gated — that's an explicit kill action.
-  const nonRejectedCount = counts.pending + counts.approved;
-  const rejectGuarded = !canRejectMoreInCarousel(nonRejectedCount);
+  // Reject floor is computed from LIVE-queue count (`liveImages.length`)
+  // rather than displayed `images.length` — ghosts are visual residue
+  // of completed actions, not still-rejectable posts.
+  const rejectGuarded = !canRejectMoreInCarousel(liveImages.length);
+
+  const addGhost = (img: GeneratedImage, state: CarouselGhostState) => {
+    setGhosts((prev) => ({
+      ...prev,
+      [img.id]: { state, img, expiresAt: Date.now() + GHOST_TTL_MS },
+    }));
+  };
 
   const approveImage = (imageId: string) => {
     const post = postByImage.get(imageId);
     if (!post) return;
+    const img = liveImages.find((i) => i.id === imageId);
     setLocalStatus((prev) => ({ ...prev, [imageId]: 'approved' }));
+    if (img) addGhost(img, 'approved');
     onApprovePost(post.id);
   };
 
@@ -90,12 +165,14 @@ export function CarouselApprovalCard({
     if (rejectGuarded) return;
     const post = postByImage.get(imageId);
     if (!post) return;
+    const img = liveImages.find((i) => i.id === imageId);
     setLocalStatus((prev) => ({ ...prev, [imageId]: 'rejected' }));
+    if (img) addGhost(img, 'rejected');
     onRejectPost(post.id);
   };
 
   const approveRemaining = () => {
-    for (const img of images) {
+    for (const img of liveImages) {
       if ((statuses[img.id] ?? 'pending') === 'pending') approveImage(img.id);
     }
   };
@@ -107,12 +184,11 @@ export function CarouselApprovalCard({
   const rejectCarousel = () => {
     // Whole-carousel reject bypasses the per-image guard — the user is
     // explicitly killing the group, not accidentally degrading it.
-    for (const img of images) {
-      const st = statuses[img.id] ?? 'pending';
-      if (st === 'rejected') continue;
+    for (const img of liveImages) {
       const post = postByImage.get(img.id);
       if (!post) continue;
       setLocalStatus((prev) => ({ ...prev, [img.id]: 'rejected' }));
+      addGhost(img, 'rejected');
       onRejectPost(post.id);
     }
   };
