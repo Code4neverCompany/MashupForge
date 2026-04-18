@@ -236,6 +236,12 @@ export interface UserSettings {
    * Tunes/Scream, Muppets/Suspiria). Off = legacy random-ideas mode.
    */
   pipelineThemedBatches?: boolean;
+  /**
+   * V040-001: when on, the week view overlays an engagement heatmap
+   * (gold tint per slot, top-3 star markers, hover tooltip with score
+   * breakdown). Off by default — opt-in via the header toggle.
+   */
+  heatmapEnabled?: boolean;
 }
 
 export type ViewType = 'studio' | 'gallery' | 'compare' | 'captioning' | 'post-ready' | 'ideas' | 'pipeline';

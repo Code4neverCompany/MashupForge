@@ -91,6 +91,19 @@ import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import { getErrorMessage } from '@/lib/errors';
 import { useSmartScheduler } from '@/hooks/useSmartScheduler';
 import { SmartScheduleModal } from './SmartScheduleModal';
+import {
+  loadEngagementData,
+  computeWeekScores,
+  findBestSlots,
+  type SlotScoreBreakdown,
+} from '@/lib/smartScheduler';
+import {
+  HeatmapTint,
+  TopSlotStar,
+  HeatmapToggleButton,
+  HeatmapLegend,
+  HeatmapTooltip,
+} from './WeekHeatmap';
 import type { CarouselGroup } from './MashupContext';
 import type { PostPlatform } from '@/types/mashup';
 import TimePicker24 from './TimePicker24';
@@ -274,6 +287,19 @@ export function MainContent() {
   // Drag state for rescheduling scheduled posts via HTML5 DnD.
   const [dragPostId, setDragPostId] = useState<string | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
+  // V040-001: engagement heatmap overlay. Persisted to settings on toggle
+  // so the user's choice survives reloads.
+  const [heatmapEnabled, setHeatmapEnabled] = useState<boolean>(
+    () => settings.heatmapEnabled ?? false,
+  );
+  const [heatmapHover, setHeatmapHover] = useState<{
+    cellKey: string;
+    rect: DOMRect;
+    date: Date;
+    hour: number;
+    isAvailable: boolean;
+  } | null>(null);
+  const heatmapHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Click-to-schedule: when the user clicks an empty calendar cell, open
   // a modal with an image picker + platform toggles + time. `time` is a
   // full HH:MM string so picking e.g. 14:30 doesn't silently truncate to
@@ -328,6 +354,37 @@ export function MainContent() {
     if (postPlatformSel[id]) return postPlatformSel[id];
     return availablePlatforms();
   };
+
+  // V040-001: keep React state and persisted setting in sync. Persists
+  // through `updateSettings` so it survives page reloads and matches
+  // the rest of the toggle-button pattern used in this file.
+  const toggleHeatmap = useCallback(() => {
+    setHeatmapEnabled((prev) => {
+      const next = !prev;
+      updateSettings({ heatmapEnabled: next });
+      return next;
+    });
+    // Closing the overlay also closes any in-flight tooltip.
+    setHeatmapHover(null);
+    if (heatmapHoverTimer.current) {
+      clearTimeout(heatmapHoverTimer.current);
+      heatmapHoverTimer.current = null;
+    }
+  }, [updateSettings]);
+
+  // V040-001: hide tooltip on scroll / Escape. Scroll closes immediately
+  // because the anchor rect would otherwise drift away from the cell.
+  useEffect(() => {
+    if (!heatmapHover) return;
+    const close = () => setHeatmapHover(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [heatmapHover]);
 
   const togglePlatformFor = (id: string, p: PostPlatform) => {
     setPostPlatformSel((prev) => {
@@ -2919,8 +2976,37 @@ export function MainContent() {
                         const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
                         const rangeLabel = `${toYMD(weekStart)} → ${toYMD(addDays(weekStart, 6))}`;
 
+                        // V040-001: heatmap data — only computed when overlay
+                        // is on. 7×24 map + a top-3 ranking constrained to the
+                        // visible week (overflow into next week is dropped so
+                        // the visible grid never shows a "rank 4" star).
+                        const heatmapEngagement = heatmapEnabled ? loadEngagementData() : null;
+                        const heatmapWeekScores: Map<string, SlotScoreBreakdown> =
+                          heatmapEnabled && heatmapEngagement
+                            ? computeWeekScores(days, heatmapEngagement)
+                            : new Map();
+                        const heatmapTopRanks = new Map<string, 1 | 2 | 3>();
+                        if (heatmapEnabled && heatmapEngagement) {
+                          const platforms = availablePlatforms();
+                          const top = findBestSlots(
+                            scheduled,
+                            3,
+                            heatmapEngagement,
+                            { platforms, caps: settings.pipelineDailyCaps },
+                          );
+                          const weekKeys = new Set(days.map((d) => toYMD(d)));
+                          let rank = 1;
+                          for (const s of top) {
+                            if (!weekKeys.has(s.date)) continue;
+                            const hour = parseInt(s.time.split(':')[0], 10);
+                            heatmapTopRanks.set(`${s.date}:${hour}`, rank as 1 | 2 | 3);
+                            rank += 1;
+                            if (rank > 3) break;
+                          }
+                        }
+
                         return (
-                          <div className="card overflow-hidden">
+                          <div className="card overflow-hidden relative">
                             {/* Calendar header */}
                             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-4 border-b border-[#c5a062]/15">
                               <div className="flex items-center gap-2">
@@ -2944,20 +3030,26 @@ export function MainContent() {
                                 </button>
                                 <span className="ml-3 text-sm text-zinc-300">{rangeLabel}</span>
                               </div>
-                              <div className="flex bg-zinc-900 border border-zinc-800/60 rounded-full p-0.5">
-                                {(['week', 'month'] as const).map((m) => (
-                                  <button
-                                    key={m}
-                                    onClick={() => setCalendarMode(m)}
-                                    className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
-                                      calendarMode === m
-                                        ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                                        : 'text-zinc-500 hover:text-zinc-300'
-                                    }`}
-                                  >
-                                    {m === 'week' ? 'Week' : 'Month'}
-                                  </button>
-                                ))}
+                              <div className="flex items-center gap-2">
+                                <HeatmapToggleButton
+                                  heatmapEnabled={heatmapEnabled}
+                                  onToggle={toggleHeatmap}
+                                />
+                                <div className="flex bg-zinc-900 border border-zinc-800/60 rounded-full p-0.5">
+                                  {(['week', 'month'] as const).map((m) => (
+                                    <button
+                                      key={m}
+                                      onClick={() => setCalendarMode(m)}
+                                      className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                        calendarMode === m
+                                          ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                                          : 'text-zinc-500 hover:text-zinc-300'
+                                      }`}
+                                    >
+                                      {m === 'week' ? 'Week' : 'Month'}
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
                             </div>
 
@@ -3120,6 +3212,8 @@ export function MainContent() {
                                     const cellKey = `${dateStr}:${hour}`;
                                     const isDragOver = dragOverCell === cellKey;
                                     const isEmpty = postsAtSlot.length === 0;
+                                    const breakdown = heatmapWeekScores.get(cellKey);
+                                    const heatmapRank = heatmapTopRanks.get(cellKey);
                                     return (
                                       <div
                                         key={i}
@@ -3130,6 +3224,30 @@ export function MainContent() {
                                               time: `${String(hour).padStart(2, '0')}:00`,
                                             });
                                           }
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (!heatmapEnabled) return;
+                                          const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                                          const cellDate = new Date(d);
+                                          if (heatmapHoverTimer.current) {
+                                            clearTimeout(heatmapHoverTimer.current);
+                                          }
+                                          heatmapHoverTimer.current = setTimeout(() => {
+                                            setHeatmapHover({
+                                              cellKey,
+                                              rect,
+                                              date: cellDate,
+                                              hour,
+                                              isAvailable: isEmpty,
+                                            });
+                                          }, 120);
+                                        }}
+                                        onMouseLeave={() => {
+                                          if (heatmapHoverTimer.current) {
+                                            clearTimeout(heatmapHoverTimer.current);
+                                            heatmapHoverTimer.current = null;
+                                          }
+                                          setHeatmapHover((curr) => (curr?.cellKey === cellKey ? null : curr));
                                         }}
                                         onDragOver={(e) => {
                                           e.preventDefault();
@@ -3155,14 +3273,23 @@ export function MainContent() {
                                             ),
                                           }));
                                         }}
-                                        className={`border-l border-zinc-800/60 min-h-[40px] p-1 space-y-1 transition-colors ${
+                                        className={`relative border-l border-zinc-800/60 min-h-[40px] p-1 space-y-1 transition-colors ${
                                           isDragOver
                                             ? 'ring-2 ring-emerald-500/50 bg-emerald-500/5'
                                             : isEmpty
-                                              ? 'cursor-pointer hover:bg-emerald-500/5'
+                                              ? heatmapEnabled
+                                                ? 'cursor-pointer hover:ring-1 hover:ring-[#00e6ff]/40'
+                                                : 'cursor-pointer hover:bg-emerald-500/5'
                                               : ''
                                         }`}
                                       >
+                                        <HeatmapTint
+                                          score={breakdown?.score ?? 0}
+                                          enabled={heatmapEnabled}
+                                        />
+                                        {heatmapEnabled && heatmapRank && (
+                                          <TopSlotStar rank={heatmapRank} />
+                                        )}
                                         {postsAtSlot.map((p) => {
                                           return (
                                             <button
@@ -3178,7 +3305,7 @@ export function MainContent() {
                                                 e.stopPropagation();
                                                 setEditingPostId((current) => (current === p.id ? null : p.id));
                                               }}
-                                              className={`relative w-full text-left px-2 py-1 rounded-xl border text-[10px] truncate cursor-grab active:cursor-grabbing ${calendarColorFor(p.status)} ${
+                                              className={`relative z-20 w-full text-left px-2 py-1 rounded-xl border text-[10px] truncate cursor-grab active:cursor-grabbing ${calendarColorFor(p.status)} ${
                                                 dragPostId === p.id ? 'opacity-50' : ''
                                               }`}
                                               title={`${p.time} · ${p.platforms.join(', ')}\n${p.caption}`}
@@ -3193,6 +3320,35 @@ export function MainContent() {
                                 </div>
                               ))}
                             </div>
+                            <HeatmapLegend heatmapEnabled={heatmapEnabled} />
+                            {heatmapEnabled && heatmapHover && (() => {
+                              const bd = heatmapWeekScores.get(heatmapHover.cellKey);
+                              const eng = heatmapEngagement;
+                              if (!bd || !eng) return null;
+                              return (
+                                <HeatmapTooltip
+                                  anchor={{
+                                    rect: heatmapHover.rect,
+                                    date: heatmapHover.date,
+                                    hour: heatmapHover.hour,
+                                  }}
+                                  score={bd.score}
+                                  dayMult={bd.dayMult}
+                                  hourWeight={bd.hourWeight}
+                                  weekendBonus={bd.weekendBonus}
+                                  engagement={eng}
+                                  isAvailable={heatmapHover.isAvailable}
+                                  onScheduleClick={() => {
+                                    const dateStr = toYMD(heatmapHover.date);
+                                    setCalendarSlotClick({
+                                      date: dateStr,
+                                      time: `${String(heatmapHover.hour).padStart(2, '0')}:00`,
+                                    });
+                                    setHeatmapHover(null);
+                                  }}
+                                />
+                              );
+                            })()}
                           </div>
                         );
                       }

@@ -73,6 +73,10 @@ export interface CachedEngagement {
   days: EngagementDay[];
   fetchedAt: number;
   source: 'instagram' | 'default';
+  /** V040-001: number of past IG posts that fed the current weights.
+   *  Drives the heatmap tooltip's confidence phrasing. Absent / 0 for
+   *  the 'default' source. */
+  samples?: number;
 }
 
 export function loadEngagementData(): CachedEngagement {
@@ -165,6 +169,7 @@ export async function fetchInstagramEngagement(
       days,
       fetchedAt: Date.now(),
       source: 'instagram',
+      samples: posts.length,
     };
 
     saveEngagementData(result);
@@ -172,6 +177,40 @@ export async function fetchInstagramEngagement(
   } catch {
     return loadEngagementData();
   }
+}
+
+/** Per-slot breakdown — drives both the raw `scoreSlot` and the
+ *  heatmap tooltip's "Day weight × Hour weight + Bonus" line. */
+export interface SlotScoreBreakdown {
+  score: number;
+  dayMult: number;
+  hourWeight: number;
+  weekendBonus: number;
+}
+
+/**
+ * Score a time slot and return the contributing factors. The heatmap
+ * tooltip needs the breakdown; `findBestSlots` only needs `.score`.
+ */
+export function scoreSlotDetailed(
+  date: Date,
+  hour: number,
+  engagement: CachedEngagement,
+): SlotScoreBreakdown {
+  const dayMult = engagement.days.find(d => d.day === date.getDay())?.multiplier || 0.7;
+  const hourWeight = engagement.hours.find(h => h.hour === hour)?.weight || 0.3;
+
+  // Weekend evening bonus
+  const day = date.getDay();
+  const isWeekend = day === 0 || day === 5 || day === 6;
+  const weekendBonus = (isWeekend && hour >= 19 && hour <= 21) ? 0.15 : 0;
+
+  return {
+    score: (dayMult * hourWeight) + weekendBonus,
+    dayMult,
+    hourWeight,
+    weekendBonus,
+  };
 }
 
 /**
@@ -182,15 +221,33 @@ function scoreSlot(
   hour: number,
   engagement: CachedEngagement,
 ): number {
-  const dayMult = engagement.days.find(d => d.day === date.getDay())?.multiplier || 0.7;
-  const hourWeight = engagement.hours.find(h => h.hour === hour)?.weight || 0.3;
+  return scoreSlotDetailed(date, hour, engagement).score;
+}
 
-  // Weekend evening bonus
-  const day = date.getDay();
-  const isWeekend = day === 0 || day === 5 || day === 6;
-  const eveningBonus = (isWeekend && hour >= 19 && hour <= 21) ? 0.15 : 0;
-
-  return (dayMult * hourWeight) + eveningBonus;
+/**
+ * V040-001: build a `${dateStr}:${hour}` → breakdown map for a 7-day
+ * window. Hours 0–5 are skipped (matching `findBestSlots` L281), so
+ * those cells never appear in the map and the heatmap renders no tint.
+ *
+ * `dateStr` uses the same `YYYY-MM-DD` shape produced by the calendar
+ * view (`toYMD` in MainContent.tsx), built locally here from the Date
+ * to avoid a UTC drift on `toISOString().split('T')[0]`.
+ */
+export function computeWeekScores(
+  days: Date[],
+  engagement: CachedEngagement,
+): Map<string, SlotScoreBreakdown> {
+  const out = new Map<string, SlotScoreBreakdown>();
+  for (const d of days) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${day}`;
+    for (let hour = 6; hour <= 23; hour++) {
+      out.set(`${dateStr}:${hour}`, scoreSlotDetailed(d, hour, engagement));
+    }
+  }
+  return out;
 }
 
 /** Richer post shape used for cap-aware scheduling. All fields optional

@@ -398,3 +398,17 @@
   from { width: 100%; }
   to   { width: 0%; }
 }
+
+/* ── V040-001: Engagement heatmap animations ───────────────────────── */
+@keyframes heatmap-tooltip-in {
+  from { opacity: 0; transform: translateY(2px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+@keyframes heatmap-star-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .heatmap-tooltip-anim { animation: none !important; }
+  .heatmap-star-pulse   { animation: none !important; opacity: 1 !important; }
+}
