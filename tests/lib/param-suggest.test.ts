@@ -4,7 +4,11 @@
 // + topN guards.
 
 import { describe, it, expect } from 'vitest';
-import { suggestParameters } from '@/lib/param-suggest';
+import {
+  suggestParameters,
+  suggestParametersAI,
+  buildAIPromptPayload,
+} from '@/lib/param-suggest';
 import type { GeneratedImage, LeonardoModelConfig } from '@/types/mashup';
 
 function makeModel(id: string, overrides?: Partial<LeonardoModelConfig>): LeonardoModelConfig {
@@ -385,6 +389,143 @@ describe('suggestParameters', () => {
       });
       expect(s.quality).toBeUndefined();
       expect(s.reasons.quality).toBeUndefined();
+    });
+  });
+
+  // V030-008: the AI-driven variant. Uses dependency-injection so these
+  // tests can run fully offline — `aiCall` is swapped with a canned
+  // string, never touching fetch.
+  describe('suggestParametersAI', () => {
+    const baseInput = {
+      prompt: 'photorealistic mountains at dawn',
+      availableModels: models,
+      modelGuides: guides,
+      availableStyles: styles,
+      savedImages: [] as GeneratedImage[],
+    };
+
+    it('tags the suggestion source as "rules" when the rule engine runs standalone', () => {
+      const s = suggestParameters(baseInput);
+      expect(s.source).toBe('rules');
+    });
+
+    it('parses a well-formed pi.dev response and tags source as "ai"', async () => {
+      const aiJson = {
+        modelIds: ['gpt-image-1.5', 'nano-banana-pro'],
+        aspectRatio: '1:1',
+        style: 'Pro Color Photography',
+        imageSize: '1K',
+        quality: 'HIGH',
+        negativePrompt: 'blurry',
+        reasoning: {
+          overall: 'Photo-real prompt favours gpt-image-1.5 with HIGH quality.',
+          models: 'gpt-image-1.5 is strongest for photo-real subjects.',
+          aspectRatio: 'Both models only support 1024x1024.',
+          style: 'Pro Color Photography fits the realism cue.',
+          imageSize: '1K is the native render tier.',
+          quality: 'HIGH selected for photo-realism.',
+          negativePrompt: 'Strip common photorealism artifacts.',
+        },
+      };
+      const s = await suggestParametersAI(baseInput, {
+        aiCall: async () => JSON.stringify(aiJson),
+      });
+      expect(s.source).toBe('ai');
+      expect(s.modelIds).toEqual(['gpt-image-1.5', 'nano-banana-pro']);
+      expect(s.aspectRatio).toBe('1:1');
+      expect(s.style).toBe('Pro Color Photography');
+      expect(s.quality).toBe('HIGH');
+      expect(s.negativePrompt).toBe('blurry');
+      expect(s.reasons.overall).toContain('HIGH quality');
+    });
+
+    it('falls back to the rule engine when the AI caller throws', async () => {
+      const s = await suggestParametersAI(baseInput, {
+        aiCall: async () => {
+          throw new Error('pi unreachable');
+        },
+      });
+      expect(s.source).toBe('rules');
+      expect(s.modelIds.length).toBeGreaterThan(0);
+    });
+
+    it('falls back to the rule engine when the AI returns unparseable garbage', async () => {
+      const s = await suggestParametersAI(baseInput, {
+        aiCall: async () => 'I refuse to answer. No JSON for you.',
+      });
+      expect(s.source).toBe('rules');
+    });
+
+    it('blends AI + rules when the AI omits fields', async () => {
+      const partial = {
+        modelIds: ['gpt-image-1.5'],
+        reasoning: { models: 'Strong at photo-real.' },
+      };
+      const s = await suggestParametersAI(baseInput, {
+        aiCall: async () => JSON.stringify(partial),
+      });
+      expect(s.source).toBe('ai+rules');
+      expect(s.modelIds).toEqual(['gpt-image-1.5']);
+      expect(s.aspectRatio).toBeDefined(); // filled by fallback
+    });
+
+    it('rejects model ids the AI invents that are not in the compatibility matrix', async () => {
+      const bogus = {
+        modelIds: ['not-a-real-model', 'another-fake'],
+        aspectRatio: '1:1',
+        imageSize: '1K',
+        reasoning: { overall: 'made up models' },
+      };
+      const s = await suggestParametersAI(baseInput, {
+        aiCall: async () => JSON.stringify(bogus),
+      });
+      // AI model list was invalid → backfilled from rule engine.
+      expect(s.source).toBe('ai+rules');
+      expect(s.modelIds).not.toContain('not-a-real-model');
+      expect(s.modelIds.length).toBeGreaterThan(0);
+    });
+
+    it('drops a style name that is not in availableStyles', async () => {
+      const badStyle = {
+        modelIds: ['gpt-image-1.5', 'nano-banana-pro'],
+        aspectRatio: '1:1',
+        style: 'Totally Made Up Style',
+        imageSize: '1K',
+        reasoning: { overall: 'bad style name' },
+      };
+      const s = await suggestParametersAI(baseInput, {
+        aiCall: async () => JSON.stringify(badStyle),
+      });
+      // style gets dropped, fallback.style takes over (likely undefined
+      // here because nothing in the prompt triggers a rule).
+      expect(s.style).not.toBe('Totally Made Up Style');
+    });
+
+    it('buildAIPromptPayload includes the model database, eligibility, styles, and hard constraints', () => {
+      const body = buildAIPromptPayload(baseInput);
+      expect(body).toContain('MODEL DATABASE');
+      expect(body).toContain('IN-APP ELIGIBILITY');
+      expect(body).toContain('AVAILABLE STYLE NAMES');
+      expect(body).toContain('HARD CONSTRAINTS');
+      expect(body).toContain('gpt-image-1.5');
+      expect(body).toContain('Pro Color Photography');
+      expect(body).toContain('photorealistic mountains at dawn');
+      // The MODEL DATABASE block carries parameter specs (options) from
+      // the Leonardo docs, not sample curl values.
+      expect(body).toContain('RESOLUTION_1080');
+      expect(body).toContain('LOW | MEDIUM | HIGH');
+    });
+
+    it('excludes nano-banana from the in-app eligibility list by default', () => {
+      const body = buildAIPromptPayload({ ...baseInput, prompt: 'x' });
+      // nano-banana legacy is excluded upstream; the eligibility JSON
+      // between IN-APP ELIGIBILITY and AVAILABLE STYLE NAMES must not
+      // list it as a top-level "id".
+      const start = body.indexOf('IN-APP ELIGIBILITY');
+      const end = body.indexOf('AVAILABLE STYLE NAMES');
+      const block = body.slice(start, end);
+      expect(block).not.toMatch(/"id":\s*"nano-banana"(?!-)/);
+      expect(block).toContain('"id": "nano-banana-2"');
     });
   });
 });

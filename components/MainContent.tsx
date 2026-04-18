@@ -68,7 +68,7 @@ import {
   type ViewType,
 } from './MashupContext';
 import { LEONARDO_SHARED_STYLES } from '@/types/mashup';
-import { suggestParameters, type ParamSuggestion } from '@/lib/param-suggest';
+import { suggestParametersAI, type ParamSuggestion } from '@/lib/param-suggest';
 import { ParamSuggestionCard } from './ParamSuggestionCard';
 import { KebabMenu, type KebabMenuItem } from './KebabMenu';
 // Lazy-loaded — the Pipeline tab pulls in smart-scheduler logic +
@@ -218,6 +218,8 @@ export function MainContent() {
   const [modelPreviews, setModelPreviews] = useState<Record<string, { prompt?: string; style?: string; aspectRatio?: string; negativePrompt?: string; lighting?: string; angle?: string }>>({});
   /** V030-007: smart pre-fill suggestion card visibility + payload. */
   const [paramSuggestion, setParamSuggestion] = useState<ParamSuggestion | null>(null);
+  /** V030-008: pi.dev is reasoning about parameters — show spinner while it works. */
+  const [isSuggesting, setIsSuggesting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   // Track which image is currently having its caption generated so we can
   // show a per-card spinner while the pi caption request runs. Keyed by
@@ -1314,23 +1316,31 @@ export function MainContent() {
     setView('compare');
   };
 
-  // V030-007: generate a smart suggestion for models/style/ratio/size/
-  // negative prompt from the current prompt + prior winners. Pure —
-  // the user still has to click Apply to adopt the suggestion.
-  const handleSuggestParameters = () => {
+  // V030-007 / V030-008: ask pi.dev to reason about models/style/ratio/
+  // size/quality/negative-prompt from the prompt + compatibility matrix
+  // + prior winners. suggestParametersAI falls back to the deterministic
+  // rule engine on any pi failure, so the user always gets a card.
+  const handleSuggestParameters = async () => {
     if (!comparisonPrompt.trim()) {
       showToast('Enter a prompt first so we can suggest parameters.', 'error');
       return;
     }
-    setParamSuggestion(
-      suggestParameters({
+    setIsSuggesting(true);
+    try {
+      const suggestion = await suggestParametersAI({
         prompt: comparisonPrompt,
         availableModels: LEONARDO_MODELS,
         modelGuides: MODEL_PROMPT_GUIDES,
         availableStyles: LEONARDO_SHARED_STYLES,
         savedImages,
-      }),
-    );
+      });
+      setParamSuggestion(suggestion);
+      if (suggestion.source === 'rules') {
+        showToast('AI unavailable — showing rule-based suggestions.', 'error');
+      }
+    } finally {
+      setIsSuggesting(false);
+    }
   };
 
   const handleApplySuggestion = (
@@ -2062,12 +2072,21 @@ export function MainContent() {
                         <div className="flex items-center justify-end">
                           <button
                             onClick={handleSuggestParameters}
-                            disabled={!comparisonPrompt.trim()}
+                            disabled={!comparisonPrompt.trim() || isSuggesting}
                             className="text-xs text-[#00e6ff] hover:text-white flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[#00e6ff]/25 hover:border-[#00e6ff]/50 bg-[#00e6ff]/5 hover:bg-[#00e6ff]/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                            title="Suggest models, style, ratio, size, and negative prompt from your prompt + prior winners"
+                            title="Ask pi.dev to reason about the best models/style/ratio/quality/negative prompt for this idea"
                           >
-                            <Sparkles className="w-3 h-3" />
-                            Suggest Parameters
+                            {isSuggesting ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                pi is thinking…
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-3 h-3" />
+                                Suggest Parameters
+                              </>
+                            )}
                           </button>
                         </div>
                       </div>

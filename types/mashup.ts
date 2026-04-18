@@ -98,6 +98,12 @@ export interface GenerateOptions {
   cfgScale?: number;
   /** GPT-Image-1.5 only: LOW | MEDIUM | HIGH. Ignored by other models. */
   quality?: 'LOW' | 'MEDIUM' | 'HIGH';
+  /**
+   * V030-008: Leonardo's prompt_enhance knob. Defaults to 'ON' (set on
+   * the server in /api/leonardo/route.ts). Surfaced here so the Studio
+   * smart-suggest card and any future UI can explicitly override.
+   */
+  promptEnhance?: 'ON' | 'OFF';
 }
 
 export interface WatermarkSettings {
@@ -483,13 +489,16 @@ export interface LeonardoVideoModelSpec {
 export type LeonardoModelSpec = LeonardoImageModelSpec | LeonardoVideoModelSpec;
 
 export const LEONARDO_MODEL_PARAMS: Record<string, LeonardoModelSpec> = {
+  // V030-008: prompt_enhance defaults to 'ON' for all image models —
+  // Maurice wants Leonardo to auto-improve prompts unless the user
+  // explicitly opts out. Matches the `/api/leonardo/route.ts` default.
   'gpt-image-1.5': {
     type: 'image',
     width: 1024,
     height: 1024,
     supported_sizes: ['1024x1024'],
     quality: ['LOW', 'MEDIUM', 'HIGH'],
-    prompt_enhance: 'OFF',
+    prompt_enhance: 'ON',
     supports_image_reference: true,
   },
   'nano-banana-2': {
@@ -498,7 +507,7 @@ export const LEONARDO_MODEL_PARAMS: Record<string, LeonardoModelSpec> = {
     height: 1024,
     supported_sizes: ['1024x1024'],
     style_ids: true,
-    prompt_enhance: 'OFF',
+    prompt_enhance: 'ON',
     supports_image_reference: false,
   },
   'nano-banana-pro': {
@@ -508,7 +517,7 @@ export const LEONARDO_MODEL_PARAMS: Record<string, LeonardoModelSpec> = {
     height: 1024,
     supported_sizes: ['1024x1024'],
     style_ids: true,
-    prompt_enhance: 'OFF',
+    prompt_enhance: 'ON',
     supports_image_reference: false,
   },
   'kling-3.0': {

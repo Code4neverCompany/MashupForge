@@ -35,6 +35,9 @@ export function ParamSuggestionCard({
   const [quality, setQuality] = useState<'LOW' | 'MEDIUM' | 'HIGH' | undefined>(
     suggestion.quality,
   );
+  const [promptEnhance, setPromptEnhance] = useState<'ON' | 'OFF' | undefined>(
+    suggestion.promptEnhance,
+  );
 
   const toggleModel = (id: string) => {
     setModelIds(prev => (prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]));
@@ -47,6 +50,7 @@ export function ParamSuggestionCard({
       imageSize,
       negativePrompt: negativePrompt.trim() || undefined,
       quality,
+      promptEnhance,
     });
   };
 
@@ -60,6 +64,25 @@ export function ParamSuggestionCard({
         <div className="flex items-center gap-2 text-xs text-[#00e6ff] uppercase tracking-wider font-medium">
           <Lightbulb className="w-3.5 h-3.5" />
           <span>Smart Suggestions</span>
+          <span
+            className={
+              'text-[9px] normal-case tracking-normal px-1.5 py-0.5 rounded border ' +
+              (suggestion.source === 'ai'
+                ? 'border-[#00e6ff]/40 text-[#9fefff] bg-[#00e6ff]/10'
+                : suggestion.source === 'ai+rules'
+                  ? 'border-amber-400/30 text-amber-300 bg-amber-400/5'
+                  : 'border-zinc-700 text-zinc-400 bg-zinc-800/40')
+            }
+            title={
+              suggestion.source === 'ai'
+                ? 'pi.dev authored this suggestion'
+                : suggestion.source === 'ai+rules'
+                  ? 'pi.dev suggested most fields; missing ones were filled from rule-based defaults'
+                  : 'pi.dev unavailable — rule-based fallback'
+            }
+          >
+            {suggestion.source === 'ai' ? 'pi' : suggestion.source === 'ai+rules' ? 'pi + rules' : 'rules'}
+          </span>
           {suggestion.priorMatchCount > 0 && (
             <span className="text-[10px] text-zinc-500 normal-case tracking-normal">
               — {suggestion.priorMatchCount} prior match{suggestion.priorMatchCount === 1 ? '' : 'es'}
@@ -86,6 +109,12 @@ export function ParamSuggestionCard({
         </div>
       </div>
 
+      {suggestion.reasons.overall && (
+        <div className="text-[11px] text-zinc-300 leading-relaxed bg-[#00e6ff]/5 border border-[#00e6ff]/15 rounded-lg px-3 py-2">
+          {suggestion.reasons.overall}
+        </div>
+      )}
+
       {!editMode ? (
         <div className="space-y-2 text-xs">
           <SuggestionRow label="Models" value={modelIds.map(formatModel).join(', ') || '—'} reason={suggestion.reasons.models} />
@@ -96,6 +125,13 @@ export function ParamSuggestionCard({
           <SuggestionRow label="Image Size" value={imageSize} reason={suggestion.reasons.imageSize} />
           {quality && (
             <SuggestionRow label="Quality" value={quality} reason={suggestion.reasons.quality} />
+          )}
+          {promptEnhance && (
+            <SuggestionRow
+              label="Prompt Enhance"
+              value={promptEnhance}
+              reason={suggestion.reasons.promptEnhance}
+            />
           )}
           {negativePrompt && (
             <SuggestionRow
@@ -159,24 +195,41 @@ export function ParamSuggestionCard({
             </div>
           </div>
 
-          {quality !== undefined && (
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
-                Quality <span className="text-zinc-600 normal-case">(gpt-image-1.5)</span>
-              </label>
-              <select
-                value={quality}
-                onChange={e => setQuality(e.target.value as 'LOW' | 'MEDIUM' | 'HIGH')}
-                className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
-              >
-                {qualityOptions.map(q => (
-                  <option key={q} value={q}>
-                    {q}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div className="grid grid-cols-2 gap-3">
+            {quality !== undefined && (
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
+                  Quality <span className="text-zinc-600 normal-case">(gpt-image-1.5)</span>
+                </label>
+                <select
+                  value={quality}
+                  onChange={e => setQuality(e.target.value as 'LOW' | 'MEDIUM' | 'HIGH')}
+                  className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
+                >
+                  {qualityOptions.map(q => (
+                    <option key={q} value={q}>
+                      {q}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {promptEnhance !== undefined && (
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
+                  Prompt Enhance
+                </label>
+                <select
+                  value={promptEnhance}
+                  onChange={e => setPromptEnhance(e.target.value as 'ON' | 'OFF')}
+                  className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
+                >
+                  <option value="ON">ON</option>
+                  <option value="OFF">OFF</option>
+                </select>
+              </div>
+            )}
+          </div>
 
           <div>
             <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Style</label>
