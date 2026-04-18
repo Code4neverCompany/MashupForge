@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { Send, Search, MessageSquare, Loader2, ExternalLink, Image as ImageIcon, Sparkles, Columns, RefreshCw, History } from 'lucide-react';
 import { useMashup, LEONARDO_MODELS } from './MashupContext';
 import { streamAI } from '@/lib/aiClient';
+import { HealthStrip } from './platform/HealthStrip';
 
 type Tab = 'chat' | 'content' | 'history';
 
@@ -469,6 +470,10 @@ Return ONLY the JSON array, no prose.`;
         </form>
       </div>
       )}
+
+      {/* V040-007: persistent platform health strip at the aside's bottom.
+          Auto-hides when zero platforms are configured. */}
+      <HealthStrip />
     </aside>
     </>
   );
