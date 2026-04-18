@@ -40,6 +40,7 @@ import { useComparison } from '../hooks/useComparison';
 import { useIdeas } from '../hooks/useIdeas';
 import { useSocial } from '../hooks/useSocial';
 import { usePipeline } from '../hooks/usePipeline';
+import { collectFinalizeTargets, finalizePipelineImage } from '../lib/pipeline-finalize';
 
 const MashupContext = createContext<MashupContextType | null>(null);
 
@@ -155,12 +156,51 @@ export function MashupProvider({ children }: { children: ReactNode }) {
   // Functional updater so rapid bulk-approve/reject (e.g. clicking
   // through a dozen pending_approval cards in quick succession) chains
   // off the latest state instead of all reading the same closure snapshot.
+  //
+  // V040-HOTFIX-007: approval also "finalizes" the pipeline-pending
+  // images the post references — flips `pipelinePending:false` so
+  // Gallery renders them, and applies the watermark that the pipeline
+  // run never applied (the generateComparison path skips watermark,
+  // unlike pickComparisonWinner's finalize step). Flag flip is
+  // synchronous so Gallery lights up immediately; watermark is applied
+  // best-effort in the background and swaps the URL when ready.
+  const finalizePipelineImagesForPosts = (posts: import('../types/mashup').ScheduledPost[]) => {
+    for (const post of posts) {
+      const targets = collectFinalizeTargets(post, savedImages);
+      if (targets.length === 0) continue;
+      // Step 1 — instant flag flip: Gallery renders these now.
+      for (const img of targets) saveImage({ ...img, pipelinePending: false });
+      // Step 2 — background watermark pass. Best-effort: failures keep
+      // the original URL (handled inside finalizePipelineImage).
+      if (settings.watermark?.enabled) {
+        void Promise.all(
+          targets.map(async (img) => {
+            const finalized = await finalizePipelineImage(
+              img,
+              settings.watermark,
+              settings.channelName,
+              applyWatermark,
+            );
+            saveImage(finalized);
+          }),
+        );
+      }
+    }
+  };
+
   const approveScheduledPost = (postId: string) => {
-    updateSettings((prev) => ({
-      scheduledPosts: (prev.scheduledPosts || []).map((p) =>
-        p.id === postId ? { ...p, status: 'scheduled' as const } : p
-      ),
-    }));
+    let approvedPost: import('../types/mashup').ScheduledPost | undefined;
+    updateSettings((prev) => {
+      approvedPost = (prev.scheduledPosts || []).find(
+        (p) => p.id === postId && p.status === 'pending_approval',
+      );
+      return {
+        scheduledPosts: (prev.scheduledPosts || []).map((p) =>
+          p.id === postId ? { ...p, status: 'scheduled' as const } : p
+        ),
+      };
+    });
+    if (approvedPost) finalizePipelineImagesForPosts([approvedPost]);
   };
 
   const rejectScheduledPost = (postId: string) => {
@@ -174,13 +214,20 @@ export function MashupProvider({ children }: { children: ReactNode }) {
   const bulkApproveScheduledPosts = (postIds: string[]) => {
     if (postIds.length === 0) return;
     const idSet = new Set(postIds);
-    updateSettings((prev) => ({
-      scheduledPosts: (prev.scheduledPosts || []).map((p) =>
-        idSet.has(p.id) && p.status === 'pending_approval'
-          ? { ...p, status: 'scheduled' as const }
-          : p
-      ),
-    }));
+    let approvedPosts: import('../types/mashup').ScheduledPost[] = [];
+    updateSettings((prev) => {
+      approvedPosts = (prev.scheduledPosts || []).filter(
+        (p) => idSet.has(p.id) && p.status === 'pending_approval',
+      );
+      return {
+        scheduledPosts: (prev.scheduledPosts || []).map((p) =>
+          idSet.has(p.id) && p.status === 'pending_approval'
+            ? { ...p, status: 'scheduled' as const }
+            : p
+        ),
+      };
+    });
+    if (approvedPosts.length > 0) finalizePipelineImagesForPosts(approvedPosts);
   };
 
   const bulkRejectScheduledPosts = (postIds: string[]) => {

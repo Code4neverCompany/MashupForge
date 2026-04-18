@@ -58,6 +58,16 @@ export interface GeneratedImage {
   negativePrompt?: string;
   aspectRatio?: string;
   imageSize?: string;
+  /**
+   * V040-HOTFIX-007: marks a pipeline-generated image whose associated
+   * ScheduledPost is still `pending_approval`. Gallery views filter these
+   * out so Gallery remains the "finalized, watermarked images" pool.
+   * Cleared (and the image watermarked) when the post is approved via
+   * `MashupContext.approveScheduledPost` / `bulkApproveScheduledPosts`,
+   * or skipped entirely when the pipeline auto-approves (all platforms
+   * auto, post lands as `scheduled` directly).
+   */
+  pipelinePending?: boolean;
 }
 
 /**

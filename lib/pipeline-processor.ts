@@ -123,6 +123,20 @@ export async function processIdea(
     .map(([key]) => (key === 'discordWebhook' ? 'discord' : key));
   const pipelinePlatforms = explicitPlatforms ?? inferredPlatforms;
 
+  // V040-HOTFIX-007: when this run will produce a post that lands in
+  // `pending_approval`, the associated images must stay OUT of Gallery
+  // until the user approves them (at which point the watermark is
+  // applied + the flag cleared in MashupContext.approveScheduledPost).
+  // Auto-approved posts (all platforms opt-in) skip the holding pen
+  // and images go straight to Gallery, matching pre-HOTFIX behavior.
+  const willSchedule = autoSchedule && pipelinePlatforms.length > 0;
+  const pipelinePending =
+    willSchedule &&
+    resolvePipelinePostStatus(pipelinePlatforms, settings.pipelineAutoApprove) ===
+      'pending_approval';
+  const savePipelineImage = (img: GeneratedImage) =>
+    saveImage(pipelinePending ? { ...img, pipelinePending: true } : img);
+
   // Step a — mark in-work
   setPipelineProgress({
     current: index + 1,
@@ -207,7 +221,7 @@ export async function processIdea(
       'success',
       `${readyImages.length} images ready — carousel mode`,
     );
-    for (const img of readyImages) saveImage(img);
+    for (const img of readyImages) savePipelineImage(img);
     writeCheckpoint('Captioning carousel');
 
     let sharedCaption = '';
@@ -226,7 +240,7 @@ export async function processIdea(
         if (withCaption) {
           sharedCaption = withCaption.postCaption || '';
           sharedHashtags = withCaption.postHashtags;
-          saveImage(withCaption);
+          savePipelineImage(withCaption);
           addLog('caption', idea.id, 'success', `[carousel] Caption generated`);
         } else {
           sharedCaption = expandedPrompt;
@@ -317,7 +331,7 @@ export async function processIdea(
       const img = readyImages[imgIdx];
       const modelLabel = img.modelInfo?.modelName ?? `model-${imgIdx + 1}`;
 
-      saveImage(img);
+      savePipelineImage(img);
       writeCheckpoint(`Captioning ${modelLabel}`);
 
       let captionedImg = img;
@@ -333,7 +347,7 @@ export async function processIdea(
           const withCaption = await generatePostContent(img);
           if (withCaption) {
             captionedImg = withCaption;
-            saveImage(withCaption);
+            savePipelineImage(withCaption);
             addLog('caption', idea.id, 'success', `[${modelLabel}] Caption generated`);
           } else {
             captionedImg = { ...img, postCaption: expandedPrompt };

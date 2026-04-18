@@ -72,6 +72,7 @@ export function PipelinePanel() {
     settings,
     updateSettings,
     images,
+    savedImages,
     approveScheduledPost,
     rejectScheduledPost,
     bulkApproveScheduledPosts,
@@ -760,10 +761,14 @@ export function PipelinePanel() {
         )}
       </div>
 
-      {/* Approval Queue (bulk) */}
+      {/* Approval Queue (bulk) — V040-HOTFIX-007: pass savedImages so
+          pipeline-produced images (saved with pipelinePending=true)
+          can be looked up and rendered in the approval cards. The
+          in-memory `images` state is populated only by the manual
+          generate flow and never contains pipeline images. */}
       <ApprovalQueue
         posts={(settings.scheduledPosts || []).filter((p) => p.status === 'pending_approval')}
-        images={images}
+        images={savedImages}
         ideas={ideas}
         onApprove={approveScheduledPost}
         onReject={rejectScheduledPost}

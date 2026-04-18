@@ -272,6 +272,42 @@ describe('processIdea — carousel mode', () => {
     expect(patch.scheduledPosts!.every((p) => p.status === 'pending_approval')).toBe(true);
   });
 
+  it('marks saved images pipelinePending=true when post will gate on manual approval (V040-HOTFIX-007)', async () => {
+    const images = [makeImage(), makeImage()];
+    const deps = makeDeps({ waitForImages: vi.fn().mockResolvedValue(images) });
+    const settings = makeSettings({
+      pipelineCarouselMode: true,
+      pipelinePlatforms: ['instagram', 'twitter'],
+      pipelineAutoApprove: { instagram: false, twitter: true },
+    });
+
+    await processIdea(makeIdea(), 0, 1, makeEngagement(), [], settings, deps);
+
+    const saveCalls = (deps.saveImage as ReturnType<typeof vi.fn>).mock.calls;
+    expect(saveCalls.length).toBeGreaterThan(0);
+    for (const [saved] of saveCalls) {
+      expect(saved.pipelinePending).toBe(true);
+    }
+  });
+
+  it('leaves saved images pipelinePending=undefined when every platform auto-approves (V040-HOTFIX-007)', async () => {
+    const images = [makeImage(), makeImage()];
+    const deps = makeDeps({ waitForImages: vi.fn().mockResolvedValue(images) });
+    const settings = makeSettings({
+      pipelineCarouselMode: true,
+      pipelinePlatforms: ['twitter', 'discord'],
+      pipelineAutoApprove: { twitter: true, discord: true },
+    });
+
+    await processIdea(makeIdea(), 0, 1, makeEngagement(), [], settings, deps);
+
+    const saveCalls = (deps.saveImage as ReturnType<typeof vi.fn>).mock.calls;
+    expect(saveCalls.length).toBeGreaterThan(0);
+    for (const [saved] of saveCalls) {
+      expect(saved.pipelinePending).toBeUndefined();
+    }
+  });
+
   it('falls back to expandedPrompt when carousel generatePostContent returns undefined', async () => {
     const images = [makeImage(), makeImage()];
     const expandedPrompt = 'Epic neon battle';

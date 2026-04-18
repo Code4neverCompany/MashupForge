@@ -1353,6 +1353,11 @@ export function MainContent() {
 
   const displayedImages = useMemo(() => (view === 'studio' ? images : savedImages)
     .filter(img => {
+      // V040-HOTFIX-007: Gallery shows finalized images only. Pipeline
+      // images awaiting approval carry pipelinePending=true and are
+      // hidden here; they reappear when the user approves the
+      // associated ScheduledPost via the pipeline approval queue.
+      if (img.pipelinePending === true) return false;
       const matchesSearch = img.prompt.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            img.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchesModel = filterModel === 'all' || img.modelInfo?.modelId === filterModel;
