@@ -71,6 +71,7 @@ import { LEONARDO_SHARED_STYLES } from '@/types/mashup';
 import { suggestParametersAI, type ParamSuggestion } from '@/lib/param-suggest';
 import { ParamSuggestionCard } from './ParamSuggestionCard';
 import { KebabMenu, type KebabMenuItem } from './KebabMenu';
+import { PipelineStatusStrip } from './PipelineStatusStrip';
 // Lazy-loaded — the Pipeline tab pulls in smart-scheduler logic +
 // its own local state tree and isn't needed on first paint. ssr:false
 // because it reads localStorage during initial render.
@@ -1681,6 +1682,8 @@ export function MainContent() {
             {/* Scroll affordance — fades right edge when tabs overflow at tablet width */}
             <div className="pointer-events-none absolute right-0 inset-y-0 w-8 rounded-r-xl bg-gradient-to-l from-[#050505] to-transparent" />
           </div>
+
+          <PipelineStatusStrip setView={setView} />
 
           <button
             onClick={logout}
