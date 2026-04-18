@@ -13,6 +13,13 @@ export interface PlatformAspect {
   ratio: string;
   /** Short note describing how the platform uses this aspect. */
   note: string;
+  /**
+   * Two-character platform abbreviation for the AspectPreview tab strip
+   * (V040-HOTFIX-005). The previous `p.slice(0, 2)` rendered "in/pi/tw/di"
+   * — readable for nobody. These match the conventional short forms
+   * users already see on the Pipeline panel platform pills.
+   */
+  shortLabel: string;
 }
 
 /**
@@ -31,21 +38,25 @@ export const PLATFORM_ASPECT: Record<PostPlatform, PlatformAspect> = {
     className: 'aspect-square',
     ratio: '1:1',
     note: 'Feed default — square crop',
+    shortLabel: 'IG',
   },
   pinterest: {
     className: 'aspect-[2/3]',
     ratio: '2:3',
     note: 'Recommended pin — portrait crop',
+    shortLabel: 'PN',
   },
   twitter: {
     className: 'aspect-video',
     ratio: '16:9',
     note: 'In-feed single image — landscape crop',
+    shortLabel: 'TW',
   },
   discord: {
     className: 'aspect-square',
     ratio: '1:1',
     note: 'Embed thumbnail — square preview',
+    shortLabel: 'DC',
   },
 };
 
@@ -53,6 +64,11 @@ export const PLATFORM_ASPECT: Record<PostPlatform, PlatformAspect> = {
  *  isn't recognized (e.g., a future channel that hasn't been mapped
  *  yet — better to show *something* than throw). */
 export function getAspectFor(platform: PostPlatform | null | undefined): PlatformAspect {
-  if (!platform) return { className: 'aspect-square', ratio: '1:1', note: 'No platform selected' };
-  return PLATFORM_ASPECT[platform] ?? { className: 'aspect-square', ratio: '1:1', note: '' };
+  if (!platform) {
+    return { className: 'aspect-square', ratio: '1:1', note: 'No platform selected', shortLabel: '—' };
+  }
+  return (
+    PLATFORM_ASPECT[platform] ??
+    { className: 'aspect-square', ratio: '1:1', note: '', shortLabel: '?' }
+  );
 }

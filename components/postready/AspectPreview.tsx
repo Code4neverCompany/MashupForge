@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { ImageOff } from 'lucide-react';
 import { LazyImg } from '../LazyImg';
 import type { PostPlatform } from '@/types/mashup';
-import { getAspectFor } from '@/lib/platform-aspect';
+import { getAspectFor, PLATFORM_ASPECT } from '@/lib/platform-aspect';
 
 export interface AspectPreviewProps {
   src: string | undefined;
@@ -114,7 +114,7 @@ export function AspectPreview({
                     : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300'
                 }`}
               >
-                {p.slice(0, 2)}
+                {PLATFORM_ASPECT[p]?.shortLabel ?? p.slice(0, 2).toUpperCase()}
               </button>
             );
           })}

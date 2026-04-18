@@ -19,6 +19,13 @@ describe('PLATFORM_ASPECT', () => {
     expect(PLATFORM_ASPECT.twitter.ratio).toBe('16:9');
     expect(PLATFORM_ASPECT.discord.ratio).toBe('1:1');
   });
+
+  it('exposes readable two-character shortLabels for the AspectPreview tab strip (V040-HOTFIX-005)', () => {
+    expect(PLATFORM_ASPECT.instagram.shortLabel).toBe('IG');
+    expect(PLATFORM_ASPECT.pinterest.shortLabel).toBe('PN');
+    expect(PLATFORM_ASPECT.twitter.shortLabel).toBe('TW');
+    expect(PLATFORM_ASPECT.discord.shortLabel).toBe('DC');
+  });
 });
 
 describe('getAspectFor', () => {
@@ -30,5 +37,10 @@ describe('getAspectFor', () => {
   it('falls back to a 1:1 square preview for null/undefined', () => {
     expect(getAspectFor(null).ratio).toBe('1:1');
     expect(getAspectFor(undefined).className).toBe('aspect-square');
+  });
+
+  it('returns a non-empty shortLabel even on the null fallback (defensive against UI rendering "")', () => {
+    expect(getAspectFor(null).shortLabel.length).toBeGreaterThan(0);
+    expect(getAspectFor(undefined).shortLabel.length).toBeGreaterThan(0);
   });
 });
