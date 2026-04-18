@@ -33,6 +33,20 @@ export interface GeneratedImage {
    * stuck "generating" spinner.
    */
   error?: string;
+  /**
+   * Persistent record of the last manual "Post Now" attempt from the
+   * Post Ready tab. Set by postImageNow / postCarouselNow on the
+   * response. Used to render a persistent Posted / Failed badge that
+   * survives tab switches and reloads (the in-flight `postStatus`
+   * Record is component-local and lost on unmount).
+   *
+   * postedAt    epoch ms of the last successful post
+   * postedTo    platforms the last successful post went to
+   * postError   human-readable failure reason; cleared on success
+   */
+  postedAt?: number;
+  postedTo?: string[];
+  postError?: string;
   modelInfo?: {
     provider: 'leonardo';
     modelId: string;
@@ -550,7 +564,7 @@ export interface MashupContextType {
   saveImage: (img: GeneratedImage) => void;
   deleteImage: (id: string, fromSaved: boolean) => void;
   updateImageTags: (id: string, tags: string[]) => void;
-  createCollection: (name?: string, description?: string, imageIds?: string[]) => Promise<Collection>;
+  createCollection: (name?: string, description?: string, imageIds?: string[], savedImages?: GeneratedImage[]) => Promise<Collection>;
   bulkUpdateImageTags: (ids: string[], tags: string[], mode: 'append' | 'replace') => void;
   deleteCollection: (id: string) => void;
   addImageToCollection: (imageId: string, collectionId: string) => void;

@@ -66,6 +66,7 @@ import {
   IMAGE_SIZES,
   type ViewType,
 } from './MashupContext';
+import { KebabMenu, type KebabMenuItem } from './KebabMenu';
 // Lazy-loaded — the Pipeline tab pulls in smart-scheduler logic +
 // its own local state tree and isn't needed on first paint. ssr:false
 // because it reads localStorage during initial render.
@@ -184,8 +185,6 @@ export function MainContent() {
   const [dragOverCollection, setDragOverCollection] = useState<string | null>(null);
   const [showCollectionModal, setShowCollectionModal] = useState(false);
   const [showBulkTagModal, setShowBulkTagModal] = useState(false);
-  const [newCollectionName, setNewCollectionName] = useState('');
-  const [newCollectionDesc, setNewCollectionDesc] = useState('');
   const [hasApiKey, setHasApiKey] = useState(true);
   const [isAutoTagging, setIsAutoTagging] = useState(false);
 
@@ -212,6 +211,7 @@ export function MainContent() {
   // show a per-card spinner while the pi caption request runs. Keyed by
   // image id.
   const [preparingPostId, setPreparingPostId] = useState<string | null>(null);
+  const [taggingId, setTaggingId] = useState<string | null>(null);
 
   // Captioning Studio tab state
   const [captioningFilter, setCaptioningFilter] = useState<'all' | 'captioned' | 'uncaptioned'>('all');
@@ -370,14 +370,21 @@ export function MainContent() {
         throw new Error(`Server error (HTTP ${res.status}) — check logs`);
       }
       if (!res.ok) throw new Error(data.error || 'Post failed');
+      patchImage(img, {
+        postedAt: Date.now(),
+        postedTo: platforms,
+        postError: undefined,
+      });
       setPostStatus((prev) => ({
         ...prev,
         [img.id]: `Posted to ${platforms.join(', ')} ✓`,
       }));
     } catch (e: unknown) {
+      const reason = getErrorMessage(e);
+      patchImage(img, { postError: reason });
       setPostStatus((prev) => ({
         ...prev,
-        [img.id]: `Error: ${getErrorMessage(e)}`,
+        [img.id]: `Error: ${reason}`,
       }));
     } finally {
       setPostBusy((prev) => ({ ...prev, [img.id]: null }));
@@ -700,9 +707,21 @@ export function MainContent() {
       });
       const data = await res.json() as { error?: string };
       if (!res.ok) throw new Error(data.error || 'Carousel post failed');
+      const stamp = Date.now();
+      for (const ci of item.images) {
+        patchImage(ci, {
+          postedAt: stamp,
+          postedTo: platforms,
+          postError: undefined,
+        });
+      }
       setPostStatus((prev) => ({ ...prev, [key]: `Posted carousel to ${platforms.join(', ')} ✓` }));
     } catch (e: unknown) {
-      setPostStatus((prev) => ({ ...prev, [key]: `Error: ${getErrorMessage(e)}` }));
+      const reason = getErrorMessage(e);
+      for (const ci of item.images) {
+        patchImage(ci, { postError: reason });
+      }
+      setPostStatus((prev) => ({ ...prev, [key]: `Error: ${reason}` }));
     } finally {
       setPostBusy((prev) => ({ ...prev, [key]: null }));
     }
@@ -742,21 +761,68 @@ export function MainContent() {
   /**
    * Generate captions for every visible uncaptioned image. Sequential —
    * pi serializes prompts anyway, and we get cleaner progress reporting.
+   *
+   * Carousel-aware: when the captioning view is grouped, each carousel
+   * counts as ONE caption job — caption the anchor once, fan the result
+   * out to every image in the group. Mirrors the per-card Generate button.
    */
   const batchCaptionImages = async (candidates: GeneratedImage[]) => {
-    const targets = candidates.filter((img) => !img.postCaption);
-    if (targets.length === 0) return;
-    setBatchCaptioning(true);
-    setBatchProgress({ done: 0, total: targets.length });
-    try {
-      for (let i = 0; i < targets.length; i++) {
-        setPreparingPostId(targets[i].id);
-        try {
-          await generatePostContent(targets[i]);
-        } catch {
-          // individual batch failure — continue to next image
+    type Entry =
+      | { kind: 'single'; img: GeneratedImage }
+      | { kind: 'carousel'; anchor: GeneratedImage; rest: GeneratedImage[]; needsAi: boolean };
+
+    const entries: Entry[] = [];
+    if (captioningGrouped) {
+      for (const v of computeCarouselView(candidates)) {
+        if (v.kind === 'carousel') {
+          if (v.images.every((i) => i.postCaption)) continue;
+          const [anchor, ...rest] = v.images;
+          // If anchor already has a caption, just propagate it to the rest
+          // (no AI call needed). Otherwise generate via anchor.
+          entries.push({ kind: 'carousel', anchor, rest, needsAi: !anchor.postCaption });
+        } else if (!v.img.postCaption) {
+          entries.push({ kind: 'single', img: v.img });
         }
-        setBatchProgress({ done: i + 1, total: targets.length });
+      }
+    } else {
+      for (const img of candidates) {
+        if (!img.postCaption) entries.push({ kind: 'single', img });
+      }
+    }
+
+    if (entries.length === 0) return;
+    setBatchCaptioning(true);
+    setBatchProgress({ done: 0, total: entries.length });
+    try {
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        const anchor = entry.kind === 'single' ? entry.img : entry.anchor;
+        setPreparingPostId(anchor.id);
+        try {
+          if (entry.kind === 'carousel' && !entry.needsAi) {
+            for (const ci of entry.rest) {
+              if (ci.postCaption) continue;
+              patchImage(ci, {
+                postCaption: anchor.postCaption,
+                postHashtags: anchor.postHashtags,
+              });
+            }
+          } else {
+            const withCaption = await generatePostContent(anchor);
+            if (entry.kind === 'carousel' && withCaption?.postCaption) {
+              for (const ci of entry.rest) {
+                if (ci.postCaption) continue;
+                patchImage(ci, {
+                  postCaption: withCaption.postCaption,
+                  postHashtags: withCaption.postHashtags,
+                });
+              }
+            }
+          }
+        } catch {
+          // individual batch failure — continue to next entry
+        }
+        setBatchProgress({ done: i + 1, total: entries.length });
       }
     } finally {
       setPreparingPostId(null);
@@ -3495,6 +3561,25 @@ export function MainContent() {
                                   )}
                                 </div>
 
+                                {/* Persistent post-status banner — wins over
+                                    ephemeral `status` below (which is only
+                                    in-flight feedback). Anchor's persistent
+                                    fields apply to the whole carousel because
+                                    postCarouselNow patches every image. */}
+                                {(anchor.postedAt || anchor.postError) && (
+                                  <div
+                                    className={`px-4 py-2 text-[11px] font-medium border-b ${
+                                      anchor.postError
+                                        ? 'bg-red-600/20 text-red-300 border-red-600/30'
+                                        : 'bg-emerald-600/20 text-emerald-300 border-emerald-600/30'
+                                    }`}
+                                  >
+                                    {anchor.postError
+                                      ? `Failed: ${anchor.postError}`
+                                      : `Posted${anchor.postedTo?.length ? ` to ${anchor.postedTo.join(', ')}` : ''} ✓`}
+                                  </div>
+                                )}
+
                                 {/* Shared caption (anchor image's) */}
                                 <div className="p-4 space-y-3 border-b border-[#c5a062]/15">
                                   <div className="space-y-1">
@@ -3696,16 +3781,21 @@ export function MainContent() {
                           const busy = postBusy[img.id];
                           const status = postStatus[img.id];
                           const scheduled = latestScheduleFor(img.id);
-                          // Status badge — latest scheduled post takes precedence
-                          // so the user sees posted/failed/scheduled feedback
-                          // for retrospective runs even after reload.
-                          const badge = scheduled?.status === 'posted'
-                            ? { text: 'Posted', color: 'bg-emerald-600' }
-                            : scheduled?.status === 'failed'
-                              ? { text: 'Failed', color: 'bg-red-600' }
-                              : scheduled?.status === 'scheduled'
-                                ? { text: `Scheduled ${scheduled.date} ${formatTimeShort(scheduled.time)}`, color: 'bg-amber-600' }
-                                : { text: 'Ready', color: 'bg-emerald-600' };
+                          // Status badge — manual Post Now state (img.postedAt /
+                          // img.postError) wins, then latest scheduled post,
+                          // then default Ready. All three sources are persistent
+                          // so the badge survives tab switch + reload.
+                          const badge = img.postedAt
+                            ? { text: `Posted${img.postedTo?.length ? ` to ${img.postedTo.join(', ')}` : ''}`, color: 'bg-emerald-600' }
+                            : img.postError
+                              ? { text: `Failed: ${img.postError}`, color: 'bg-red-600' }
+                              : scheduled?.status === 'posted'
+                                ? { text: 'Posted', color: 'bg-emerald-600' }
+                                : scheduled?.status === 'failed'
+                                  ? { text: 'Failed', color: 'bg-red-600' }
+                                  : scheduled?.status === 'scheduled'
+                                    ? { text: `Scheduled ${scheduled.date} ${formatTimeShort(scheduled.time)}`, color: 'bg-amber-600' }
+                                    : { text: 'Ready', color: 'bg-emerald-600' };
                           return (
                             <div
                               key={img.id}
@@ -4258,19 +4348,18 @@ export function MainContent() {
                       {/* Hover glow overlay — warm-gold from below, cool-blue at top edge */}
                       <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-[6] bg-gradient-to-t from-[#c5a062]/12 via-transparent to-[#00e6ff]/6" />
 
-                      {/* Permanent approved indicator — bottom-left so
-                          it avoids the top-right action row AND the
-                          top-left batch-select checkbox in gallery view.
-                          Paired with the inset emerald ring on the image
-                          for a clear approved state. */}
-                      {img.approved && (
-                        <div
-                          className="absolute bottom-2 left-2 z-10 flex items-center gap-1 bg-emerald-500/90 backdrop-blur-sm text-white px-2 py-0.5 rounded-full shadow-lg"
-                          title="Approved"
+                      {/* DESIGN-002 §3: permanent model chip (bottom-left).
+                          Replaces the bottom-left "Approved" pill — the inset
+                          emerald ring already conveys approved state.
+                          Promoted from hover-only to always-visible because
+                          the gallery's whole purpose is comparing models. */}
+                      {img.modelInfo?.modelName && (
+                        <span
+                          className="absolute bottom-2 left-2 z-[5] px-1.5 py-0.5 text-[9px] font-semibold tracking-wide uppercase bg-black/55 backdrop-blur-md text-[#c5a062] border border-[#c5a062]/30 rounded-full max-w-[80px] truncate pointer-events-none select-none"
+                          title={img.modelInfo.modelName}
                         >
-                          <BookmarkCheck className="w-3 h-3" />
-                          <span className="text-[9px] font-medium">Approved</span>
-                        </div>
+                          {img.modelInfo.modelName}
+                        </span>
                       )}
 
                       {/* Top Actions Overlay — compact icon row.
@@ -4278,7 +4367,7 @@ export function MainContent() {
                           so all 7 fit comfortably on one line without
                           colliding with the approved indicator. */}
                       <div className="absolute top-0 left-0 right-0 p-2 flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
-                        {img.imageId && !img.isVideo && (
+                        {img.imageId && !img.isVideo && view !== 'gallery' && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleAnimate(img); }}
                             disabled={img.status === 'animating'}
@@ -4358,18 +4447,20 @@ export function MainContent() {
                             </div>
                           </div>
                         )}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); saveImage(img); }}
-                          disabled={isSaved}
-                          className={`w-8 h-8 flex items-center justify-center rounded-lg backdrop-blur-md transition-colors ${
-                            isSaved
-                              ? 'bg-emerald-500/80 text-white cursor-default'
-                              : 'bg-black/50 hover:bg-black/80 text-white'
-                          }`}
-                          title={isSaved ? 'Saved to Gallery' : 'Save to Gallery'}
-                        >
-                          {isSaved ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
-                        </button>
+                        {view !== 'gallery' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); saveImage(img); }}
+                            disabled={isSaved}
+                            className={`w-8 h-8 flex items-center justify-center rounded-lg backdrop-blur-md transition-colors ${
+                              isSaved
+                                ? 'bg-emerald-500/80 text-white cursor-default'
+                                : 'bg-black/50 hover:bg-black/80 text-white'
+                            }`}
+                            title={isSaved ? 'Saved to Gallery' : 'Save to Gallery'}
+                          >
+                            {isSaved ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+                          </button>
+                        )}
                         <button
                           disabled={preparingPostId === img.id}
                           onClick={async (e) => {
@@ -4394,41 +4485,129 @@ export function MainContent() {
                             <Save className="w-4 h-4" />
                           )}
                         </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); deleteImage(img.id, view === 'gallery'); }}
-                          className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-red-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
-                          title="Delete Image"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {view !== 'gallery' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteImage(img.id, false); }}
+                            className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-red-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
+                            title="Delete Image"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {view === 'gallery' && (
+                          <KebabMenu
+                            ariaLabel={`More actions for ${img.prompt.slice(0, 60)}`}
+                            items={(() => {
+                              const isTagging = taggingId === img.id;
+                              const hasTags = !!(img.tags && img.tags.length > 0);
+                              const out: (KebabMenuItem | null)[] = [
+                                img.imageId && !img.isVideo
+                                  ? {
+                                      kind: 'item',
+                                      id: 'animate',
+                                      label: img.status === 'animating' ? 'Animating…' : 'Animate',
+                                      icon: img.status === 'animating' ? Loader2 : Video,
+                                      disabled: img.status === 'animating',
+                                      onSelect: () => handleAnimate(img),
+                                    }
+                                  : null,
+                                {
+                                  kind: 'item',
+                                  id: 'auto-tag',
+                                  label: isTagging
+                                    ? 'Tagging…'
+                                    : hasTags ? 'Re-generate tags' : 'Auto-tag',
+                                  icon: isTagging ? Loader2 : Tag,
+                                  disabled: isTagging,
+                                  onSelect: () => {
+                                    if (taggingId) return;
+                                    setTaggingId(img.id);
+                                    autoTagImage(img.id, img).finally(() => setTaggingId(null));
+                                  },
+                                },
+                                {
+                                  kind: 'item',
+                                  id: 'download',
+                                  label: 'Download',
+                                  icon: Download,
+                                  onSelect: () => {
+                                    const href = img.url || `data:image/jpeg;base64,${img.base64}`;
+                                    const a = document.createElement('a');
+                                    a.href = href;
+                                    a.download = `mashup-${img.id}.jpg`;
+                                    if (img.url) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                  },
+                                },
+                                { kind: 'separator' },
+                                {
+                                  kind: 'item',
+                                  id: 'delete',
+                                  label: 'Delete',
+                                  icon: Trash2,
+                                  destructive: true,
+                                  onSelect: () => deleteImage(img.id, true),
+                                },
+                              ];
+                              return out.filter((x): x is KebabMenuItem => x !== null);
+                            })()}
+                          />
+                        )}
                       </div>
 
-                      {/* Bottom Overlay — model badge + prompt + download.
-                          The card itself is clickable to open the image,
-                          so no explicit "View Details" button. */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 pointer-events-none">
-                        {img.modelInfo?.modelName && (
-                          <span className="self-start mb-1.5 px-2 py-0.5 text-[9px] font-semibold tracking-wide uppercase bg-[#c5a062]/20 text-[#c5a062] border border-[#c5a062]/30 rounded-full pointer-events-none select-none">
-                            {img.modelInfo.modelName}
-                          </span>
-                        )}
-                        <p className="text-xs text-zinc-200 line-clamp-2 mb-3 font-medium leading-relaxed shadow-sm pointer-events-auto">
+                      {/* DESIGN-002 §3.5/§3.6: slimmed bottom hover panel.
+                          Drops the redundant model badge (now permanent at
+                          bottom-left), drops the inline Download button (now
+                          in the kebab), and pulls tags inside the panel as a
+                          single-row clipped strip with +N overflow. */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 pt-12 pointer-events-none z-[20]">
+                        <p className="text-xs text-zinc-200 line-clamp-2 mb-1.5 font-medium leading-snug shadow-sm pointer-events-auto">
                           {img.prompt}
                         </p>
-                        <div className="flex gap-2 pointer-events-auto">
-                          <a
-                            href={img.url || `data:image/jpeg;base64,${img.base64}`}
-                            download={`mashup-${idx + 1}.jpg`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-medium transition-colors"
-                            title="Download Image"
-                            target={img.url ? "_blank" : undefined}
-                            rel={img.url ? "noopener noreferrer" : undefined}
+                        {img.tags && img.tags.length > 0 ? (
+                          <div className="flex gap-1 overflow-hidden pointer-events-auto">
+                            {img.tags.slice(0, 3).map((t) => (
+                              <span
+                                key={t}
+                                className="shrink-0 px-1.5 py-0.5 text-[9px] bg-[#c5a062]/15 text-[#c5a062]/85 border border-[#c5a062]/25 rounded-full whitespace-nowrap"
+                              >
+                                {t}
+                              </span>
+                            ))}
+                            {img.tags.length > 3 && (
+                              <span className="shrink-0 px-1.5 py-0.5 text-[9px] text-zinc-400 whitespace-nowrap">
+                                +{img.tags.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        ) : view === 'gallery' ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (taggingId) return;
+                              setTaggingId(img.id);
+                              autoTagImage(img.id, img).finally(() => setTaggingId(null));
+                            }}
+                            disabled={taggingId === img.id}
+                            className="self-start inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] bg-[#c5a062]/10 hover:bg-[#c5a062]/25 text-[#c5a062]/90 hover:text-[#c5a062] border border-[#c5a062]/30 rounded-full whitespace-nowrap pointer-events-auto disabled:opacity-60 disabled:cursor-wait transition-colors"
+                            title="Auto-generate tags via pi.dev"
                           >
-                            <Download className="w-3.5 h-3.5" />
-                            Download
-                          </a>
-                        </div>
+                            {taggingId === img.id ? (
+                              <>
+                                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                Tagging…
+                              </>
+                            ) : (
+                              <>
+                                <Tag className="w-2.5 h-2.5" />
+                                Auto-tag
+                              </>
+                            )}
+                          </button>
+                        ) : null}
                       </div>
 
                       {/* Animating Overlay */}
@@ -4439,24 +4618,8 @@ export function MainContent() {
                         </div>
                       )}
                     </div>
-                    {/* Tag pills row (Gallery view only) */}
-                    {view === 'gallery' && img.tags && img.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 px-3 py-2 border-t border-zinc-800/60">
-                        {img.tags.slice(0, 5).map((tag) => (
-                          <span
-                            key={tag}
-                            className="px-1.5 py-0.5 text-[9px] bg-[#c5a062]/10 text-[#c5a062]/80 border border-[#c5a062]/20 rounded-full"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                        {img.tags.length > 5 && (
-                          <span className="px-1.5 py-0.5 text-[9px] text-zinc-600">
-                            +{img.tags.length - 5}
-                          </span>
-                        )}
-                      </div>
-                    )}
+                    {/* DESIGN-002 §3.6: tag row moved INTO the bottom hover
+                        panel inside the image — restores grid baseline. */}
                   </motion.div>
                 );
               })}
@@ -4522,15 +4685,23 @@ export function MainContent() {
       {showCollectionModal && (
         <CollectionModal
           onClose={() => setShowCollectionModal(false)}
-          name={newCollectionName}
-          onNameChange={setNewCollectionName}
-          description={newCollectionDesc}
-          onDescriptionChange={setNewCollectionDesc}
-          onCreate={async () => {
+          selectionCount={selectedForBatch.size}
+          onSuggest={
+            selectedForBatch.size > 0
+              ? async () => {
+                  const sample = savedImages
+                    .filter((img) => selectedForBatch.has(img.id))
+                    .slice(0, 5);
+                  if (sample.length === 0) return null;
+                  return (await autoGenerateCollectionInfo(sample)) ?? null;
+                }
+              : undefined
+          }
+          onCreate={async ({ name, description }) => {
             const imageIds = selectedForBatch.size > 0 ? Array.from(selectedForBatch) : undefined;
-            await createCollection(newCollectionName.trim() || undefined, newCollectionDesc.trim() || undefined, imageIds);
-            setNewCollectionName('');
-            setNewCollectionDesc('');
+            // Pass savedImages so createCollection's pi.dev auto-name
+            // fallback can fire when the user submits with a blank name.
+            await createCollection(name, description, imageIds, savedImages);
             setShowCollectionModal(false);
             if (imageIds) setSelectedForBatch(new Set());
           }}

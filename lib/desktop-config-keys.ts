@@ -47,6 +47,14 @@ export const DESKTOP_CONFIG_KEYS: readonly DesktopConfigFieldMeta[] = [
   { key: 'PINTEREST_ACCESS_TOKEN', label: 'Pinterest Access Token', hint: 'From developers.pinterest.com (pins:write scope)' },
   { key: 'PINTEREST_BOARD_ID',     label: 'Pinterest Board ID',     hint: 'Target board ID (optional — defaults to first board)' },
   { key: 'DISCORD_WEBHOOK_URL',    label: 'Discord Webhook URL',    hint: 'Channel webhook URL from Server Settings → Integrations' },
+  // FEAT-002: gate for UpdateChecker's launch-time check. Rendered by the
+  // dedicated Updates subsection in DesktopSettingsPanel, NOT by the
+  // generic field loop — see UPDATER_KEYS filter.
+  { key: 'AUTO_UPDATE_ON_LAUNCH',  label: 'Auto-update on launch',  hint: 'When on, MashupForge checks for updates each time it starts.', kind: 'select', options: ['on', 'off'] },
 ] as const;
+
+// Keys owned by a dedicated subsection in DesktopSettingsPanel. The
+// generic FieldRouter loop filters these out so they don't render twice.
+export const UPDATER_KEYS: ReadonlySet<string> = new Set(['AUTO_UPDATE_ON_LAUNCH']);
 
 export type DesktopConfigKey = typeof DESKTOP_CONFIG_KEYS[number]['key'];

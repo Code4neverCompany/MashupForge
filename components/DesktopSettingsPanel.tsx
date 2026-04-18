@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power } from 'lucide-react';
-import { DESKTOP_CONFIG_KEYS, type DesktopConfigFieldMeta } from '@/lib/desktop-config-keys';
+import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power, Download, RefreshCw } from 'lucide-react';
+import { DESKTOP_CONFIG_KEYS, UPDATER_KEYS, type DesktopConfigFieldMeta } from '@/lib/desktop-config-keys';
+import { LAST_CHECKED_AT_KEY } from './UpdateChecker';
 import { PortConflictBanner } from './PortConflictBanner';
 
 // Provider/model changes need pi to respawn so the new env reaches the
@@ -216,6 +217,196 @@ function FieldRouter({
   return <SecretField label={meta.label} hint={meta.hint} value={value} onChange={onChange} />;
 }
 
+// ── FEAT-002: Updates subsection ─────────────────────────────────────────────
+
+interface UpdatesSectionProps {
+  autoOnLaunch: boolean;
+  onAutoOnLaunchChange: (on: boolean) => void;
+}
+
+type CheckResult =
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'none' }
+  | { kind: 'available'; version: string; body: string }
+  | { kind: 'installing'; version: string; pct: number | null }
+  | { kind: 'error'; message: string };
+
+interface UpdaterModule {
+  check: () => Promise<{
+    available: boolean;
+    version: string;
+    body?: string | null;
+    downloadAndInstall: (
+      onEvent?: (e: { event: string; data?: { contentLength?: number; chunkLength?: number } }) => void,
+    ) => Promise<void>;
+  } | null>;
+}
+
+function UpdatesSection({ autoOnLaunch, onAutoOnLaunchChange }: UpdatesSectionProps) {
+  const [version, setVersion] = useState<string | null>(null);
+  const [lastCheckedAt, setLastCheckedAt] = useState<number | null>(null);
+  const [result, setResult] = useState<CheckResult>({ kind: 'idle' });
+
+  // Read current app version + last-check timestamp on mount.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const appMod = await import('@tauri-apps/api/app');
+        setVersion(await appMod.getVersion());
+      } catch { /* not desktop */ }
+      try {
+        const raw = localStorage.getItem(LAST_CHECKED_AT_KEY);
+        if (raw) setLastCheckedAt(Number(raw));
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
+  const handleCheckNow = useCallback(async () => {
+    setResult({ kind: 'checking' });
+    try {
+      const updaterMod = (await import('@tauri-apps/plugin-updater')) as unknown as UpdaterModule;
+      const update = await updaterMod.check();
+      const now = Date.now();
+      try { localStorage.setItem(LAST_CHECKED_AT_KEY, String(now)); } catch { /* ignore */ }
+      setLastCheckedAt(now);
+      if (!update?.available) {
+        setResult({ kind: 'none' });
+        return;
+      }
+      setResult({ kind: 'available', version: update.version, body: (update.body ?? '').trim() });
+      // Stash the update for the install button via closure.
+      installRef.current = () => update.downloadAndInstall((event) => {
+        if (event.event === 'Started') {
+          setResult({ kind: 'installing', version: update.version, pct: null });
+        } else if (event.event === 'Progress') {
+          setResult((prev) => {
+            if (prev.kind !== 'installing') return prev;
+            const total = event.data?.contentLength;
+            const chunk = event.data?.chunkLength ?? 0;
+            const next = (prev.pct ?? 0) + (total ? (chunk / total) * 100 : 0);
+            return { ...prev, pct: total ? Math.min(99, Math.round(next)) : null };
+          });
+        }
+      });
+    } catch (e: unknown) {
+      const detail = e instanceof Error ? e.message : String(e);
+      setResult({ kind: 'error', message: detail });
+    }
+  }, []);
+
+  const installRef = useRef<(() => Promise<void>) | null>(null);
+
+  const handleInstall = useCallback(async () => {
+    if (!installRef.current) return;
+    try {
+      await installRef.current();
+      // On Windows the installer relaunches; if we're alive past this,
+      // surface a fallback so the user knows something happened.
+      setResult({ kind: 'none' });
+    } catch (e: unknown) {
+      const detail = e instanceof Error ? e.message : String(e);
+      setResult({ kind: 'error', message: detail });
+    }
+  }, []);
+
+  const lastCheckedLabel = lastCheckedAt
+    ? new Date(lastCheckedAt).toLocaleString()
+    : 'never';
+
+  return (
+    <div className="space-y-3 pt-4 border-t border-zinc-800/60">
+      <div className="flex items-center gap-2">
+        <Download className="w-3.5 h-3.5 text-[#c5a062] shrink-0" />
+        <h5 className="text-xs font-semibold text-white">Updates</h5>
+        {version && (
+          <span className="ml-auto text-[10px] text-zinc-500 font-mono">v{version}</span>
+        )}
+      </div>
+
+      {/* Auto-on-launch toggle */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-zinc-300">Check on launch</p>
+          <p className="text-[10px] text-zinc-600">
+            When on, MashupForge checks for updates each time it starts.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onAutoOnLaunchChange(!autoOnLaunch)}
+          aria-pressed={autoOnLaunch}
+          aria-label={autoOnLaunch ? 'Disable auto-update on launch' : 'Enable auto-update on launch'}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent
+            transition-colors focus:outline-none focus:ring-2 focus:ring-[#c5a062]/40
+            ${autoOnLaunch ? 'bg-[#c5a062]' : 'bg-zinc-700'}`}
+        >
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform
+            ${autoOnLaunch ? 'translate-x-4' : 'translate-x-0'}`} />
+        </button>
+      </div>
+
+      {/* Manual check + status */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void handleCheckNow()}
+          disabled={result.kind === 'checking' || result.kind === 'installing'}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-wait text-white transition-colors"
+        >
+          {result.kind === 'checking' ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <RefreshCw className="w-3 h-3" />
+          )}
+          Check for updates
+        </button>
+        <span className="text-[10px] text-zinc-600">Last checked: {lastCheckedLabel}</span>
+      </div>
+
+      {/* Result row */}
+      {result.kind === 'none' && (
+        <p className="text-[11px] text-emerald-400 flex items-center gap-1">
+          <CheckCircle2 className="w-3 h-3" />
+          You&apos;re on the latest version.
+        </p>
+      )}
+      {result.kind === 'available' && (
+        <div className="rounded-lg border border-[#c5a062]/30 bg-[#c5a062]/5 p-3 space-y-2">
+          <p className="text-[11px] text-zinc-200">
+            Update available — <span className="font-mono text-[#c5a062]">v{result.version}</span>
+          </p>
+          {result.body && (
+            <p className="text-[10px] text-zinc-400 leading-relaxed line-clamp-3 whitespace-pre-wrap font-mono">
+              {result.body}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => void handleInstall()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-[#00e6ff] hover:bg-[#33eaff] text-[#050505] transition-colors"
+          >
+            <Download className="w-3 h-3" />
+            Download and install
+          </button>
+        </div>
+      )}
+      {result.kind === 'installing' && (
+        <p className="text-[11px] text-zinc-300 flex items-center gap-1">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Installing v{result.version}{result.pct !== null ? ` — ${result.pct}%` : '…'}
+        </p>
+      )}
+      {result.kind === 'error' && (
+        <p className="text-[11px] text-red-400 flex items-center gap-1">
+          <AlertCircle className="w-3 h-3" />
+          {result.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 /**
@@ -374,9 +565,12 @@ export function DesktopSettingsPanel() {
         </div>
       )}
 
-      {/* Config fields — kind-discriminated dispatch */}
+      {/* Config fields — kind-discriminated dispatch.
+          UPDATER_KEYS are owned by the dedicated Updates subsection below
+          so the user sees them grouped with version + Check Now controls
+          rather than buried in the API-key list. */}
       <div className="space-y-4">
-        {DESKTOP_CONFIG_KEYS.map((meta) => (
+        {DESKTOP_CONFIG_KEYS.filter((meta) => !UPDATER_KEYS.has(meta.key)).map((meta) => (
           <FieldRouter
             key={meta.key}
             meta={meta}
@@ -385,6 +579,17 @@ export function DesktopSettingsPanel() {
           />
         ))}
       </div>
+
+      {/* FEAT-002: Updates subsection — version readout, manual check,
+          and the AUTO_UPDATE_ON_LAUNCH toggle. The toggle drives
+          UpdateChecker's launch-time behavior; manual checks here run
+          regardless. */}
+      <UpdatesSection
+        autoOnLaunch={(draft.AUTO_UPDATE_ON_LAUNCH ?? 'on') !== 'off'}
+        onAutoOnLaunchChange={(on) =>
+          setDraft((prev) => ({ ...prev, AUTO_UPDATE_ON_LAUNCH: on ? 'on' : 'off' }))
+        }
+      />
 
       {/* Auto-save status row (STORY-131) */}
       <div className="flex items-center gap-2 min-h-[1.25rem]" aria-live="polite">

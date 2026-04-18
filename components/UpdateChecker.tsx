@@ -25,6 +25,8 @@ type State =
 
 const DISMISS_KEY = (version: string) => `mashup_update_dismissed_${version}`;
 const LAST_SEEN_KEY = 'mashup_update_last_seen_version';
+// FEAT-002: surfaced in the Updates subsection of DesktopSettingsPanel.
+export const LAST_CHECKED_AT_KEY = 'mashup_update_last_checked_at';
 
 export function UpdateChecker() {
   const { isDesktop } = useDesktopConfig();
@@ -69,9 +71,20 @@ export function UpdateChecker() {
         } catch { /* storage quota / private mode — silent */ }
       }
 
+      // FEAT-002: respect user preference. AUTO_UPDATE_ON_LAUNCH lives in
+      // config.json (managed via /api/desktop/config). Default = on; only
+      // a literal 'off' suppresses the launch-time check. Manual checks
+      // from the Settings panel always run regardless of this flag.
+      try {
+        const cfgRes = await fetch('/api/desktop/config');
+        const cfg = (await cfgRes.json()) as { keys?: Record<string, string> };
+        if (cfg.keys?.AUTO_UPDATE_ON_LAUNCH === 'off') return;
+      } catch { /* fall through and check anyway */ }
+
       try {
         const updaterMod = await import('@tauri-apps/plugin-updater');
         const update = (await updaterMod.check()) as unknown as UpdateLike | null;
+        try { localStorage.setItem(LAST_CHECKED_AT_KEY, String(Date.now())); } catch { /* ignore */ }
         if (!update?.available || cancelled) return;
 
         // Skip if the user already dismissed this exact version.

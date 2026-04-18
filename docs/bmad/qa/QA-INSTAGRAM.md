@@ -1,3 +1,121 @@
+---
+
+# QA Review — QA-INSTAGRAM (instagram-credentials.ts extraction + test suite)
+
+**Status:** PASS (E2E blocked — see below)
+**Agent:** Developer
+**Date:** 2026-04-18
+**Scope:** `lib/instagram-credentials.ts`, `tests/lib/instagram-credentials.test.ts`,
+call-sites `app/api/social/post/route.ts:174-176`, `app/api/social/best-times/route.ts:18-20`
+
+## What changed since the 2026-04-16 review
+
+The inline `??` chain was extracted from both route handlers into a shared pure function
+`resolveInstagramCredentials(env, body)`. A dedicated unit-test file was added. This review
+covers that extraction and its test coverage.
+
+## Credential chain — env vars → config.json → client body
+
+The three-layer chain works as follows:
+
+1. **`process.env.INSTAGRAM_*`** — populated on sidecar boot by `scripts/tauri-server-wrapper.js`
+   reading `%APPDATA%\MashupForge\config.json`. This is the desktop path. Keys are either a
+   non-empty string or absent entirely (the PATCH handler deletes empty-string keys — see
+   existing review for invariant proof). `??` is therefore load-bearing, not cosmetic.
+
+2. **`config.json`** — the physical store behind layer 1. Written by `DesktopSettingsPanel` →
+   `PATCH /api/desktop/config` → live `process.env[k] = v.trim()`. Survives any webview
+   origin drift because it is filesystem-backed under a stable APPDATA path.
+
+3. **`body`** (request body / client-supplied creds) — the web fallback. On a Vercel or
+   `npm run dev` deployment, `process.env.INSTAGRAM_*` is undefined; the client sends creds
+   in the POST body from its own settings store (previously IDB-backed, still IDB on web
+   since origin there is stable). The function doesn't distinguish "IDB fallback" from "web
+   body" — that distinction lives entirely in the client; the server just sees `body`.
+
+`resolveInstagramCredentials` correctly encodes all of this in 4 lines with no conditional
+branches and no side effects. ✓
+
+## Implementation audit (`lib/instagram-credentials.ts`)
+
+- [PASS] `InstagramCredentialSources` typed as `Readonly<Record<string, string | undefined>>`
+  — structurally compatible with `NodeJS.ProcessEnv`. Avoids a named-key interface that
+  would fail at call-sites passing a plain object. ✓
+- [PASS] `body` parameter is `| undefined` — callers that omit body (or pass `undefined`) do
+  not throw. Test 6 explicitly covers this path. ✓
+- [PASS] Empty-string final default (`?? ''`) — intentional. Both call-sites guard with
+  `if (!igAccessTokenRaw || !igAccountIdRaw)` / `if (!accessToken || !igAccountId)` before
+  proceeding. Return type is `string` not `string | null` which matches call-site expectations. ✓
+- [NOTE] Naming asymmetry: `body.accessToken` (input) vs `igAccessToken` (output). Not a bug —
+  the output name mirrors the env var key (`INSTAGRAM_ACCESS_TOKEN`). Consistent with how the
+  post route destructures the result. ✓
+
+## Test coverage (`tests/lib/instagram-credentials.test.ts` — 7 tests, all PASS)
+
+| # | Scenario | Path covered | Result |
+|---|---|---|---|
+| 1 | env wins over body | desktop happy path | PASS |
+| 2 | body wins, env `{}` | web/Vercel happy path | PASS |
+| 3 | both missing | empty-string double-miss | PASS |
+| 4 | partial env (account only) + body token | mixed partial | PASS |
+| 5 | partial env (token only) + body account | mixed partial | PASS |
+| 6 | undefined body, env present | env-only desktop | PASS |
+| 7 | env keys present but `=== undefined` | Vercel process.env shape | PASS |
+
+Test 7 is the most important edge case: on Vercel, `process.env` ships with all declared vars
+as keys set to `undefined` rather than being absent entirely. The `??` operator handles both
+shapes identically, and the test proves it.
+
+**Missing test (acceptable):** No test for env key = `''` (empty string). This is acceptable
+because the PATCH handler invariant (`v === '' → delete key from config.json`) guarantees env
+vars are never set to `''` at runtime. The invariant is documented in the source file comment
+and in the 2026-04-16 QA review. Encoding it in a test here would be redundant and might give
+the wrong impression that the function is the enforcement point.
+
+## Call-site audit
+
+### `app/api/social/post/route.ts:174-176`
+```ts
+const { igAccountId: igAccountIdRaw, igAccessToken: igAccessTokenRaw } =
+  resolveInstagramCredentials(process.env, credentials?.instagram);
+if (!igAccessTokenRaw || !igAccountIdRaw) { throw new Error('Instagram credentials incomplete'); }
+```
+- [PASS] Passes `process.env` directly — compatible with `InstagramCredentialSources`. ✓
+- [PASS] `credentials?.instagram` is optional-chained — body can be undefined safely. ✓
+- [PASS] Guards both fields before use. ✓
+
+### `app/api/social/best-times/route.ts:18-20`
+```ts
+const { igAccountId, igAccessToken: accessToken } =
+  resolveInstagramCredentials(process.env, body);
+if (!accessToken || !igAccountId) { return NextResponse.json({ ... }); }
+```
+- [PASS] Same pattern, graceful 200-return (not throw) on missing creds — correct for this
+  route which falls back to research-backed defaults. ✓
+- [NOTE] `body` is typed `{ accessToken?: string; igAccountId?: string }` which matches
+  `InstagramCredentialBody`. Field names align. ✓
+
+## E2E status — BLOCKED ON MAURICE
+
+Live E2E test (real IG creds → uguu image host → Graph API container → publish → verify post)
+**has not been run**. Requires Maurice to provide a live Facebook Page Access Token and a
+connected Business Account ID in the Desktop Configuration panel.
+
+**Action required:** Maurice runs through the manual verification checklist from the
+2026-04-16 review (steps 1-8 under "Verification") using the current build.
+
+Until that test completes, the unit-test gate is PASS but end-to-end confidence is ASSUMED
+from the prior manual test (commit 4423ed3), not freshly verified.
+
+## Gate Decision
+
+**PASS (unit tests) / E2E PENDING** — Extraction is clean. Resolver logic is correct. Tests
+cover all meaningful paths including the Vercel env-shape edge case. Both call-sites use the
+helper correctly. No regressions detectable from static analysis. Live posting verification
+is blocked on Maurice providing real credentials.
+
+---
+
 # QA Review — QA-INSTAGRAM (INSTAGRAM-CRED-FIX)
 
 **Status:** PASS
