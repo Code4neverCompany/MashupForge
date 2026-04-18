@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Calendar, Check, X, Lightbulb, ImageOff } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Calendar, Check, X, Lightbulb, ImageOff, CheckCircle2 } from 'lucide-react';
 import type { GeneratedImage, Idea, ScheduledPost } from '@/types/mashup';
 
 export function ApprovalQueue({
@@ -25,6 +25,18 @@ export function ApprovalQueue({
   const [ideaFilter, setIdeaFilter] = useState<string | null>(null);
   const [modelFilter, setModelFilter] = useState<string | null>(null);
   const [platformFilter, setPlatformFilter] = useState<string | null>(null);
+  // V030-005: transient banner after a bulk action so the user sees
+  // confirmation before the cards disappear from the queue.
+  const [flash, setFlash] = useState<{ kind: 'approve' | 'reject'; count: number } | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+  }, []);
+  const triggerFlash = (kind: 'approve' | 'reject', count: number) => {
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    setFlash({ kind, count });
+    flashTimer.current = setTimeout(() => setFlash(null), 3000);
+  };
 
   const imageById = useMemo(() => {
     const m = new Map<string, GeneratedImage>();
@@ -87,29 +99,84 @@ export function ApprovalQueue({
 
   const handleBulkApprove = () => {
     if (selectedCount === 0) return;
+    const count = visibleSelectedIds.length;
     onBulkApprove(visibleSelectedIds);
     clearSelection();
+    triggerFlash('approve', count);
   };
 
   const handleBulkReject = () => {
     if (selectedCount === 0) return;
+    const count = visibleSelectedIds.length;
     onBulkReject(visibleSelectedIds);
     clearSelection();
+    triggerFlash('reject', count);
   };
 
   const handleApproveAllFiltered = () => {
     if (filtered.length === 0) return;
-    onBulkApprove(filtered.map((p) => p.id));
+    const ids = filtered.map((p) => p.id);
+    onBulkApprove(ids);
     clearSelection();
+    triggerFlash('approve', ids.length);
   };
 
   const truncateConcept = (s: string | undefined, n = 28) =>
     s ? (s.length > n ? `${s.slice(0, n)}…` : s) : '';
 
-  if (posts.length === 0) return null;
+  // V030-005: after the final approval the queue may be empty; we still
+  // want to show the confirmation banner so the action didn't happen in
+  // silence. Render a compact banner-only container in that case.
+  if (posts.length === 0) {
+    if (!flash) return null;
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl border ${
+          flash.kind === 'approve'
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+            : 'bg-red-500/10 border-red-500/30 text-red-300'
+        }`}
+      >
+        {flash.kind === 'approve' ? (
+          <CheckCircle2 className="w-4 h-4" />
+        ) : (
+          <X className="w-4 h-4" />
+        )}
+        <span>
+          {flash.kind === 'approve'
+            ? `${flash.count} post${flash.count === 1 ? '' : 's'} moved to schedule`
+            : `${flash.count} post${flash.count === 1 ? '' : 's'} removed from queue`}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-amber-500/10 rounded-2xl border border-amber-500/30 p-4 sm:p-5 space-y-4">
+      {flash && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl border ${
+            flash.kind === 'approve'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              : 'bg-red-500/10 border-red-500/30 text-red-300'
+          }`}
+        >
+          {flash.kind === 'approve' ? (
+            <CheckCircle2 className="w-4 h-4" />
+          ) : (
+            <X className="w-4 h-4" />
+          )}
+          <span>
+            {flash.kind === 'approve'
+              ? `${flash.count} post${flash.count === 1 ? '' : 's'} moved to schedule`
+              : `${flash.count} post${flash.count === 1 ? '' : 's'} removed from queue`}
+          </span>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-amber-400" />
@@ -331,7 +398,10 @@ export function ApprovalQueue({
 
               <div className="flex items-center gap-2 pt-1">
                 <button
-                  onClick={() => onApprove(post.id)}
+                  onClick={() => {
+                    onApprove(post.id);
+                    triggerFlash('approve', 1);
+                  }}
                   className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/40 rounded-lg text-emerald-400 text-xs transition-colors"
                   title="Approve"
                 >
@@ -339,7 +409,10 @@ export function ApprovalQueue({
                   Approve
                 </button>
                 <button
-                  onClick={() => onReject(post.id)}
+                  onClick={() => {
+                    onReject(post.id);
+                    triggerFlash('reject', 1);
+                  }}
                   className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-red-600/20 hover:bg-red-600/40 rounded-lg text-red-400 text-xs transition-colors"
                   title="Reject"
                 >

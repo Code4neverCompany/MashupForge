@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
+import { shouldAutoContinuePipeline } from '@/lib/approval-continue';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Play,
@@ -79,7 +80,29 @@ export function PipelinePanel() {
     setPipelineInterval,
     pipelineTargetDays,
     setPipelineTargetDays,
+    weekFillStatus,
   } = useMashup();
+
+  // V030-005: after a bulk approval, kick off the pipeline when the
+  // window still has gaps and there are ideas left to process. Keeps
+  // single-item approvals passive — see lib/approval-continue.ts.
+  const onBulkApproveWithAutoContinue = useCallback(
+    (ids: string[]) => {
+      bulkApproveScheduledPosts(ids);
+      if (
+        shouldAutoContinuePipeline({
+          pipelineRunning,
+          isBulk: ids.length > 1,
+          approvedCount: ids.length,
+          weekFilled: weekFillStatus.filled,
+          pendingIdeaCount: ideas.filter(i => i.status === 'idea').length,
+        })
+      ) {
+        startPipeline();
+      }
+    },
+    [bulkApproveScheduledPosts, pipelineRunning, weekFillStatus.filled, ideas, startPipeline],
+  );
 
   const { isDesktop, credentials: desktopCreds } = useDesktopConfig();
 
@@ -628,7 +651,7 @@ export function PipelinePanel() {
         ideas={ideas}
         onApprove={approveScheduledPost}
         onReject={rejectScheduledPost}
-        onBulkApprove={bulkApproveScheduledPosts}
+        onBulkApprove={onBulkApproveWithAutoContinue}
         onBulkReject={bulkRejectScheduledPosts}
       />
     </div>
