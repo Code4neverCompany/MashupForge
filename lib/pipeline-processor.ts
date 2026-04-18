@@ -20,6 +20,11 @@ import {
 } from '@/types/mashup';
 import type { CachedEngagement } from '@/lib/smartScheduler';
 import { resolvePipelinePostStatus } from '@/lib/pipeline-daemon-utils';
+import {
+  configuredPlatforms,
+  type DesktopCredentialFlags,
+  type PipelinePlatform,
+} from '@/lib/platform-credentials';
 
 /** Typed replacement for the __SKIP_IDEA__ string sentinel. */
 export class SkipIdeaSignal extends Error {
@@ -68,6 +73,14 @@ export interface ProcessIdeaDeps {
   isSkipRequested(): boolean;
   /** Read the freshest scheduled posts for slot collision avoidance. */
   getScheduledPosts(): ScheduledPost[];
+  /**
+   * V041-HOTFIX-IG: presence flags for credentials stored in the desktop
+   * config.json (separate from settings.apiKeys, which is the web-mode
+   * IDB-backed bag). Pipeline platform inference must consider both, or
+   * desktop users with creds only in config.json get "No platforms
+   * configured — skipped". Optional so non-desktop callers can omit.
+   */
+  desktopCreds?: DesktopCredentialFlags;
 }
 
 function checkSkip(isSkipRequested: () => boolean): void {
@@ -118,9 +131,11 @@ export async function processIdea(
     settings.pipelinePlatforms && settings.pipelinePlatforms.length > 0
       ? settings.pipelinePlatforms
       : null;
-  const inferredPlatforms = Object.entries(settings.apiKeys)
-    .filter(([key, val]) => ['instagram', 'pinterest', 'twitter', 'discordWebhook'].includes(key) && val)
-    .map(([key]) => (key === 'discordWebhook' ? 'discord' : key));
+  // V041-HOTFIX-IG: defer to the shared helper so this matches PipelinePanel's
+  // availability check (which considers desktop config.json creds, not just
+  // settings.apiKeys). The previous Object.entries filter both ignored desktop
+  // creds and treated empty objects as configured.
+  const inferredPlatforms: PipelinePlatform[] = configuredPlatforms(settings, deps.desktopCreds);
   const pipelinePlatforms = explicitPlatforms ?? inferredPlatforms;
 
   // V040-HOTFIX-007: when this run will produce a post that lands in

@@ -24,6 +24,7 @@ import {
 } from '@/lib/pipeline-processor';
 import { awaitImagesOrSkip } from '@/lib/image-readiness';
 import type { WriteCheckpointBase } from './usePipelineDaemon';
+import { useDesktopConfig } from './useDesktopConfig';
 
 export interface UseIdeaProcessorDeps {
   getSettings: () => UserSettings;
@@ -88,6 +89,12 @@ export function useIdeaProcessor(deps: UseIdeaProcessorDeps) {
     addLog,
     setPipelineProgress,
   } = deps;
+
+  // V041-HOTFIX-IG: pipeline-processor needs desktop credential flags to
+  // detect IG/PN/TW/DC creds stored in config.json (env-style), not just
+  // settings.apiKeys (web-mode IDB). Without this, desktop users with
+  // creds saved in the Desktop tab see "No platforms configured".
+  const { isDesktop, credentials: desktopCreds } = useDesktopConfig();
 
   const expandIdeaToPrompt = useCallback(
     async (idea: Idea, trendingContext?: string): Promise<string> => {
@@ -174,6 +181,7 @@ Return ONLY the prompt text, nothing else.`;
         writeCheckpoint: checkpoint,
         isSkipRequested: () => skipSignal.aborted,
         getScheduledPosts: () => getSettings().scheduledPosts || [],
+        desktopCreds: isDesktop ? desktopCreds : undefined,
       };
 
       await processIdeaFn(
@@ -196,6 +204,8 @@ Return ONLY the prompt text, nothing else.`;
       addLog,
       setPipelineProgress,
       expandIdeaToPrompt,
+      isDesktop,
+      desktopCreds,
     ],
   );
 

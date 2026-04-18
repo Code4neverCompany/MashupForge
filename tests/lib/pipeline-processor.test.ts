@@ -376,6 +376,60 @@ describe('processIdea — pipeline stage toggles', () => {
     );
     expect(deps.findNextAvailableSlot).not.toHaveBeenCalled();
   });
+
+  // V041-HOTFIX-IG: regression — desktop users with creds in config.json
+  // (not settings.apiKeys) used to fall through to "No platforms" because
+  // the inferredPlatforms filter only looked at settings.apiKeys.
+  it('infers instagram from desktopCreds when settings.apiKeys.instagram is absent', async () => {
+    const deps = makeDeps({
+      desktopCreds: {
+        hasInstagramToken: true,
+        hasInstagramAccountId: true,
+        hasLeonardoKey: true,
+        hasZaiKey: false,
+        hasTwitterCreds: false,
+        hasPinterestCreds: false,
+        hasDiscordCreds: false,
+      },
+    });
+    const settings = makeSettings({ apiKeys: { leonardo: 'k' } });
+    const idea = makeIdea();
+
+    await processIdea(idea, 0, 1, makeEngagement(), [], settings, deps);
+
+    expect(deps.findNextAvailableSlot).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.any(Object),
+      ['instagram'],
+      undefined,
+    );
+    expect(deps.addLog).not.toHaveBeenCalledWith(
+      'schedule',
+      idea.id,
+      'error',
+      expect.stringContaining('No platforms'),
+    );
+  });
+
+  it('treats { accessToken: "", igAccountId: "" } as NOT configured', async () => {
+    // Pre-fix bug: naive object truthiness on settings.apiKeys.instagram
+    // accepted empty-string fields as a configured platform, then the
+    // scheduler would build a post that the social API immediately rejected.
+    const deps = makeDeps();
+    const settings = makeSettings({
+      apiKeys: { instagram: { accessToken: '', igAccountId: '' } },
+    });
+    const idea = makeIdea();
+
+    await processIdea(idea, 0, 1, makeEngagement(), [], settings, deps);
+
+    expect(deps.addLog).toHaveBeenCalledWith(
+      'schedule',
+      idea.id,
+      'error',
+      expect.stringContaining('No platforms'),
+    );
+  });
 });
 
 describe('processIdea — recoverable errors', () => {

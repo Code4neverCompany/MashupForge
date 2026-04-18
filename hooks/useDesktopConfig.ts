@@ -1,16 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { DesktopCredentialFlags } from '@/lib/platform-credentials';
 
-export interface DesktopCredentialFlags {
-  hasInstagramToken: boolean;
-  hasInstagramAccountId: boolean;
-  hasLeonardoKey: boolean;
-  hasZaiKey: boolean;
-  hasTwitterCreds: boolean;
-  hasPinterestCreds: boolean;
-  hasDiscordCreds: boolean;
-}
+export type { DesktopCredentialFlags };
 
 export interface DesktopConfig {
   isDesktop: boolean | null;

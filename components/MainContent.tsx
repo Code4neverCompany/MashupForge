@@ -1062,56 +1062,38 @@ export function MainContent() {
     // Compare results from this run will auto-group. Harmless if mode
     // is off; the watcher just clears the flag.
     pendingIdeaCarouselRef.current = true;
+    setComparisonPrompt(prompt);
     try {
-      const text = await streamAIToString(
-        `Analyze and enhance this generation prompt: "${prompt}".
-        Provide an improved, highly detailed cinematic prompt.
-        Also provide a fitting negative prompt (e.g., ugly, blurry, poorly drawn).
-        Smartly detect and provide the best fitting parameters for this specific scene:
-        - Art style from: ${ART_STYLES.join(', ')}
-        - Lighting from: ${LIGHTING_OPTIONS.join(', ')}
-        - Camera angle from: ${CAMERA_ANGLES.join(', ')}
-        - Aspect ratio from: ${['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'].join(', ')}
-        - Image size from: ${['512px', '1K', '2K', '4K'].join(', ')}
-
-        CRITICAL ASPECT RATIO RULES:
-        - If the prompt describes an epic scene, landscape, wide battle, or cinematic vista, you MUST select "16:9".
-        - If the prompt describes a character portrait, single character focus, or vertical subject, you MUST select "9:16".
-        - Otherwise, select "1:1" or another appropriate ratio.
-
-        Return ONLY a JSON object with:
-        - "enhancedPrompt": string
-        - "negativePrompt": string
-        - "style": string
-        - "lighting": string
-        - "angle": string
-        - "aspectRatio": string
-        - "imageSize": string`,
-        { mode: 'enhance' }
-      );
-      const data = extractJsonObjectFromLLM(text);
-      const pickString = (v: unknown): string | undefined =>
-        typeof v === 'string' ? v : undefined;
-      const enhancedPrompt = pickString(data.enhancedPrompt);
-      const negativePrompt = pickString(data.negativePrompt);
-      const styleStr = pickString(data.style);
-      const lightingStr = pickString(data.lighting);
-      const angleStr = pickString(data.angle);
-      const aspectRatioStr = pickString(data.aspectRatio);
-      const imageSizeStr = pickString(data.imageSize);
-
-      setComparisonPrompt(enhancedPrompt || prompt);
+      // V041-HOTFIX-PARAM: route Push to Studio through the same param-suggest
+      // engine the manual "Suggest" button uses, so each active model gets the
+      // best aspect/style/size/quality/negative-prompt for this idea — not the
+      // legacy single-shot enhance prompt that ignored per-model API surfaces.
+      // suggestParametersAI falls back to the rule engine on AI failure, so the
+      // user always gets a populated card.
+      const suggestion = await suggestParametersAI({
+        prompt,
+        availableModels: LEONARDO_MODELS,
+        modelGuides: MODEL_PROMPT_GUIDES,
+        availableStyles: LEONARDO_SHARED_STYLES,
+        savedImages,
+      });
+      setComparisonModels(suggestion.modelIds);
       setComparisonOptions(prev => ({
         ...prev,
-        negativePrompt: negativePrompt || '',
-        style: styleStr && ART_STYLES.includes(styleStr) ? styleStr : ART_STYLES[0],
-        lighting: lightingStr && LIGHTING_OPTIONS.includes(lightingStr) ? lightingStr : LIGHTING_OPTIONS[0],
-        angle: angleStr && CAMERA_ANGLES.includes(angleStr) ? angleStr : CAMERA_ANGLES[0],
-        aspectRatio: aspectRatioStr && ['1:1', '16:9', '9:16', '3:4', '4:3', '4:1', '1:4'].includes(aspectRatioStr) ? aspectRatioStr : '16:9',
-        imageSize: imageSizeStr && ['512px', '1K', '2K', '4K'].includes(imageSizeStr) ? imageSizeStr : '1K',
+        aspectRatio: suggestion.aspectRatio,
+        imageSize: suggestion.imageSize,
+        negativePrompt: suggestion.negativePrompt ?? prev.negativePrompt ?? '',
+        style: suggestion.style ?? prev.style,
+        quality: suggestion.quality,
+        promptEnhance: suggestion.promptEnhance,
       }));
+      // Surface the per-model card so the user can review each model's
+      // resolved knobs before generating. Apply button on the card is a
+      // no-op confirmation (params are already set above).
+      setParamSuggestion(suggestion);
     } catch {
-      setComparisonPrompt(prompt);
+      // Suggestion failed entirely — prompt is still set; user can pick
+      // params manually or hit the Suggest button to retry.
     } finally {
       setIsPushing(false);
     }

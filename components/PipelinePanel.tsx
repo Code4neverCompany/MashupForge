@@ -20,6 +20,7 @@ import {
 import { useMashup } from './MashupContext';
 import type { ScheduledPost, UserSettings } from '@/types/mashup';
 import { isPlatformAutoApproved } from '@/lib/pipeline-daemon-utils';
+import { isPlatformConfigured } from '@/lib/platform-credentials';
 import { UndoToast } from './UndoToast';
 import { useDesktopConfig } from '@/hooks/useDesktopConfig';
 import { BestTimesWidget } from './pipeline/BestTimesWidget';
@@ -180,27 +181,8 @@ export function PipelinePanel() {
   const autoPost = settings.pipelineAutoPost ?? false;
   const platforms: PipelinePlatform[] = (settings.pipelinePlatforms as PipelinePlatform[]) || [];
 
-  const hasCreds = (p: PipelinePlatform): boolean => {
-    switch (p) {
-      case 'instagram':
-        if (settings.apiKeys.instagram?.accessToken && settings.apiKeys.instagram?.igAccountId) return true;
-        if (isDesktop && desktopCreds.hasInstagramToken && desktopCreds.hasInstagramAccountId) return true;
-        return false;
-      case 'pinterest':
-        if (settings.apiKeys.pinterest?.accessToken) return true;
-        if (isDesktop && desktopCreds.hasPinterestCreds) return true;
-        return false;
-      case 'twitter':
-        if (settings.apiKeys.twitter?.appKey && settings.apiKeys.twitter?.appSecret &&
-            settings.apiKeys.twitter?.accessToken && settings.apiKeys.twitter?.accessSecret) return true;
-        if (isDesktop && desktopCreds.hasTwitterCreds) return true;
-        return false;
-      case 'discord':
-        if (settings.apiKeys.discordWebhook) return true;
-        if (isDesktop && desktopCreds.hasDiscordCreds) return true;
-        return false;
-    }
-  };
+  const hasCreds = (p: PipelinePlatform): boolean =>
+    isPlatformConfigured(p, settings, isDesktop ? desktopCreds : undefined);
   const availablePlatforms: PipelinePlatform[] = (['instagram', 'pinterest', 'twitter', 'discord'] as PipelinePlatform[]).filter(hasCreds);
 
   const togglePlatform = (p: PipelinePlatform) => {
