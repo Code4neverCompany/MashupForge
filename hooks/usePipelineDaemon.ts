@@ -26,25 +26,23 @@ import {
 } from '@/lib/pipeline-checkpoint';
 import { SkipIdeaSignal } from '@/lib/pipeline-processor';
 import { withPipelineRunning } from '@/lib/pipeline-runner';
+import {
+  savePipelineLog,
+  loadPipelineLog,
+  clearPipelineLog as clearPipelineLogStore,
+} from '@/lib/pipeline-log-store';
 
 const PIPELINE_STORAGE_KEY = 'mashup_pipeline_state';
 
-interface PersistedPipelineState {
+interface PersistedPipelineConfig {
   enabled: boolean;
   delay: number;
   continuous: boolean;
   interval: number;
   targetDays: number;
-  log: {
-    timestamp: string;
-    step: string;
-    ideaId: string;
-    status: 'success' | 'error';
-    message: string;
-  }[];
 }
 
-function loadPersistedState(): PersistedPipelineState {
+function loadPersistedConfig(): PersistedPipelineConfig {
   try {
     const raw = localStorage.getItem(PIPELINE_STORAGE_KEY);
     if (raw) {
@@ -55,23 +53,15 @@ function loadPersistedState(): PersistedPipelineState {
         continuous: parsed.continuous ?? false,
         interval: parsed.interval ?? 120,
         targetDays: parsed.targetDays ?? 7,
-        log: parsed.log ?? [],
       };
     }
   } catch {
     /* ignore */
   }
-  return {
-    enabled: false,
-    delay: 30,
-    continuous: false,
-    interval: 120,
-    targetDays: 7,
-    log: [],
-  };
+  return { enabled: false, delay: 30, continuous: false, interval: 120, targetDays: 7 };
 }
 
-function persistState(state: PersistedPipelineState) {
+function persistConfig(state: PersistedPipelineConfig) {
   try {
     localStorage.setItem(PIPELINE_STORAGE_KEY, JSON.stringify(state));
   } catch {
@@ -145,23 +135,22 @@ export function usePipelineDaemon(deps: UsePipelineDaemonDeps) {
   const { addIdea, updateIdeaStatus } = deps;
 
   const [pipelineEnabled, setPipelineEnabled] = useState(
-    () => loadPersistedState().enabled,
+    () => loadPersistedConfig().enabled,
   );
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineQueue, setPipelineQueue] = useState<Idea[]>([]);
   const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null);
-  const [pipelineLog, setPipelineLog] = useState<PipelineLogEntry[]>(() =>
-    loadPersistedState().log.map(e => ({ ...e, timestamp: new Date(e.timestamp) })),
-  );
-  const [pipelineDelay, setPipelineDelayState] = useState(() => loadPersistedState().delay);
+  // V030-003: log hydrates from IDB on mount (async — starts empty).
+  const [pipelineLog, setPipelineLog] = useState<PipelineLogEntry[]>([]);
+  const [pipelineDelay, setPipelineDelayState] = useState(() => loadPersistedConfig().delay);
   const [pipelineContinuous, setPipelineContinuous] = useState(
-    () => loadPersistedState().continuous,
+    () => loadPersistedConfig().continuous,
   );
   const [pipelineInterval, setPipelineIntervalState] = useState(
-    () => loadPersistedState().interval,
+    () => loadPersistedConfig().interval,
   );
   const [pipelineTargetDays, setPipelineTargetDaysState] = useState(
-    () => loadPersistedState().targetDays,
+    () => loadPersistedConfig().targetDays,
   );
   const [pendingResume, setPendingResume] = useState<PipelineCheckpoint | null>(null);
   // AbortControllers — signal.aborted is a live read on the shared object,
@@ -211,17 +200,27 @@ export function usePipelineDaemon(deps: UsePipelineDaemonDeps) {
     };
   }, []);
 
-  // Persist config + log to localStorage.
+  // V030-003: hydrate log from IDB on mount so crash-survived entries are
+  // visible before the first run.
   useEffect(() => {
-    persistState({
+    let cancelled = false;
+    void loadPipelineLog().then(entries => {
+      if (cancelled || entries.length === 0) return;
+      setPipelineLog(entries);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Persist config to localStorage (small, sync, no blobs).
+  useEffect(() => {
+    persistConfig({
       enabled: pipelineEnabled,
       delay: pipelineDelay,
       continuous: pipelineContinuous,
       interval: pipelineInterval,
       targetDays: pipelineTargetDays,
-      log: pipelineLog
-        .slice(-50)
-        .map(e => ({ ...e, timestamp: e.timestamp.toISOString() })),
     });
   }, [
     pipelineEnabled,
@@ -229,8 +228,12 @@ export function usePipelineDaemon(deps: UsePipelineDaemonDeps) {
     pipelineContinuous,
     pipelineInterval,
     pipelineTargetDays,
-    pipelineLog,
   ]);
+
+  // V030-003: persist log to IDB on every change (fire-and-forget; best-effort).
+  useEffect(() => {
+    void savePipelineLog(pipelineLog);
+  }, [pipelineLog]);
 
   const addLog = useCallback(
     (
@@ -577,10 +580,7 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
                   `"${idea.concept}" exceeded ${PER_IDEA_TIMEOUT_MS / 60000}-min hard cap — continuing to next idea`,
                 );
                 updateIdeaStatus(idea.id, 'idea');
-              } else if (
-                e instanceof SkipIdeaSignal ||
-                getErrorMessage(e) === '__SKIP_IDEA__'
-              ) {
+              } else if (e instanceof SkipIdeaSignal) {
                 addLog(
                   'pipeline-skip',
                   idea.id,
@@ -668,6 +668,9 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
         // Clean exit — drop the checkpoint. Crash skips this, leaving the
         // last mid-step checkpoint intact for resume.
         void clearCheckpoint();
+        // V030-003: log is only valuable across a crash. Clean completion
+        // means the UI log state and the persisted copy can both drop.
+        void clearPipelineLogStore();
       }),
     [
       pipelineDelay,
@@ -693,7 +696,10 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
     (d: number) => setPipelineTargetDaysState(Math.max(1, Math.min(30, d))),
     [],
   );
-  const clearPipelineLog = useCallback(() => setPipelineLog([]), []);
+  const clearPipelineLog = useCallback(() => {
+    setPipelineLog([]);
+    void clearPipelineLogStore();
+  }, []);
 
   // Stop/skip use functional setState peek to abort the current controller.
   const stopPipeline = useCallback(() => {
