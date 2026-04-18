@@ -95,6 +95,17 @@ function countFutureScheduledPosts(
 
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
+/** V030-002: hard cap per idea so a stuck step can't pin the daemon. */
+const PER_IDEA_TIMEOUT_MS = 10 * 60 * 1000;
+
+class IdeaTimeoutError extends Error {
+  readonly kind = 'timeout' as const;
+  constructor() {
+    super('__IDEA_TIMEOUT__');
+    this.name = 'IdeaTimeoutError';
+  }
+}
+
 export type WriteCheckpointBase = (
   ideaId: string,
   concept: string,
@@ -533,18 +544,43 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
             const skipAbort = new AbortController();
             setSkipCtrl(skipAbort);
 
+            // V030-002: 10-min hard timeout so a stuck step can't pin the
+            // daemon. When it fires we also abort the skip signal so
+            // processIdea's checkpoint guards let the idea unwind cleanly.
+            let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              timeoutHandle = setTimeout(() => {
+                skipAbort.abort();
+                reject(new IdeaTimeoutError());
+              }, PER_IDEA_TIMEOUT_MS);
+            });
+
             try {
-              await processIdea(
-                idea,
-                i,
-                pendingIdeas.length,
-                engagement,
-                accumulatedPosts,
-                skipAbort.signal,
-                writeCheckpointBase,
-              );
+              await Promise.race([
+                processIdea(
+                  idea,
+                  i,
+                  pendingIdeas.length,
+                  engagement,
+                  accumulatedPosts,
+                  skipAbort.signal,
+                  writeCheckpointBase,
+                ),
+                timeoutPromise,
+              ]);
             } catch (e: unknown) {
-              if (e instanceof SkipIdeaSignal || getErrorMessage(e) === '__SKIP_IDEA__') {
+              if (e instanceof IdeaTimeoutError) {
+                addLog(
+                  'pipeline-timeout',
+                  idea.id,
+                  'error',
+                  `"${idea.concept}" exceeded ${PER_IDEA_TIMEOUT_MS / 60000}-min hard cap — continuing to next idea`,
+                );
+                updateIdeaStatus(idea.id, 'idea');
+              } else if (
+                e instanceof SkipIdeaSignal ||
+                getErrorMessage(e) === '__SKIP_IDEA__'
+              ) {
                 addLog(
                   'pipeline-skip',
                   idea.id,
@@ -561,6 +597,8 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
                 );
                 updateIdeaStatus(idea.id, 'idea');
               }
+            } finally {
+              if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
             }
 
             if (i < pendingIdeas.length - 1 && !runAbort.signal.aborted) {
