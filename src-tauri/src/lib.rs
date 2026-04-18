@@ -282,6 +282,148 @@ fn show_error_dialog(_title: &str, _body: &str) {
     // No-op on non-Windows hosts — Linux validation builds don't need it.
 }
 
+/// Attach the spawned sidecar process to a Windows Job Object with
+/// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, so the kernel guarantees the
+/// child dies when this parent process dies — by ANY mechanism.
+///
+/// BUG-003: the WindowEvent::CloseRequested handler at the bottom of
+/// `run()` correctly kills the sidecar when the user clicks the X
+/// button — but Tauri's `restart()` (called from the JS
+/// `tauri-plugin-process` `relaunch()` API after auto-update, see
+/// BUG-002) uses `std::process::exit(0)` internally, which fires
+/// ZERO Tauri events. Neither WindowEvent::CloseRequested nor
+/// RunEvent::ExitRequested runs on that path, so node.exe orphans
+/// and keeps holding DESKTOP_PORT (19782).
+///
+/// Job Objects are the OS-level fix: as long as we don't explicitly
+/// CloseHandle the job, the parent-process handle table holds it
+/// open. When the parent dies — via `exit()`, panic, Task Manager
+/// kill, or any other path — the kernel automatically closes its
+/// handles, the job's last reference drops, and KILL_ON_JOB_CLOSE
+/// forcibly terminates every process in the job.
+///
+/// Requires Windows 8+ for nested job support (we already ship
+/// Windows 10+). On non-Windows targets this is a no-op.
+#[cfg(target_os = "windows")]
+fn attach_sidecar_to_kill_on_close_job(child_pid: u32) -> Result<(), String> {
+    use std::os::raw::c_void;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateJobObjectW(lp_job_attributes: *mut c_void, lp_name: *const u16) -> *mut c_void;
+        fn SetInformationJobObject(
+            h_job: *mut c_void,
+            job_object_info_class: i32,
+            lp_job_object_information: *mut c_void,
+            cb_job_object_information_length: u32,
+        ) -> i32;
+        fn AssignProcessToJobObject(h_job: *mut c_void, h_process: *mut c_void) -> i32;
+        fn OpenProcess(
+            dw_desired_access: u32,
+            b_inherit_handle: i32,
+            dw_process_id: u32,
+        ) -> *mut c_void;
+        fn CloseHandle(h_object: *mut c_void) -> i32;
+    }
+
+    const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
+    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
+    const PROCESS_SET_QUOTA: u32 = 0x0100;
+    const PROCESS_TERMINATE: u32 = 0x0001;
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct JobObjectBasicLimitInformation {
+        per_process_user_time_limit: i64,
+        per_job_user_time_limit: i64,
+        limit_flags: u32,
+        minimum_working_set_size: usize,
+        maximum_working_set_size: usize,
+        active_process_limit: u32,
+        affinity: usize,
+        priority_class: u32,
+        scheduling_class: u32,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct IoCounters {
+        read_operation_count: u64,
+        write_operation_count: u64,
+        other_operation_count: u64,
+        read_transfer_count: u64,
+        write_transfer_count: u64,
+        other_transfer_count: u64,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct JobObjectExtendedLimitInformationStruct {
+        basic_limit_info: JobObjectBasicLimitInformation,
+        io_info: IoCounters,
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory_used: usize,
+        peak_job_memory_used: usize,
+    }
+
+    unsafe {
+        let job = CreateJobObjectW(std::ptr::null_mut(), std::ptr::null());
+        if job.is_null() {
+            return Err("CreateJobObjectW returned NULL".into());
+        }
+
+        let mut info = JobObjectExtendedLimitInformationStruct::default();
+        info.basic_limit_info.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+        if SetInformationJobObject(
+            job,
+            JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+            &mut info as *mut _ as *mut c_void,
+            std::mem::size_of::<JobObjectExtendedLimitInformationStruct>() as u32,
+        ) == 0
+        {
+            CloseHandle(job);
+            return Err("SetInformationJobObject failed".into());
+        }
+
+        let proc_handle = OpenProcess(
+            PROCESS_SET_QUOTA | PROCESS_TERMINATE,
+            0,
+            child_pid,
+        );
+        if proc_handle.is_null() {
+            CloseHandle(job);
+            return Err(format!("OpenProcess({}) returned NULL", child_pid));
+        }
+
+        if AssignProcessToJobObject(job, proc_handle) == 0 {
+            CloseHandle(proc_handle);
+            CloseHandle(job);
+            return Err("AssignProcessToJobObject failed".into());
+        }
+
+        // Drop the per-process handle (the job retains its own kernel
+        // reference to the process). Intentionally DO NOT CloseHandle
+        // the job — leaving the parent's handle open is what keeps the
+        // job alive. When the parent dies, the kernel cleans up its
+        // handle table, the job's last ref drops, and
+        // KILL_ON_JOB_CLOSE forcibly terminates the sidecar.
+        CloseHandle(proc_handle);
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn attach_sidecar_to_kill_on_close_job(_child_pid: u32) -> Result<(), String> {
+    // Unix exit semantics already SIGTERM child processes when the parent
+    // exits cleanly; the Linux/macOS validation builds don't need a
+    // separate kernel-level kill-on-close mechanism. The CloseRequested
+    // handler covers the clean-shutdown case on those platforms.
+    Ok(())
+}
+
 /// Validate that every resource the sidecar needs is present on disk.
 /// Returns a human-readable error with the first missing path.
 fn preflight_resources(
@@ -572,6 +714,34 @@ pub fn run() {
 
             startup_log_line(&log_dir, &format!("spawned sidecar pid={}", child.id()));
 
+            // BUG-003: attach sidecar to a Windows Job Object with
+            // KILL_ON_JOB_CLOSE so node.exe dies when this parent dies,
+            // even on exit paths that bypass WindowEvent::CloseRequested
+            // (notably tauri::App::restart() used by the auto-updater
+            // relaunch flow — see the helper's docstring). On non-Windows
+            // this is a no-op. Failures are logged but non-fatal: the
+            // CloseRequested handler still covers clean shutdowns.
+            let sidecar_pid = child.id();
+            match attach_sidecar_to_kill_on_close_job(sidecar_pid) {
+                Ok(()) => startup_log_line(
+                    &log_dir,
+                    &format!(
+                        "attached sidecar pid={} to KILL_ON_JOB_CLOSE Job",
+                        sidecar_pid
+                    ),
+                ),
+                Err(e) => startup_log_line(
+                    &log_dir,
+                    &format!(
+                        "WARN attach_sidecar_to_kill_on_close_job(pid={}) failed: {} \
+                         — sidecar may leak on abnormal parent exit (Task Manager / \
+                         updater relaunch). CloseRequested handler still covers the \
+                         X-button close path.",
+                        sidecar_pid, e
+                    ),
+                ),
+            }
+
             app.state::<SidecarState>()
                 .0
                 .lock()
@@ -630,15 +800,59 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { .. } = event {
-                if let Some(state) = window.app_handle().try_state::<SidecarState>() {
-                    if let Ok(mut guard) = state.0.lock() {
-                        if let Some(mut child) = guard.take() {
-                            log::info!("[tauri] killing sidecar pid={}", child.id());
-                            let _ = child.kill();
-                            let _ = child.wait();
-                        }
+                // Resolve log_dir up front so every branch below can write
+                // to startup.log — that's the file Maurice greps when
+                // debugging "is the sidecar actually being killed?" The
+                // tauri-plugin-log targets only emit when log::info! is
+                // called, but its output isn't easy to correlate with
+                // startup events. Mirroring to startup.log keeps the
+                // shutdown trace next to the spawn trace.
+                let log_dir = window
+                    .app_handle()
+                    .path()
+                    .app_data_dir()
+                    .ok()
+                    .map(|p| p.join("logs"));
+                let log_to_startup = |line: &str| {
+                    if let Some(ref ld) = log_dir {
+                        startup_log_line(ld, line);
                     }
-                }
+                };
+
+                let Some(state) = window.app_handle().try_state::<SidecarState>() else {
+                    log_to_startup("CloseRequested: SidecarState not registered (skipping kill)");
+                    return;
+                };
+                let mut guard = match state.0.lock() {
+                    Ok(g) => g,
+                    Err(e) => {
+                        log_to_startup(&format!(
+                            "CloseRequested: SidecarState mutex poisoned ({}) — sidecar may leak",
+                            e
+                        ));
+                        return;
+                    }
+                };
+                let Some(mut child) = guard.take() else {
+                    log_to_startup(
+                        "CloseRequested: no sidecar Child to kill (already taken or never spawned)",
+                    );
+                    return;
+                };
+                let pid = child.id();
+                log::info!("[tauri] CloseRequested: killing sidecar pid={}", pid);
+                log_to_startup(&format!("CloseRequested: killing sidecar pid={}", pid));
+                let kill_result = child.kill();
+                let wait_result = child.wait();
+                log_to_startup(&format!(
+                    "CloseRequested pid={} kill={} wait={}",
+                    pid,
+                    if kill_result.is_ok() { "ok" } else { "err" },
+                    wait_result
+                        .as_ref()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|e| format!("err: {}", e)),
+                ));
             }
         })
         .run(tauri::generate_context!())
