@@ -18,7 +18,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useMashup } from './MashupContext';
-import type { UserSettings } from '@/types/mashup';
+import type { ScheduledPost, UserSettings } from '@/types/mashup';
+import { UndoToast } from './UndoToast';
 import { useDesktopConfig } from '@/hooks/useDesktopConfig';
 import { BestTimesWidget } from './pipeline/BestTimesWidget';
 import { ActiveIdeaCard } from './pipeline/ActiveIdeaCard';
@@ -83,12 +84,52 @@ export function PipelinePanel() {
     weekFillStatus,
   } = useMashup();
 
+  // V040-006: after a bulk approve/reject, show a 10s undo toast so a
+  // mis-click on the big "Approve All" / "Reject Selected" buttons is
+  // recoverable. Snapshots are captured from `settings.scheduledPosts`
+  // *before* dispatching the bulk mutation, and merged back via
+  // updateSettings when the user clicks Undo.
+  const [undoState, setUndoState] = useState<
+    | { kind: 'approve' | 'reject'; snapshots: ScheduledPost[] }
+    | null
+  >(null);
+
+  const undoBulkAction = useCallback(() => {
+    setUndoState((current) => {
+      if (!current) return null;
+      const snapById = new Map(current.snapshots.map((s) => [s.id, s]));
+      updateSettings((prev) => {
+        const currentPosts = prev.scheduledPosts || [];
+        const existingIds = new Set(currentPosts.map((p) => p.id));
+        // Approve undo: posts still in list with status='scheduled' —
+        // restore from snapshot (flips back to pending_approval).
+        // Reject undo: posts were removed — re-append the snapshots.
+        // Guard: if a post already moved to 'posted' or 'failed' in
+        // the undo window (auto-poster fired), skip it to avoid a
+        // misleading restore.
+        const restored = currentPosts.map((p) => {
+          const snap = snapById.get(p.id);
+          if (!snap) return p;
+          if (p.status === 'posted' || p.status === 'failed') return p;
+          return snap;
+        });
+        const toAppend = current.snapshots.filter((s) => !existingIds.has(s.id));
+        return { scheduledPosts: [...restored, ...toAppend] };
+      });
+      return null;
+    });
+  }, [updateSettings]);
+
   // V030-005: after a bulk approval, kick off the pipeline when the
   // window still has gaps and there are ideas left to process. Keeps
   // single-item approvals passive — see lib/approval-continue.ts.
   const onBulkApproveWithAutoContinue = useCallback(
     (ids: string[]) => {
+      const snapshots = (settings.scheduledPosts || []).filter(
+        (p) => ids.includes(p.id) && p.status === 'pending_approval',
+      );
       bulkApproveScheduledPosts(ids);
+      setUndoState({ kind: 'approve', snapshots });
       if (
         shouldAutoContinuePipeline({
           pipelineRunning,
@@ -101,7 +142,23 @@ export function PipelinePanel() {
         startPipeline();
       }
     },
-    [bulkApproveScheduledPosts, pipelineRunning, weekFillStatus.filled, ideas, startPipeline],
+    [
+      bulkApproveScheduledPosts,
+      pipelineRunning,
+      weekFillStatus.filled,
+      ideas,
+      startPipeline,
+      settings.scheduledPosts,
+    ],
+  );
+
+  const onBulkRejectWithUndo = useCallback(
+    (ids: string[]) => {
+      const snapshots = (settings.scheduledPosts || []).filter((p) => ids.includes(p.id));
+      bulkRejectScheduledPosts(ids);
+      setUndoState({ kind: 'reject', snapshots });
+    },
+    [bulkRejectScheduledPosts, settings.scheduledPosts],
   );
 
   const { isDesktop, credentials: desktopCreds } = useDesktopConfig();
@@ -652,8 +709,22 @@ export function PipelinePanel() {
         onApprove={approveScheduledPost}
         onReject={rejectScheduledPost}
         onBulkApprove={onBulkApproveWithAutoContinue}
-        onBulkReject={bulkRejectScheduledPosts}
+        onBulkReject={onBulkRejectWithUndo}
       />
+
+      {undoState && undoState.snapshots.length > 0 && (
+        <UndoToast
+          key={`${undoState.kind}-${undoState.snapshots.map((s) => s.id).join(',')}`}
+          message={
+            undoState.kind === 'approve'
+              ? `${undoState.snapshots.length} post${undoState.snapshots.length === 1 ? '' : 's'} approved`
+              : `${undoState.snapshots.length} post${undoState.snapshots.length === 1 ? '' : 's'} rejected`
+          }
+          durationMs={10000}
+          onUndo={undoBulkAction}
+          onDismiss={() => setUndoState(null)}
+        />
+      )}
     </div>
   );
 }
