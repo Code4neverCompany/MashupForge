@@ -46,15 +46,52 @@ jobs:
             exit 1
           fi
 
+      # CI-001: Bun is the primary install + build path because BETA-001 measured
+      # ~40× faster cold install (~700 ms vs ~30 s) and parity on `bun run build`.
+      # Node is still set up because (a) `npm run build` chains `node scripts/
+      # check-bundle-size.mjs` literally, (b) the bundled-app `npm install --force`
+      # step below runs on npm, and (c) the npm fallback below needs it.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with: { node-version: '22', cache: 'npm' }
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.12'
 
-      - name: Build Next.js (standalone)
-        run: npm run build
+      - name: Cache Bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      # Bun primary: install + build in one step. continue-on-error means a
+      # failure here drops to the npm fallback below instead of aborting CI.
+      # Both steps must succeed together; if Bun's install passes but the
+      # build fails (rare — Bun is a process spawner here, not a bundler),
+      # we still want the npm path to redo BOTH so node_modules and build
+      # artifacts come from the same toolchain.
+      - name: Build (Bun primary)
+        id: bun_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      # npm fallback: only runs if the Bun step failed. Loud warning so the
+      # regression surfaces in the Actions UI summary instead of silently
+      # masking a Bun breakage.
+      - name: Build (npm fallback)
+        if: steps.bun_build.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning::Bun build failed; falling back to npm. Investigate Bun step output."
+          npm ci
+          npm run build
 
       - name: Fetch Windows Node runtime
         shell: pwsh
