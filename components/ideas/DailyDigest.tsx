@@ -154,6 +154,9 @@ export const DailyDigest: React.FC<Props> = ({ setView }) => {
 
   const lastEventTs = pipelineLog[0]?.timestamp?.getTime() ?? null;
 
+  // Shared vocabulary with PipelineStatusStrip ('Running' / 'Armed' /
+  // 'Idle') so the header pill, digest pill, and the empty-state copy
+  // below never disagree on what the pipeline is doing.
   const pipelineState: { label: string; pillClass: string; dotClass: string } = pipelineRunning
     ? {
         label: 'Running',
@@ -162,12 +165,12 @@ export const DailyDigest: React.FC<Props> = ({ setView }) => {
       }
     : pipelineEnabled
       ? {
-          label: 'Paused',
+          label: 'Armed',
           pillClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
           dotClass: 'bg-amber-400',
         }
       : {
-          label: 'Off',
+          label: 'Idle',
           pillClass: 'bg-zinc-900 text-zinc-500 border-zinc-800',
           dotClass: 'bg-zinc-600',
         };
@@ -236,7 +239,9 @@ export const DailyDigest: React.FC<Props> = ({ setView }) => {
           label="Yesterday"
           primary={
             metrics.shippedYesterday === 0 ? (
-              <div className="text-sm text-zinc-500 py-1.5">0 posts · pipeline paused?</div>
+              <div className="text-sm text-zinc-500 py-1.5">
+                0 posts · pipeline {pipelineState.label.toLowerCase()}
+              </div>
             ) : (
               <div>
                 <div className="text-2xl font-semibold">{metrics.shippedYesterday}</div>
