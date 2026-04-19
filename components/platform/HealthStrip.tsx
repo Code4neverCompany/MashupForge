@@ -21,6 +21,8 @@ import React, { useMemo } from 'react';
 import { useMashup } from '../MashupContext';
 import { HealthDot, type HealthState } from './HealthDot';
 import type { ScheduledPost } from '@/types/mashup';
+import { useDesktopConfig } from '@/hooks/useDesktopConfig';
+import { isPlatformConfigured } from '@/lib/platform-credentials';
 
 type PlatformKey = 'instagram' | 'pinterest' | 'twitter' | 'discord';
 
@@ -112,19 +114,20 @@ const derive = (
 
 const usePlatformHealth = () => {
   const { settings } = useMashup();
+  // Desktop creds (config.json) are an alternative source of truth for the
+  // Tauri shell — without consulting them, IG configured via the desktop
+  // settings panel reads as "Missing credentials" (BUG-UI-008). Single
+  // source of truth: lib/platform-credentials.isPlatformConfigured.
+  const { credentials: desktopCreds } = useDesktopConfig();
   return useMemo(() => {
     const posts = settings.scheduledPosts || [];
     const inPipeline = new Set(settings.pipelinePlatforms || []);
     return PLATFORMS.map((p) => {
-      const credsPresent = Boolean(
-        p.key === 'discord'
-          ? settings.apiKeys?.discordWebhook
-          : settings.apiKeys?.[p.key],
-      );
+      const credsPresent = isPlatformConfigured(p.key, settings, desktopCreds);
       const { state, detail } = derive(p.key, credsPresent, inPipeline.has(p.key), posts);
       return { ...p, state, detail };
     });
-  }, [settings.scheduledPosts, settings.pipelinePlatforms, settings.apiKeys]);
+  }, [settings, desktopCreds]);
 };
 
 export const HealthStrip: React.FC = () => {

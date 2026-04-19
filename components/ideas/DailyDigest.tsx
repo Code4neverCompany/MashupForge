@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { useMashup, type ViewType } from '../MashupContext';
 import { DigestTile } from './DigestTile';
+import { useDesktopConfig } from '@/hooks/useDesktopConfig';
+import { isPlatformConfigured } from '@/lib/platform-credentials';
 
 interface Props {
   setView: (v: ViewType) => void;
@@ -182,12 +184,12 @@ export const DailyDigest: React.FC<Props> = ({ setView }) => {
         ? 'bg-amber-500'
         : 'bg-[#c5a062]';
 
+  // Single source of truth: lib/platform-credentials.isPlatformConfigured.
+  // Without consulting desktopCreds, IG configured via the desktop settings
+  // panel reads as unconfigured (BUG-UI-008).
+  const { credentials: desktopCreds } = useDesktopConfig();
   const platformHealth = PLATFORM_CODES.map((p) => {
-    const configured = Boolean(
-      p.key === 'discord'
-        ? settings.apiKeys?.discordWebhook
-        : settings.apiKeys?.[p.key],
-    );
+    const configured = isPlatformConfigured(p.key, settings, desktopCreds);
     return { ...p, configured };
   });
 
