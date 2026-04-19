@@ -202,6 +202,51 @@ jobs:
               }' > "$LATEST"
           fi
 
+      # Portable ZIP build. Tauri v2 does NOT have a "portable" bundle
+      # target (valid BundleType enum: deb, rpm, appimage, msi, nsis, app,
+      # dmg). To produce a no-install zip we stage the raw Rust binary +
+      # resources tree in the layout that src-tauri/src/lib.rs expects
+      # at runtime (resource_dir() returns the executable's parent on
+      # Windows release builds), then zip it. Users extract anywhere and
+      # double-click MashupForge.exe — no NSIS uninstall prompt.
+      - name: Stage and zip portable build
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.tag.outputs.value }}"
+          $version = $tag.TrimStart('v')
+          $stage = "src-tauri/target/release/portable-stage"
+          $bundleDir = "src-tauri/target/release/bundle/nsis"
+          $zipPath = "$bundleDir/MashupForge_${version}_x64-portable.zip"
+
+          # Cargo binary is named after [package].name = "app" → app.exe.
+          # NSIS bundler renames it to MashupForge.exe during packaging,
+          # but the raw build output keeps the cargo name. We rename here
+          # so the portable zip uses the user-facing name.
+          $exeSrc = "src-tauri/target/release/app.exe"
+          if (-not (Test-Path $exeSrc)) {
+            Write-Error "Cargo binary not found at $exeSrc — Tauri build did not complete?"
+            exit 1
+          }
+
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item $exeSrc "$stage/MashupForge.exe"
+          Copy-Item -Recurse "src-tauri/resources" "$stage/resources"
+
+          # WebView2Loader.dll is placed next to the binary by tauri-build
+          # on Windows release. Without it the webview will fail to
+          # initialize when the portable build is extracted to a directory
+          # that doesn't have it on PATH. Fail loud rather than ship broken.
+          $dllSrc = "src-tauri/target/release/WebView2Loader.dll"
+          if (Test-Path $dllSrc) {
+            Copy-Item $dllSrc "$stage/WebView2Loader.dll"
+          } else {
+            Write-Warning "WebView2Loader.dll not found at $dllSrc — portable zip may not run on systems without it on PATH. Continuing because Tauri 2.x sometimes statically links it."
+          }
+
+          Compress-Archive -Path "$stage/*" -DestinationPath $zipPath -Force
+          Write-Host "Portable zip:"
+          Get-ChildItem $zipPath | Select-Object Name, Length
+
       - name: Upload build artifacts for release job
         uses: actions/upload-artifact@v4
         with:
@@ -211,6 +256,9 @@ jobs:
           # under nsis/ would land at bundle/src-tauri/.../nsis/* after
           # download — breaking `ls bundle/*.exe`. A directory path stores
           # files relative to that directory, landing flat in bundle/.
+          # The portable zip is also written under nsis/ so it ships in
+          # the same artifact and lands flat alongside the .exe + .sig +
+          # latest.json after download.
           path: src-tauri/target/release/bundle/nsis
           if-no-files-found: error
           retention-days: 7
@@ -259,3 +307,13 @@ jobs:
           gh release upload "$TAG" "$SIG" --clobber
           gh release upload "$TAG" "$LATEST" --clobber
           echo "Uploaded installer, signature, and updater manifest to $TAG"
+
+          # Portable zip is best-effort: missing zip should not fail the
+          # release upload (the installer is the canonical distribution).
+          ZIP=$(ls bundle/*-portable.zip 2>/dev/null | head -n1)
+          if [ -n "$ZIP" ] && [ -f "$ZIP" ]; then
+            gh release upload "$TAG" "$ZIP" --clobber
+            echo "Uploaded portable zip $ZIP"
+          else
+            echo "::warning::No portable zip found in bundle/ — installer-only release"
+          fi
