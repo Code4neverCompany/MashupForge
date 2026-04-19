@@ -90,19 +90,21 @@ export const PipelineStatusStrip: React.FC<Props> = ({ setView }) => {
       onClick={() => setView('pipeline')}
       title="Open Pipeline"
       aria-label={`Pipeline ${label}, queue ${queueCount}${timerText ? `, ${timerText}` : ''}. Open pipeline tab.`}
-      className="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded-lg border border-[#c5a062]/20 bg-zinc-900/50 hover:bg-zinc-800/70 hover:border-[#00e6ff]/40 transition-colors shrink-0 text-xs text-zinc-300"
+      className="hidden lg:flex items-center gap-3 px-3 py-1.5 rounded-lg border border-[#c5a062]/20 bg-zinc-900/50 hover:bg-zinc-800/70 hover:border-[#00e6ff]/40 transition-colors shrink-0 text-xs text-zinc-300"
     >
-      <span className={`w-2 h-2 rounded-full ${dotClass}`} aria-hidden="true" />
-      <Zap className="w-3.5 h-3.5 text-[#c5a062]" aria-hidden="true" />
-      <span className="font-medium text-zinc-200">{label}</span>
-      <span className="text-zinc-500">·</span>
-      <span className="tabular-nums">
-        <span className="text-zinc-400">Q </span>
-        <span className={queueCount > 0 ? 'text-[#00e6ff]' : 'text-zinc-500'}>{queueCount}</span>
+      <span className="flex items-center gap-1.5">
+        <span className={`w-2 h-2 rounded-full ${dotClass}`} aria-hidden="true" />
+        <Zap className="w-3.5 h-3.5 text-[#c5a062]" aria-hidden="true" />
+        <span className="font-medium text-zinc-200">{label}</span>
+      </span>
+      <span className="h-3 w-px bg-zinc-700" aria-hidden="true" />
+      <span className="flex items-center gap-1.5 tabular-nums">
+        <span className="text-[10px] uppercase tracking-wider text-zinc-500">Queue</span>
+        <span className={queueCount > 0 ? 'text-[#00e6ff] font-medium' : 'text-zinc-400'}>{queueCount}</span>
       </span>
       {timerText && (
         <>
-          <span className="text-zinc-500">·</span>
+          <span className="h-3 w-px bg-zinc-700" aria-hidden="true" />
           <span className="text-zinc-400 tabular-nums max-w-[140px] truncate">{timerText}</span>
         </>
       )}
