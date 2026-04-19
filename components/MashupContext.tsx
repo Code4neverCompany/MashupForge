@@ -208,14 +208,29 @@ export function MashupProvider({ children }: { children: ReactNode }) {
   // it, rejecting any post id (e.g. a stale UI reference) would silently
   // flip an already-scheduled / posted / failed post to 'rejected',
   // pulling it out of the auto-poster's view with no recovery path.
+  //
+  // BUG-DEV-003: also finalize the underlying pipelinePending image(s)
+  // so they land in Gallery instead of being orphaned (pipelinePending=true
+  // forever, invisible everywhere). Reject means "don't post this", not
+  // "delete this asset" — the user already paid the generation cost, so
+  // we surface the image in Gallery (watermarked, like approve does) and
+  // let them delete it explicitly if they really don't want it. Carousel
+  // siblings are released as a group via collectFinalizeTargets.
   const rejectScheduledPost = (postId: string) => {
-    updateSettings((prev) => ({
-      scheduledPosts: (prev.scheduledPosts || []).map((p) =>
-        p.id === postId && p.status === 'pending_approval'
-          ? { ...p, status: 'rejected' as const }
-          : p
-      ),
-    }));
+    let rejectedPost: import('../types/mashup').ScheduledPost | undefined;
+    updateSettings((prev) => {
+      rejectedPost = (prev.scheduledPosts || []).find(
+        (p) => p.id === postId && p.status === 'pending_approval',
+      );
+      return {
+        scheduledPosts: (prev.scheduledPosts || []).map((p) =>
+          p.id === postId && p.status === 'pending_approval'
+            ? { ...p, status: 'rejected' as const }
+            : p
+        ),
+      };
+    });
+    if (rejectedPost) finalizePipelineImagesForPosts([rejectedPost]);
   };
 
   // Bulk variants — single functional-updater pass so N approvals applied
@@ -242,16 +257,26 @@ export function MashupProvider({ children }: { children: ReactNode }) {
   // V050-009 BUG-DEV-001: same status guard as the singular reject —
   // bulk reject must only touch pending_approval posts. Mirrors the
   // bulkApprove guard at lines 226-229.
+  //
+  // BUG-DEV-003: same finalize-on-reject as the singular path — releases
+  // pipelinePending images to Gallery in a single batch.
   const bulkRejectScheduledPosts = (postIds: string[]) => {
     if (postIds.length === 0) return;
     const idSet = new Set(postIds);
-    updateSettings((prev) => ({
-      scheduledPosts: (prev.scheduledPosts || []).map((p) =>
-        idSet.has(p.id) && p.status === 'pending_approval'
-          ? { ...p, status: 'rejected' as const }
-          : p
-      ),
-    }));
+    let rejectedPosts: import('../types/mashup').ScheduledPost[] = [];
+    updateSettings((prev) => {
+      rejectedPosts = (prev.scheduledPosts || []).filter(
+        (p) => idSet.has(p.id) && p.status === 'pending_approval',
+      );
+      return {
+        scheduledPosts: (prev.scheduledPosts || []).map((p) =>
+          idSet.has(p.id) && p.status === 'pending_approval'
+            ? { ...p, status: 'rejected' as const }
+            : p
+        ),
+      };
+    });
+    if (rejectedPosts.length > 0) finalizePipelineImagesForPosts(rejectedPosts);
   };
 
   // V050-005: inline caption editing from the approval queue. Updates
