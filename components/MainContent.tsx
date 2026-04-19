@@ -1994,6 +1994,24 @@ export function MainContent() {
                         />
                       )}
 
+                      {isSuggesting && !paramSuggestion && (
+                        <div
+                          role="status"
+                          aria-live="polite"
+                          className="flex items-center gap-3 bg-zinc-900/50 border border-[#00e6ff]/20 rounded-xl p-4"
+                        >
+                          <Loader2 className="w-4 h-4 text-[#00e6ff] animate-spin shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-[#00e6ff]">
+                              pi is generating model recommendations…
+                            </p>
+                            <p className="text-[10px] text-zinc-500 mt-0.5">
+                              Auto-preview below stays in sync — this adds an applyable suggestion card here.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
                       {/* AI-Optimized Parameters — read-only per-model indicators.
                           pi pre-computes optimal params per model via
                           lib/modelOptimizer whenever the prompt changes.
