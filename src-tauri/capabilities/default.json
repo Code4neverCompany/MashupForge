@@ -7,6 +7,8 @@
   ],
   "permissions": [
     "core:default",
+    "core:app:default",
+    "core:app:allow-version",
     "opener:default",
     "opener:allow-open-url",
     "autostart:allow-enable",

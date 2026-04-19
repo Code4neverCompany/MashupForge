@@ -34,6 +34,7 @@ import {
 import type { UserSettings, WatermarkSettings } from '@/types/mashup';
 import { DesktopSettingsPanel } from './DesktopSettingsPanel';
 import type { SettingsSaveState } from '@/hooks/useSettings';
+import { APP_VERSION, getAppVersion } from '@/lib/app-version';
 
 // FEAT-002b: tab restructure. Four sections — General (collections, channel,
 // image/video defaults, watermark), API Keys (web-only inputs + a desktop hint),
@@ -142,6 +143,22 @@ export function SettingsModal({
   openCollectionModal,
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>('general');
+  // BUG-ACL-006: app version chip in the modal footer. Seeded from the
+  // package.json constant so the footer renders something on the first
+  // paint; upgraded to the Tauri-reported value when the runtime API
+  // resolves. The runtime call is wrapped in try/catch inside
+  // `getAppVersion` so the BUG-ACL-006 throw can't leave the footer
+  // blank — falls back to APP_VERSION on ACL denial.
+  const [appVersion, setAppVersion] = useState<string>(APP_VERSION);
+  useEffect(() => {
+    let cancelled = false;
+    void getAppVersion().then((v) => {
+      if (!cancelled) setAppVersion(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Inline personality-save input — replaces the blocking prompt() dialog.
   const [personalityName, setPersonalityName] = useState<string | null>(null);
   // Which password fields are currently revealed.
@@ -1092,7 +1109,13 @@ export function SettingsModal({
           )}
         </div>
 
-        <div className="p-6 border-t border-zinc-800 bg-zinc-950/50 flex justify-end">
+        <div className="p-6 border-t border-zinc-800 bg-zinc-950/50 flex items-center justify-between gap-3">
+          <span
+            className="text-[10px] text-zinc-500 font-mono select-text"
+            title="MashupForge app version"
+          >
+            v{appVersion}
+          </span>
           <button
             onClick={onClose}
             className="btn-blue-sm px-6 py-2 rounded-lg"
