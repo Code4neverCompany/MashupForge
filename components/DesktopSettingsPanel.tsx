@@ -1,12 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power, Download, RefreshCw } from 'lucide-react';
+import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power, Download, RefreshCw, Camera, MessageCircle, Pin, Hash } from 'lucide-react';
 import {
   DESKTOP_CONFIG_KEYS,
+  PLATFORM_GROUPS,
+  PLATFORM_OWNED_KEYS,
   UPDATER_KEYS,
   UPDATE_BEHAVIOR_DEFAULT,
+  isPlatformEnabled,
   type DesktopConfigFieldMeta,
+  type PlatformGroupMeta,
   type UpdateBehavior,
 } from '@/lib/desktop-config-keys';
 import { LAST_CHECKED_AT_KEY } from './UpdateChecker';
@@ -227,6 +231,76 @@ function FieldRouter({
     return <TextField label={meta.label} hint={meta.hint} value={value} onChange={onChange} />;
   }
   return <SecretField label={meta.label} hint={meta.hint} value={value} onChange={onChange} />;
+}
+
+// ── V060-002: Platform group ─────────────────────────────────────────────────
+
+const PLATFORM_ICONS: Record<PlatformGroupMeta['id'], typeof Camera> = {
+  instagram: Camera,
+  twitter: MessageCircle,
+  pinterest: Pin,
+  discord: Hash,
+};
+
+interface PlatformGroupSectionProps {
+  group: PlatformGroupMeta;
+  enabled: boolean;
+  fieldMetas: ReadonlyArray<DesktopConfigFieldMeta>;
+  draft: Record<string, string>;
+  onToggle: (next: boolean) => void;
+  onFieldChange: (key: string, value: string) => void;
+}
+
+function PlatformGroupSection({
+  group,
+  enabled,
+  fieldMetas,
+  draft,
+  onToggle,
+  onFieldChange,
+}: PlatformGroupSectionProps) {
+  const Icon = PLATFORM_ICONS[group.id];
+  const showToggle = !group.alwaysOn;
+
+  return (
+    <div className="rounded-lg border border-zinc-800/60 bg-[#050505]/40">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <Icon className="w-3.5 h-3.5 text-[#c5a062] shrink-0" />
+          <span className="text-xs font-semibold text-white truncate">{group.label}</span>
+          {group.alwaysOn && (
+            <span className="text-[9px] uppercase tracking-wider text-zinc-600">core</span>
+          )}
+        </div>
+        {showToggle && (
+          <button
+            type="button"
+            onClick={() => onToggle(!enabled)}
+            aria-pressed={enabled}
+            aria-label={enabled ? `Disable ${group.label}` : `Enable ${group.label}`}
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent
+              transition-colors focus:outline-none focus:ring-2 focus:ring-[#c5a062]/40
+              ${enabled ? 'bg-[#c5a062]' : 'bg-zinc-700'}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform
+              ${enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+          </button>
+        )}
+      </div>
+      {enabled && fieldMetas.length > 0 && (
+        <div className="space-y-3 px-3 pb-3 pt-1 border-t border-zinc-800/60">
+          {fieldMetas.map((meta) => (
+            <FieldRouter
+              key={meta.key}
+              meta={meta}
+              value={draft[meta.key] ?? ''}
+              onChange={(v) => onFieldChange(meta.key, v)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── FEAT-002: Updates subsection ─────────────────────────────────────────────
@@ -697,18 +771,49 @@ export function DesktopSettingsPanel() {
       )}
 
       {/* Config fields — kind-discriminated dispatch.
-          UPDATER_KEYS are owned by the dedicated Updates subsection below
-          so the user sees them grouped with version + Check Now controls
-          rather than buried in the API-key list. */}
+          UPDATER_KEYS render in the dedicated Updates subsection below.
+          PLATFORM_OWNED_KEYS render in the Platforms section so the
+          per-platform toggle controls visibility (V060-002). */}
       <div className="space-y-4">
-        {DESKTOP_CONFIG_KEYS.filter((meta) => !UPDATER_KEYS.has(meta.key)).map((meta) => (
-          <FieldRouter
-            key={meta.key}
-            meta={meta}
-            value={draft[meta.key] ?? ''}
-            onChange={(v) => setDraft((prev) => ({ ...prev, [meta.key]: v }))}
-          />
-        ))}
+        {DESKTOP_CONFIG_KEYS
+          .filter((meta) => !UPDATER_KEYS.has(meta.key) && !PLATFORM_OWNED_KEYS.has(meta.key))
+          .map((meta) => (
+            <FieldRouter
+              key={meta.key}
+              meta={meta}
+              value={draft[meta.key] ?? ''}
+              onChange={(v) => setDraft((prev) => ({ ...prev, [meta.key]: v }))}
+            />
+          ))}
+      </div>
+
+      {/* V060-002: Platforms section — each non-core platform has a toggle
+          that hides its API fields when off. Instagram is core and always
+          renders its fields. Disabled platforms keep their stored creds
+          on disk; the toggle is a visibility control, not a wipe. */}
+      <div className="space-y-2">
+        <h5 className="text-xs font-semibold text-white">Platforms</h5>
+        {PLATFORM_GROUPS.map((group) => {
+          const fieldMetas = DESKTOP_CONFIG_KEYS.filter((m) => group.fieldKeys.includes(m.key));
+          const enabled = isPlatformEnabled(group, draft);
+          return (
+            <PlatformGroupSection
+              key={group.id}
+              group={group}
+              enabled={enabled}
+              fieldMetas={fieldMetas}
+              draft={draft}
+              onToggle={(next) =>
+                setDraft((prev) =>
+                  group.enabledKey ? { ...prev, [group.enabledKey]: next ? '1' : '0' } : prev,
+                )
+              }
+              onFieldChange={(key, value) =>
+                setDraft((prev) => ({ ...prev, [key]: value }))
+              }
+            />
+          );
+        })}
       </div>
 
       {/* FEAT-006: Updates subsection — version readout, manual check,

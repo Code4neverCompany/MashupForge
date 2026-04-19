@@ -47,6 +47,14 @@ export const DESKTOP_CONFIG_KEYS: readonly DesktopConfigFieldMeta[] = [
   { key: 'PINTEREST_ACCESS_TOKEN', label: 'Pinterest Access Token', hint: 'From developers.pinterest.com (pins:write scope)' },
   { key: 'PINTEREST_BOARD_ID',     label: 'Pinterest Board ID',     hint: 'Target board ID (optional — defaults to first board)' },
   { key: 'DISCORD_WEBHOOK_URL',    label: 'Discord Webhook URL',    hint: 'Channel webhook URL from Server Settings → Integrations' },
+  // V060-002: per-platform enable flags. Stored as '1' (on) / '' (off).
+  // Empty string is treated as "absent" by the PATCH endpoint and removed
+  // from config.json — that is the off state. The UI computes the default
+  // from existing creds so users with already-configured platforms see
+  // their fields expanded on first load (graceful migration).
+  { key: 'TWITTER_ENABLED',        label: 'Twitter enabled',        hint: 'Internal toggle — managed by the Platforms section.' },
+  { key: 'PINTEREST_ENABLED',      label: 'Pinterest enabled',      hint: 'Internal toggle — managed by the Platforms section.' },
+  { key: 'DISCORD_ENABLED',        label: 'Discord enabled',        hint: 'Internal toggle — managed by the Platforms section.' },
   // FEAT-006: tri-state gate for UpdateChecker's launch-time behavior.
   // 'auto'   → silently download + relaunch on every launch
   // 'notify' → show banner with "Update Now" button (default)
@@ -59,6 +67,82 @@ export const DESKTOP_CONFIG_KEYS: readonly DesktopConfigFieldMeta[] = [
 // Keys owned by a dedicated subsection in DesktopSettingsPanel. The
 // generic FieldRouter loop filters these out so they don't render twice.
 export const UPDATER_KEYS: ReadonlySet<string> = new Set(['UPDATE_BEHAVIOR']);
+
+// V060-002: platform groupings for the Desktop tab. Each group renders
+// as a single compact row when toggled OFF and expands to show its
+// fieldKeys when toggled ON. Instagram is `alwaysOn` so the toggle is
+// hidden — it's the core platform and the rest of the app assumes it.
+// `enabledKey` is null for alwaysOn groups (no flag persisted).
+export interface PlatformGroupMeta {
+  id: 'instagram' | 'twitter' | 'pinterest' | 'discord';
+  label: string;
+  enabledKey: string | null;
+  fieldKeys: readonly string[];
+  alwaysOn: boolean;
+}
+
+export const PLATFORM_GROUPS: readonly PlatformGroupMeta[] = [
+  {
+    id: 'instagram',
+    label: 'Instagram',
+    enabledKey: null,
+    fieldKeys: ['INSTAGRAM_ACCOUNT_ID', 'INSTAGRAM_ACCESS_TOKEN'],
+    alwaysOn: true,
+  },
+  {
+    id: 'twitter',
+    label: 'Twitter / X',
+    enabledKey: 'TWITTER_ENABLED',
+    fieldKeys: ['TWITTER_APP_KEY', 'TWITTER_APP_SECRET', 'TWITTER_ACCESS_TOKEN', 'TWITTER_ACCESS_SECRET'],
+    alwaysOn: false,
+  },
+  {
+    id: 'pinterest',
+    label: 'Pinterest',
+    enabledKey: 'PINTEREST_ENABLED',
+    fieldKeys: ['PINTEREST_ACCESS_TOKEN', 'PINTEREST_BOARD_ID'],
+    alwaysOn: false,
+  },
+  {
+    id: 'discord',
+    label: 'Discord',
+    enabledKey: 'DISCORD_ENABLED',
+    fieldKeys: ['DISCORD_WEBHOOK_URL'],
+    alwaysOn: false,
+  },
+] as const;
+
+// Union of every key that belongs to a platform group, plus the enable
+// flags. Used by DesktopSettingsPanel to filter the generic FieldRouter
+// loop so platform fields don't render twice (once flat, once grouped).
+export const PLATFORM_OWNED_KEYS: ReadonlySet<string> = new Set(
+  PLATFORM_GROUPS.flatMap((g) => [...g.fieldKeys, ...(g.enabledKey ? [g.enabledKey] : [])]),
+);
+
+// Default toggle state when the user hasn't explicitly set the flag.
+// Returns true if any of the platform's field keys already has a value
+// — preserves existing setups so first-load doesn't hide working creds.
+export function platformEnabledDefault(
+  group: PlatformGroupMeta,
+  values: Record<string, string>,
+): boolean {
+  if (group.alwaysOn) return true;
+  return group.fieldKeys.some((k) => (values[k] ?? '').trim().length > 0);
+}
+
+// Read the current toggle state from a values map. Honors an explicit
+// '1' / '' flag if set, otherwise falls back to platformEnabledDefault.
+export function isPlatformEnabled(
+  group: PlatformGroupMeta,
+  values: Record<string, string>,
+): boolean {
+  if (group.alwaysOn) return true;
+  if (!group.enabledKey) return true;
+  const raw = values[group.enabledKey];
+  if (raw === '1') return true;
+  if (raw === '0') return false;
+  return platformEnabledDefault(group, values);
+}
 
 // Default when UPDATE_BEHAVIOR is missing from config.json — safe choice
 // (user is informed before any download happens).
