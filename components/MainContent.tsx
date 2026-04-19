@@ -116,6 +116,8 @@ import { ImageDetailModal } from './ImageDetailModal';
 import { BulkTagModal } from './BulkTagModal';
 import { LazyImg } from './LazyImg';
 import { AspectPreview } from './postready/AspectPreview';
+import { PostReadyCard } from './postready/PostReadyCard';
+import { PostReadyCarouselCard } from './postready/PostReadyCarouselCard';
 import { EmptyGalleryState } from './EmptyGalleryState';
 import { GalleryCard } from './GalleryCard';
 // V050-002 Phase 1: per-view modules under components/views. Phase 1
@@ -3555,7 +3557,7 @@ export function MainContent() {
                     ) : (
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {computeCarouselView(ready).map((item) => {
-                          // ── Carousel card branch ───────────────────────
+                          // ── Carousel card branch — V060-001 ─────────────
                           if (item.kind === 'carousel') {
                             const key = `carousel-${item.id}`;
                             const busy = postBusy[key];
@@ -3563,515 +3565,101 @@ export function MainContent() {
                             const anchor = item.images[0];
                             const isExplicit = !!item.group;
                             const selPlatforms = getSelectedPlatforms(key);
-                            const carouselSchedule = getSchedule(key);
                             const isCarouselRegen = preparingPostId === anchor.id;
-                            // BUG-DES-001: parity with single-image card —
-                            // carousels must show scheduled/posted/failed
-                            // status from the auto-poster path, not just
-                            // the manual Post Now anchor.postedAt/postError.
-                            // Sibling posts share status (group ships atomically)
-                            // so checking the anchor's latest scheduled post
-                            // is sufficient.
                             const carouselScheduled = latestScheduleFor(anchor.id);
-                            const carouselBadge = anchor.postedAt
-                              ? { text: `Posted${anchor.postedTo?.length ? ` to ${anchor.postedTo.join(', ')}` : ''}`, color: 'bg-emerald-600' }
-                              : anchor.postError
-                                ? { text: 'Failed', color: 'bg-red-600' }
-                                : carouselScheduled?.status === 'posted'
-                                  ? { text: 'Posted', color: 'bg-emerald-600' }
-                                  : carouselScheduled?.status === 'failed'
-                                    ? { text: 'Failed', color: 'bg-red-600' }
-                                    : carouselScheduled?.status === 'scheduled'
-                                      ? { text: `Scheduled ${carouselScheduled.date} ${formatTimeShort(carouselScheduled.time)}`, color: 'bg-amber-600' }
-                                      : null;
                             return (
-                              <div
+                              <PostReadyCarouselCard
                                 key={item.id}
-                                className="bg-zinc-900/80 backdrop-blur-sm border border-[#c5a062]/20 rounded-2xl overflow-hidden hover:border-[#c5a062]/40 transition-all duration-300 flex flex-col"
-                              >
-                                {/* Horizontal image strip */}
-                                <div className="relative bg-zinc-950 overflow-x-auto">
-                                  <div className="flex gap-1 p-2" style={{ minHeight: 160 }}>
-                                    {item.images.map((ci) => (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img
-                                        key={ci.id}
-                                        src={ci.url}
-                                        alt={ci.prompt}
-                                        loading="lazy"
-                                        onClick={() => setSelectedImage(ci)}
-                                        className="h-36 w-36 object-cover rounded-lg cursor-zoom-in shrink-0"
-                                      />
-                                    ))}
-                                  </div>
-                                  <div className="absolute top-3 left-3 flex items-center gap-1.5">
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#00e6ff]/15 border border-[#00e6ff]/30 text-[10px] font-medium text-[#00e6ff] rounded-full">
-                                      <LayoutGrid className="w-3 h-3" /> Carousel · {item.images.length} images
-                                    </span>
-                                    {carouselBadge && (
-                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 ${carouselBadge.color}/90 text-[10px] font-medium text-white rounded-full`}>
-                                        {carouselBadge.text}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {isExplicit && (
-                                    <span className="absolute top-3 right-3 inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-800/80 text-[10px] font-medium text-zinc-300 rounded-full border border-zinc-700">
-                                      manual
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Persistent post-status banner — wins over
-                                    ephemeral `status` below (which is only
-                                    in-flight feedback). Anchor's persistent
-                                    fields apply to the whole carousel because
-                                    postCarouselNow patches every image. */}
-                                {(anchor.postedAt || anchor.postError || carouselScheduled?.status === 'posted' || carouselScheduled?.status === 'failed') && (
-                                  <div
-                                    className={`px-4 py-2 text-[11px] font-medium border-b ${
-                                      anchor.postError || carouselScheduled?.status === 'failed'
-                                        ? `${uiStatus.error.subtleBg} ${uiStatus.error.text} border-red-500/30`
-                                        : `${uiStatus.success.subtleBg} ${uiStatus.success.text} border-emerald-500/30`
-                                    }`}
-                                  >
-                                    {anchor.postError
-                                      ? `Failed: ${anchor.postError}`
-                                      : carouselScheduled?.status === 'failed'
-                                        ? `Failed`
-                                        : `Posted${anchor.postedTo?.length ? ` to ${anchor.postedTo.join(', ')}` : ''} ✓`}
-                                  </div>
-                                )}
-
-                                {/* Shared caption (anchor image's) */}
-                                <div className="p-4 space-y-3 border-b border-[#c5a062]/15">
-                                  <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                      Shared caption
-                                    </label>
-                                    <AutoTextarea
-                                      value={anchor.postCaption || ''}
-                                      onChange={(e) => {
-                                        // Edit caption on every image in the carousel
-                                        // so the route sends a consistent copy.
-                                        propagateCaptionToGroup(item.images, e.target.value, undefined);
-                                      }}
-                                      placeholder="No caption yet…"
-                                      minRows={2}
-                                      className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-[#c5a062]/50 focus:outline-none transition-colors"
-                                    />
-                                  </div>
-                                  {(anchor.postHashtags || []).length > 0 && (
-                                    <div className="flex flex-wrap gap-1">
-                                      {(anchor.postHashtags ?? []).map((tag, i) => (
-                                        <span
-                                          key={`${tag}-${i}`}
-                                          className="px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-[10px] text-zinc-300"
-                                        >
-                                          {tag}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                  <p className="text-[11px] text-zinc-500 line-clamp-2" title={anchor.prompt}>
-                                    {anchor.prompt}
-                                  </p>
-                                </div>
-
-                                {/* Platform picker + actions */}
-                                <div className="p-4 space-y-3">
-                                  <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                      Platforms
-                                    </label>
-                                    {available.length === 0 ? (
-                                      <p className="text-[11px] text-amber-400">Configure a platform in Settings.</p>
-                                    ) : (
-                                      <div className="flex flex-wrap gap-1.5">
-                                        {available.map((p) => {
-                                          const checked = selPlatforms.includes(p);
-                                          return (
-                                            <button
-                                              key={p}
-                                              type="button"
-                                              onClick={() => togglePlatformFor(key, p)}
-                                              className={`px-2.5 py-1 text-[10px] rounded-full border transition-colors ${
-                                                checked
-                                                  ? `${platformBadgeClass(p)} text-white border-transparent`
-                                                  : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
-                                              }`}
-                                            >
-                                              {checked && <Check className="w-3 h-3 inline mr-1" />}
-                                              {p}
-                                            </button>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {/* Date + time */}
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <div className="space-y-1">
-                                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Date</label>
-                                      <input
-                                        type="date"
-                                        value={carouselSchedule.date}
-                                        onChange={(e) => setScheduleFor(key, { date: e.target.value })}
-                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
-                                      />
-                                    </div>
-                                    <div className="space-y-1">
-                                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Time</label>
-                                      <TimePicker24
-                                        value={carouselSchedule.time}
-                                        onChange={(v) => setScheduleFor(key, { time: v })}
-                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                      disabled={!!busy || selPlatforms.length === 0 || !carouselSchedule.date || !carouselSchedule.time}
-                                      onClick={() => scheduleCarousel(item, selPlatforms, carouselSchedule.date, carouselSchedule.time)}
-                                      className="btn-gold-sm text-[11px] px-2 justify-center"
-                                    >
-                                      <Clock className="w-3.5 h-3.5" /> Schedule
-                                    </button>
-                                    <button
-                                      disabled={!!busy || selPlatforms.length === 0}
-                                      onClick={() => postCarouselNow(item, selPlatforms)}
-                                      className="btn-blue-sm text-[11px] px-2 justify-center"
-                                    >
-                                      {busy === 'posting' ? (
-                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                      ) : (
-                                        <Send className="w-3.5 h-3.5" />
-                                      )}
-                                      Post Now
-                                    </button>
-                                  </div>
-
-                                  {/* Secondary row: copy caption, regen, unready all */}
-                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                    <button
-                                      onClick={() => copyWithFeedback(formatPost(anchor), `all-${key}`)}
-                                      disabled={!anchor.postCaption}
-                                      className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1 transition-colors"
-                                    >
-                                      {copiedId === `all-${key}` ? (
-                                        <Check className="w-3 h-3 text-emerald-400" />
-                                      ) : (
-                                        <Copy className="w-3 h-3" />
-                                      )}
-                                      Copy
-                                    </button>
-                                    <button
-                                      disabled={isCarouselRegen || !!busy}
-                                      onClick={async () => {
-                                        // Explicit "Regen" click → force
-                                        // overwrite even captioned siblings.
-                                        setPreparingPostId(anchor.id);
-                                        try {
-                                          await fanCaptionToGroup(anchor, item.images, { force: true });
-                                        } finally {
-                                          setPreparingPostId(null);
-                                        }
-                                      }}
-                                      className="px-2 py-1.5 text-[10px] bg-[#00e6ff]/15 hover:bg-[#00e6ff]/25 border border-[#00e6ff]/30 disabled:opacity-50 text-[#00e6ff] rounded-xl flex items-center justify-center gap-1 transition-colors"
-                                    >
-                                      {isCarouselRegen ? (
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                      ) : (
-                                        <RefreshCw className="w-3 h-3" />
-                                      )}
-                                      Regen
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        for (const ci of item.images) {
-                                          patchImage(ci, { isPostReady: false });
-                                        }
-                                      }}
-                                      className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-red-500/80 text-white rounded-xl flex items-center justify-center gap-1 transition-colors"
-                                    >
-                                      <MinusCircle className="w-3 h-3" />
-                                      Unready
-                                    </button>
-                                  </div>
-
-                                  <div className="flex items-center gap-2">
-                                    {isExplicit ? (
-                                      <button
-                                        onClick={() => separateCarousel(item.id)}
-                                        className="flex-1 px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl flex items-center justify-center gap-1.5 transition-colors"
-                                      >
-                                        <Columns className="w-3 h-3" /> Separate
-                                      </button>
-                                    ) : (
-                                      <button
-                                        onClick={() => persistCarouselGroup(`manual-${anchor.id}`, item.images.map((i) => i.id))}
-                                        className="flex-1 px-2 py-1.5 text-[10px] bg-[#00e6ff]/15 hover:bg-[#00e6ff]/25 border border-[#00e6ff]/30 text-[#00e6ff] rounded-xl flex items-center justify-center gap-1.5 transition-colors"
-                                        title="Save this auto-detected grouping"
-                                      >
-                                        <LayoutGrid className="w-3 h-3" /> Lock Group
-                                      </button>
-                                    )}
-                                  </div>
-
-                                  {status && (
-                                    <p className={`text-[11px] ${status.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'}`}>
-                                      {status}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
+                                images={item.images}
+                                isExplicit={isExplicit}
+                                scheduledPost={carouselScheduled}
+                                allScheduledPosts={settings.scheduledPosts || []}
+                                selectedPlatforms={selPlatforms}
+                                available={available}
+                                busy={busy}
+                                status={status}
+                                isRegen={isCarouselRegen}
+                                copyHighlighted={copiedId === `all-${key}`}
+                                onPreviewClick={(ci) => setSelectedImage(ci)}
+                                onCaptionChange={(next) =>
+                                  propagateCaptionToGroup(item.images, next, undefined)
+                                }
+                                onTogglePlatform={(p) => togglePlatformFor(key, p)}
+                                onPostNow={() => postCarouselNow(item, selPlatforms)}
+                                onSchedule={(date, time) =>
+                                  scheduleCarousel(item, selPlatforms, date, time)
+                                }
+                                onCopy={() =>
+                                  copyWithFeedback(formatPost(anchor), `all-${key}`)
+                                }
+                                onRegen={async () => {
+                                  setPreparingPostId(anchor.id);
+                                  try {
+                                    await fanCaptionToGroup(anchor, item.images, { force: true });
+                                  } finally {
+                                    setPreparingPostId(null);
+                                  }
+                                }}
+                                onUnreadyAll={() => {
+                                  for (const ci of item.images) {
+                                    patchImage(ci, { isPostReady: false });
+                                  }
+                                }}
+                                onSeparate={() => separateCarousel(item.id)}
+                                onLockGroup={() =>
+                                  persistCarouselGroup(`manual-${anchor.id}`, item.images.map((i) => i.id))
+                                }
+                              />
                             );
                           }
 
-                          // ── Single-image card branch (original) ───────
+                          // ── Single-image card branch — V060-001 ─────────
                           const img = item.img;
                           const isRegen = preparingPostId === img.id;
                           const selPlatforms = getSelectedPlatforms(img.id);
-                          const schedule = getSchedule(img.id);
                           const busy = postBusy[img.id];
                           const status = postStatus[img.id];
                           const scheduled = latestScheduleFor(img.id);
-                          // Status badge — manual Post Now state (img.postedAt /
-                          // img.postError) wins, then latest scheduled post,
-                          // then default Ready. All three sources are persistent
-                          // so the badge survives tab switch + reload.
-                          const badge = img.postedAt
-                            ? { text: `Posted${img.postedTo?.length ? ` to ${img.postedTo.join(', ')}` : ''}`, color: 'bg-emerald-600' }
-                            : img.postError
-                              ? { text: `Failed: ${img.postError}`, color: 'bg-red-600' }
-                              : scheduled?.status === 'posted'
-                                ? { text: 'Posted', color: 'bg-emerald-600' }
-                                : scheduled?.status === 'failed'
-                                  ? { text: 'Failed', color: 'bg-red-600' }
-                                  : scheduled?.status === 'scheduled'
-                                    ? { text: `Scheduled ${scheduled.date} ${formatTimeShort(scheduled.time)}`, color: 'bg-amber-600' }
-                                    : { text: 'Ready', color: 'bg-emerald-600' };
                           return (
-                            <div
+                            <PostReadyCard
                               key={img.id}
-                              className="bg-zinc-900/80 backdrop-blur-sm border border-[#c5a062]/20 rounded-2xl overflow-hidden flex flex-col md:flex-row hover:border-[#c5a062]/40 transition-all duration-300"
-                            >
-                              {/* Image — V040-009: aspect crop preview reflects
-                                  the platforms the user has selected on the
-                                  card so they see how it'll appear in feed. */}
-                              <AspectPreview
-                                src={img.url}
-                                alt={img.prompt}
-                                selectedPlatforms={selPlatforms}
-                                onClick={() => setSelectedImage(img)}
-                                overlay={
-                                  <>
-                                    <span className={`absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 ${badge.color}/90 text-[10px] font-medium text-white rounded-full`}>
-                                      <Check className="w-3 h-3" /> {badge.text}
-                                    </span>
-                                    {/* Carousel-grouping checkbox — top-right.
-                                        Lets users multi-select single cards
-                                        and bulk-group them via the header
-                                        "Group Selected" button. */}
-                                    <label
-                                      className="absolute top-2 right-2 z-10 flex items-center justify-center w-6 h-6 bg-black/60 backdrop-blur-sm rounded cursor-pointer hover:bg-black/80 transition-colors"
-                                      onClick={(e) => e.stopPropagation()}
-                                      title="Select for grouping"
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={postReadySelected.has(img.id)}
-                                        onChange={(e) => {
-                                          const next = new Set(postReadySelected);
-                                          if (e.target.checked) next.add(img.id);
-                                          else next.delete(img.id);
-                                          setPostReadySelected(next);
-                                        }}
-                                        className="w-4 h-4 accent-[#00e6ff] cursor-pointer"
-                                      />
-                                    </label>
-                                  </>
+                              img={img}
+                              scheduledPost={scheduled}
+                              allScheduledPosts={settings.scheduledPosts || []}
+                              selectedPlatforms={selPlatforms}
+                              available={available}
+                              busy={busy}
+                              status={status}
+                              isRegen={isRegen}
+                              groupingChecked={postReadySelected.has(img.id)}
+                              onGroupingToggle={(checked) => {
+                                const next = new Set(postReadySelected);
+                                if (checked) next.add(img.id);
+                                else next.delete(img.id);
+                                setPostReadySelected(next);
+                              }}
+                              copyHighlighted={copiedId === `all-${img.id}`}
+                              onPreviewClick={() => setSelectedImage(img)}
+                              onCaptionChange={(next) => patchImage(img, { postCaption: next })}
+                              onRemoveHashtag={(i) => removeHashtag(img, i)}
+                              onTogglePlatform={(p) => togglePlatformFor(img.id, p)}
+                              onPostNow={() => postImageNow(img, selPlatforms)}
+                              onSchedule={(date, time) =>
+                                scheduleImage(img, selPlatforms, date, time)
+                              }
+                              onCopy={() =>
+                                copyWithFeedback(formatPost(img), `all-${img.id}`)
+                              }
+                              onRegen={async () => {
+                                setPreparingPostId(img.id);
+                                try {
+                                  await generatePostContent(img);
+                                } finally {
+                                  setPreparingPostId(null);
                                 }
-                              />
-
-                              {/* Right column */}
-                              <div className="flex-1 flex flex-col">
-                                {/* Caption + hashtags */}
-                                <div className="flex-1 p-4 space-y-3 border-b border-[#c5a062]/15">
-                                  <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                      Caption
-                                    </label>
-                                    <AutoTextarea
-                                      value={img.postCaption || ''}
-                                      onChange={(e) => patchImage(img, { postCaption: e.target.value })}
-                                      placeholder="No caption yet…"
-                                      minRows={2}
-                                      className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-[#c5a062]/50 focus:outline-none transition-colors"
-                                    />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                      Hashtags
-                                    </label>
-                                    {(img.postHashtags || []).length > 0 ? (
-                                      <div className="flex flex-wrap gap-1">
-                                        {(img.postHashtags ?? []).map((tag, i) => (
-                                          <span
-                                            key={`${tag}-${i}`}
-                                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-[10px] text-zinc-300"
-                                          >
-                                            {tag}
-                                            <button
-                                              onClick={() => removeHashtag(img, i)}
-                                              className="text-zinc-500 hover:text-red-400"
-                                            >
-                                              <X className="w-2.5 h-2.5" />
-                                            </button>
-                                          </span>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <p className="text-[11px] text-zinc-600 italic">No hashtags.</p>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Platform + scheduling */}
-                                <div className="p-4 space-y-3">
-                                  {/* Platform toggles — only show ones with creds */}
-                                  <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                      Platforms
-                                    </label>
-                                    {available.length === 0 ? (
-                                      <p className="text-[11px] text-amber-400">
-                                        Configure a platform in Settings first.
-                                      </p>
-                                    ) : (
-                                      <div className="flex flex-wrap gap-1.5">
-                                        {available.map((p) => {
-                                          const checked = selPlatforms.includes(p);
-                                          return (
-                                            <button
-                                              key={p}
-                                              type="button"
-                                              onClick={() => togglePlatformFor(img.id, p)}
-                                              className={`px-2.5 py-1 text-[10px] rounded-full border transition-colors ${
-                                                checked
-                                                  ? `${platformBadgeClass(p)} text-white border-transparent`
-                                                  : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
-                                              }`}
-                                            >
-                                              {checked && <Check className="w-3 h-3 inline mr-1" />}
-                                              {p}
-                                            </button>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {/* Date + time */}
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <div className="space-y-1">
-                                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                        Date
-                                      </label>
-                                      <input
-                                        type="date"
-                                        value={schedule.date}
-                                        onChange={(e) => setScheduleFor(img.id, { date: e.target.value })}
-                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#c5a062]/30"
-                                      />
-                                    </div>
-                                    <div className="space-y-1">
-                                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                        Time
-                                      </label>
-                                      <TimePicker24
-                                        value={schedule.time}
-                                        onChange={(v) => setScheduleFor(img.id, { time: v })}
-                                        className="w-full bg-zinc-950 border border-zinc-800/60 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#c5a062]/30"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  {/* Action row */}
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                      disabled={!!busy || selPlatforms.length === 0 || !schedule.date || !schedule.time}
-                                      onClick={() => scheduleImage(img, selPlatforms, schedule.date, schedule.time)}
-                                      className="btn-gold-sm text-[11px] px-2 justify-center"
-                                    >
-                                      <Clock className="w-3.5 h-3.5" /> Schedule
-                                    </button>
-                                    <button
-                                      disabled={!!busy || selPlatforms.length === 0}
-                                      onClick={() => postImageNow(img, selPlatforms)}
-                                      className="btn-blue-sm text-[11px] px-2 justify-center"
-                                    >
-                                      {busy === 'posting' ? (
-                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                      ) : (
-                                        <Send className="w-3.5 h-3.5" />
-                                      )}
-                                      Post Now
-                                    </button>
-                                  </div>
-
-                                  {/* Secondary row: copy, regen, unready */}
-                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                    <button
-                                      onClick={() => copyWithFeedback(formatPost(img), `all-${img.id}`)}
-                                      disabled={!img.postCaption}
-                                      className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-xl flex items-center justify-center gap-1 transition-colors"
-                                    >
-                                      {copiedId === `all-${img.id}` ? (
-                                        <Check className="w-3 h-3 text-emerald-400" />
-                                      ) : (
-                                        <Copy className="w-3 h-3" />
-                                      )}
-                                      Copy
-                                    </button>
-                                    <button
-                                      disabled={isRegen}
-                                      onClick={async () => {
-                                        setPreparingPostId(img.id);
-                                        try {
-                                          await generatePostContent(img);
-                                        } finally {
-                                          setPreparingPostId(null);
-                                        }
-                                      }}
-                                      className="px-2 py-1.5 text-[10px] bg-[#00e6ff]/15 hover:bg-[#00e6ff]/25 border border-[#00e6ff]/30 disabled:opacity-50 text-[#00e6ff] rounded-xl flex items-center justify-center gap-1 transition-colors"
-                                    >
-                                      {isRegen ? (
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                      ) : (
-                                        <RefreshCw className="w-3 h-3" />
-                                      )}
-                                      Regen
-                                    </button>
-                                    <button
-                                      onClick={() => patchImage(img, { isPostReady: false })}
-                                      className="px-2 py-1.5 text-[10px] bg-zinc-800 hover:bg-red-500/80 text-white rounded-xl flex items-center justify-center gap-1 transition-colors"
-                                    >
-                                      <MinusCircle className="w-3 h-3" />
-                                      Unready
-                                    </button>
-                                  </div>
-
-                                  {/* Inline status line */}
-                                  {status && (
-                                    <p className={`text-[11px] ${status.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'}`}>
-                                      {status}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
+                              }}
+                              onUnready={() => patchImage(img, { isPostReady: false })}
+                            />
                           );
                         })}
                       </div>

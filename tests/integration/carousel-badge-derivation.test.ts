@@ -1,7 +1,7 @@
-// BUG-CRIT-007 / BUG-DES-001: pin the badge-derivation contract for
-// the Post Ready carousel card. Mirrors the inline logic at
-// components/MainContent.tsx:3546-3556 (carousel) and :3814-3824
-// (single-image, used here as the parity reference).
+// V060-001: post-ready card status derivation moved to a shared helper
+// (lib/post-ready-status.derivePostReadyStatus) so the single-image and
+// carousel cards stay in lockstep. This test file kept the BUG-CRIT-007
+// regression coverage and now points at the shared helper directly.
 //
 // Bug: pre-fix, the carousel branch only read anchor.postedAt /
 // anchor.postError — i.e. the manual Post Now path. The auto-poster
@@ -9,45 +9,10 @@
 // never inspected. So an auto-posted carousel showed no badge after
 // reload, even though the data was sitting in settings.scheduledPosts
 // with status: 'posted'.
-//
-// Fix: carousel branch now also reads latestScheduleFor(anchor.id)?.status,
-// matching the single-image card. Both UI surfaces now contribute to
-// the badge.
 
 import { describe, it, expect } from 'vitest';
 import type { GeneratedImage, ScheduledPost } from '@/types/mashup';
-
-type Badge = { text: string; color: string } | null;
-
-// Mirror of components/MainContent.tsx:3546-3556 (carousel branch).
-function deriveCarouselBadge(
-  anchor: GeneratedImage,
-  carouselScheduled: ScheduledPost | undefined,
-  formatTimeShort: (t: string) => string = (t) => t,
-): Badge {
-  if (anchor.postedAt) {
-    return {
-      text: `Posted${anchor.postedTo?.length ? ` to ${anchor.postedTo.join(', ')}` : ''}`,
-      color: 'bg-emerald-600',
-    };
-  }
-  if (anchor.postError) {
-    return { text: 'Failed', color: 'bg-red-600' };
-  }
-  if (carouselScheduled?.status === 'posted') {
-    return { text: 'Posted', color: 'bg-emerald-600' };
-  }
-  if (carouselScheduled?.status === 'failed') {
-    return { text: 'Failed', color: 'bg-red-600' };
-  }
-  if (carouselScheduled?.status === 'scheduled') {
-    return {
-      text: `Scheduled ${carouselScheduled.date} ${formatTimeShort(carouselScheduled.time)}`,
-      color: 'bg-amber-600',
-    };
-  }
-  return null;
-}
+import { derivePostReadyStatus } from '@/lib/post-ready-status';
 
 const mkAnchor = (overrides: Partial<GeneratedImage> = {}): GeneratedImage => ({
   id: 'anchor-1',
@@ -67,87 +32,81 @@ const mkPost = (overrides: Partial<ScheduledPost> = {}): ScheduledPost => ({
   ...overrides,
 });
 
-describe('BUG-CRIT-007 — carousel badge derivation', () => {
+describe('BUG-CRIT-007 — carousel/single-image status derivation (shared helper)', () => {
   describe('manual Post Now path (anchor.postedAt / postError) — wins over schedule', () => {
     it('renders Posted with platforms when anchor.postedAt is set', () => {
-      const badge = deriveCarouselBadge(
+      const s = derivePostReadyStatus(
         mkAnchor({ postedAt: 1234, postedTo: ['instagram', 'discord'] }),
         undefined,
       );
-      expect(badge).toEqual({ text: 'Posted to instagram, discord', color: 'bg-emerald-600' });
+      expect(s).toEqual({ kind: 'posted', label: 'Posted to instagram, discord' });
     });
 
     it('renders Posted (no platforms) when postedTo is empty', () => {
-      const badge = deriveCarouselBadge(mkAnchor({ postedAt: 1234 }), undefined);
-      expect(badge).toEqual({ text: 'Posted', color: 'bg-emerald-600' });
+      const s = derivePostReadyStatus(mkAnchor({ postedAt: 1234 }), undefined);
+      expect(s).toEqual({ kind: 'posted', label: 'Posted' });
     });
 
     it('renders Failed when anchor.postError is set', () => {
-      const badge = deriveCarouselBadge(
+      const s = derivePostReadyStatus(
         mkAnchor({ postError: 'Token expired' }),
         undefined,
       );
-      expect(badge).toEqual({ text: 'Failed', color: 'bg-red-600' });
+      expect(s).toEqual({ kind: 'failed', label: 'Failed: Token expired' });
     });
 
     it('manual postedAt wins over a scheduled post still pending', () => {
-      const badge = deriveCarouselBadge(
+      const s = derivePostReadyStatus(
         mkAnchor({ postedAt: 1234, postedTo: ['twitter'] }),
         mkPost({ status: 'scheduled' }),
       );
-      expect(badge!.text).toBe('Posted to twitter');
+      expect(s.kind).toBe('posted');
+      expect(s.label).toBe('Posted to twitter');
     });
   });
 
   describe('auto-poster path (ScheduledPost.status) — the BUG-CRIT-007 regression coverage', () => {
     it('renders Posted when ScheduledPost.status is posted (no anchor.postedAt)', () => {
-      const badge = deriveCarouselBadge(mkAnchor(), mkPost({ status: 'posted' }));
-      expect(badge).toEqual({ text: 'Posted', color: 'bg-emerald-600' });
+      const s = derivePostReadyStatus(mkAnchor(), mkPost({ status: 'posted' }));
+      expect(s).toEqual({ kind: 'posted', label: 'Posted' });
     });
 
     it('renders Failed when ScheduledPost.status is failed (no anchor.postError)', () => {
-      const badge = deriveCarouselBadge(mkAnchor(), mkPost({ status: 'failed' }));
-      expect(badge).toEqual({ text: 'Failed', color: 'bg-red-600' });
+      const s = derivePostReadyStatus(mkAnchor(), mkPost({ status: 'failed' }));
+      expect(s).toEqual({ kind: 'failed', label: 'Failed' });
     });
 
     it('renders Scheduled with date/time when status is scheduled', () => {
-      const badge = deriveCarouselBadge(
+      const s = derivePostReadyStatus(
         mkAnchor(),
         mkPost({ status: 'scheduled', date: '2026-05-01', time: '14:30' }),
       );
-      expect(badge).toEqual({
-        text: 'Scheduled 2026-05-01 14:30',
-        color: 'bg-amber-600',
-      });
-    });
-
-    it('uses formatTimeShort for the scheduled time', () => {
-      const badge = deriveCarouselBadge(
-        mkAnchor(),
-        mkPost({ status: 'scheduled', time: '14:30' }),
-        (t) => t.replace(':30', ':30 PM'),
-      );
-      expect(badge!.text).toContain('14:30 PM');
+      expect(s.kind).toBe('scheduled');
+      expect(s.label).toMatch(/^Scheduled 2026-05-01/);
     });
   });
 
-  describe('default — null (no badge)', () => {
-    it('returns null when there is no manual state and no schedule', () => {
-      const badge = deriveCarouselBadge(mkAnchor(), undefined);
-      expect(badge).toBeNull();
+  describe('default — Ready (no badge)', () => {
+    it('returns Ready when there is no manual state and no schedule', () => {
+      const s = derivePostReadyStatus(mkAnchor(), undefined);
+      expect(s).toEqual({ kind: 'ready', label: 'Ready' });
     });
 
-    it('returns null when scheduled post is in pending_approval (not yet active)', () => {
-      const badge = deriveCarouselBadge(
+    it('renders pending_approval as a scheduled-class status (visible in V060-001)', () => {
+      // V060-001: previous behavior returned no badge for pending_approval;
+      // the redesign surfaces it as a scheduled-class state so the colored
+      // border + pill make the lifecycle visible at a glance.
+      const s = derivePostReadyStatus(
         mkAnchor(),
         mkPost({ status: 'pending_approval' }),
       );
-      expect(badge).toBeNull();
+      expect(s.kind).toBe('scheduled');
+      expect(s.label).toMatch(/Pending approval/);
     });
 
-    it('returns null when scheduled post is rejected (terminal but not visible as a badge)', () => {
-      const badge = deriveCarouselBadge(mkAnchor(), mkPost({ status: 'rejected' }));
-      expect(badge).toBeNull();
+    it('returns Ready when scheduled post is rejected (terminal but not visible as a badge)', () => {
+      const s = derivePostReadyStatus(mkAnchor(), mkPost({ status: 'rejected' }));
+      expect(s).toEqual({ kind: 'ready', label: 'Ready' });
     });
   });
 });
