@@ -93,8 +93,8 @@ describe('computeWeekFillStatus', () => {
     expect(s.days.every(d => d.gap === 0)).toBe(true);
   });
 
-  it('over-target total still reports filled; percent caps at 100', () => {
-    // Fill the full week (14), then add 3 extras on day 0 → 17 total.
+  it('over-target total caps each day at postsPerDay; raw per-day count preserved', () => {
+    // Fill the full week (14), then add 3 extras on day 0 (raw=17, capped=14).
     const posts: ScheduledPost[] = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(NOW);
@@ -107,11 +107,29 @@ describe('computeWeekFillStatus', () => {
     posts.push(post('2026-04-20', '16:00'));
     posts.push(post('2026-04-20', '17:00'));
     const s = computeWeekFillStatus(posts, 7, 2, NOW);
-    expect(s.scheduledTotal).toBe(17);
+    // Aggregate is capped at targetTotal — no overflow counting.
+    expect(s.scheduledTotal).toBe(14);
+    expect(s.scheduledTotal).toBeLessThanOrEqual(s.targetTotal);
     expect(s.filled).toBe(true);
     expect(s.percent).toBe(100);
+    // Day-level raw count is preserved for tooltip / per-day display.
     expect(s.days[0].scheduledCount).toBe(5);
     expect(s.days[0].gap).toBe(0);
+  });
+
+  it('uneven over-scheduling on one day does not mask gaps elsewhere', () => {
+    // 8 posts on day 0, 0 elsewhere → raw=8, capped=2.
+    // Was the bug shape: previously this would have summed to 8 toward the
+    // 14-target, making the meter look 57% full when the week is mostly empty.
+    const posts: ScheduledPost[] = Array.from({ length: 8 }, (_, k) =>
+      post('2026-04-20', `${String(13 + k).padStart(2, '0')}:00`),
+    );
+    const s = computeWeekFillStatus(posts, 7, 2, NOW);
+    expect(s.days[0].scheduledCount).toBe(8);
+    expect(s.scheduledTotal).toBe(2); // only day-0's 2 slots count
+    expect(s.targetTotal).toBe(14);
+    expect(s.filled).toBe(false);
+    expect(s.percent).toBe(Math.round((2 / 14) * 100));
   });
 
   it('respects a non-default postsPerDay', () => {

@@ -33,7 +33,13 @@ export interface WeekFillStatus {
   targetDays: number;
   /** Per-day target used for the math. */
   postsPerDay: number;
-  /** Sum of day.scheduledCount. */
+  /**
+   * Sum of `min(day.scheduledCount, day.target)` per day. Each day
+   * contributes at most `postsPerDay` slots so the aggregate is a
+   * "filled slots" measure, not a raw post count, and is guaranteed
+   * to satisfy `scheduledTotal <= targetTotal`. Use a per-day
+   * `scheduledCount` if you need the raw number on a single day.
+   */
   scheduledTotal: number;
   /** targetDays * postsPerDay. */
   targetTotal: number;
@@ -100,7 +106,14 @@ export function computeWeekFillStatus(
     });
   }
 
-  const scheduledTotal = days.reduce((sum, d) => sum + d.scheduledCount, 0);
+  // Cap each day's contribution at its target so the aggregate is
+  // bounded by targetTotal — over-scheduling on one day must not
+  // make the week look "120%" full when other days are still empty.
+  // Per-day `scheduledCount` remains the raw count for tooltips.
+  const scheduledTotal = days.reduce(
+    (sum, d) => sum + Math.min(d.scheduledCount, d.target),
+    0,
+  );
   const targetTotal = targetDays * postsPerDay;
   const percent = targetTotal === 0
     ? 0
