@@ -1914,28 +1914,40 @@ export function MainContent() {
 
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-zinc-300">Select Models</label>
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm font-medium text-zinc-300">Select Models</label>
+                          <span className="text-[10px] font-mono text-zinc-500 tabular-nums">
+                            {comparisonModels.length} of {LEONARDO_MODELS.length} selected
+                          </span>
+                        </div>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                          {LEONARDO_MODELS.map(model => (
-                            <button
-                              key={model.id}
-                              onClick={() => {
-                                setComparisonModels(prev => 
-                                  prev.includes(model.id) 
-                                    ? prev.filter(id => id !== model.id)
-                                    : [...prev, model.id]
-                                );
-                              }}
-                              className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all text-left flex items-center justify-between ${
-                                comparisonModels.includes(model.id)
-                                  ? 'bg-[#c5a062]/15 border-[#c5a062] text-[#c5a062]'
-                                  : 'bg-zinc-900 border-zinc-800/60 text-zinc-400 hover:border-[#c5a062]/40'
-                              }`}
-                            >
-                              <span className="truncate mr-2">{model.name}</span>
-                              {comparisonModels.includes(model.id) && <BookmarkCheck className="w-3 h-3 shrink-0" />}
-                            </button>
-                          ))}
+                          {LEONARDO_MODELS.map(model => {
+                            const isSelected = comparisonModels.includes(model.id);
+                            return (
+                              <button
+                                key={model.id}
+                                onClick={() => {
+                                  setComparisonModels(prev =>
+                                    prev.includes(model.id)
+                                      ? prev.filter(id => id !== model.id)
+                                      : [...prev, model.id]
+                                  );
+                                }}
+                                aria-pressed={isSelected}
+                                className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all text-left flex items-center justify-between ${
+                                  isSelected
+                                    ? 'bg-[#c5a062]/15 border-[#c5a062] text-[#c5a062]'
+                                    : 'bg-zinc-900 border-zinc-800/60 text-zinc-500 opacity-70 hover:opacity-100 hover:border-[#c5a062]/40'
+                                }`}
+                              >
+                                <span className="truncate mr-2">{model.name}</span>
+                                {isSelected
+                                  ? <BookmarkCheck className="w-3 h-3 shrink-0" />
+                                  : <Plus className="w-3 h-3 shrink-0 text-zinc-600" />
+                                }
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
 
