@@ -640,6 +640,25 @@ export function getLeonardoModel(modelId: string): LeonardoModelConfig | undefin
   return LEONARDO_MODELS.find(m => m.id === modelId || m.apiModelId === modelId);
 }
 
+/**
+ * Display label for the *underlying* provider behind a Leonardo-routed model.
+ * Used in the comparison-history badge so each column carries the actual
+ * model family ("GEMINI" / "OPENAI") rather than a uniform "LEONARDO" — the
+ * persisted `modelInfo.provider` is always 'leonardo' (the API broker) since
+ * everything goes through /api/leonardo/*.
+ *
+ * Resolves on `id` first, then `apiModelId` (some persisted images store
+ * the apiModelId variant). Unknown ids fall back to "LEONARDO" — the broker
+ * is at least correct.
+ */
+export function getModelProviderLabel(modelId: string | undefined): string {
+  if (!modelId) return 'LEONARDO';
+  const id = modelId.toLowerCase();
+  if (id.startsWith('nano-banana') || id.startsWith('gemini-')) return 'GEMINI';
+  if (id.startsWith('gpt-image')) return 'OPENAI';
+  return 'LEONARDO';
+}
+
 /** Get aspect ratio dimensions for a Leonardo model */
 export function getLeonardoDimensions(modelId: string, aspectRatio: string): { width: number; height: number } {
   const model = getLeonardoModel(modelId);

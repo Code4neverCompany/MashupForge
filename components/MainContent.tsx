@@ -66,7 +66,7 @@ import {
   IMAGE_SIZES,
   type ViewType,
 } from './MashupContext';
-import { LEONARDO_SHARED_STYLES } from '@/types/mashup';
+import { LEONARDO_SHARED_STYLES, getModelProviderLabel } from '@/types/mashup';
 import { suggestParametersAI, type ParamSuggestion } from '@/lib/param-suggest';
 import { pushIdeaToStudio } from '@/lib/push-idea-to-studio';
 import { ParamSuggestionCard } from './ParamSuggestionCard';
@@ -2168,7 +2168,7 @@ export function MainContent() {
                                   </div>
                                   <div className="flex items-center gap-3">
                                     <span className="text-[10px] text-zinc-400 uppercase tracking-widest">
-                                      {img.modelInfo?.provider || 'Provider'}
+                                      {getModelProviderLabel(img.modelInfo?.modelId)}
                                     </span>
                                     <button
                                       onClick={() => deleteComparisonResult(img.id)}
