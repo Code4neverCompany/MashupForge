@@ -1906,8 +1906,8 @@ export function MainContent() {
                           }}
                         >
                           <option value="">Suggestions...</option>
-                          {PREDEFINED_PROMPTS.map((p, i) => (
-                            <option key={i} value={p}>{p.substring(0, 30)}...</option>
+                          {PREDEFINED_PROMPTS.map((p) => (
+                            <option key={p} value={p}>{p.substring(0, 30)}...</option>
                           ))}
                         </select>
                     </div>
@@ -2992,7 +2992,7 @@ export function MainContent() {
                                   const isToday = toYMD(d) === toYMD(today);
                                   return (
                                     <div
-                                      key={i}
+                                      key={toYMD(d)}
                                       className={`px-3 py-2 text-center border-l border-zinc-800/60 ${
                                         isToday ? 'text-emerald-400' : 'text-zinc-400'
                                       }`}
@@ -3010,7 +3010,7 @@ export function MainContent() {
                                   className="grid grid-cols-[60px_repeat(7,minmax(120px,1fr))] border-b border-zinc-800/40"
                                 >
                                   <div className="px-2 py-2 text-[10px] text-zinc-600 text-right font-mono">{label}</div>
-                                  {days.map((d, i) => {
+                                  {days.map((d) => {
                                     const dateStr = toYMD(d);
                                     const postsAtSlot = scheduled.filter((p) => {
                                       if (p.date !== dateStr) return false;
@@ -3024,7 +3024,7 @@ export function MainContent() {
                                     const heatmapRank = heatmapTopRanks.get(cellKey);
                                     return (
                                       <div
-                                        key={i}
+                                        key={cellKey}
                                         onClick={() => {
                                           if (isEmpty) {
                                             setCalendarSlotClick({
@@ -3243,7 +3243,7 @@ export function MainContent() {
                               const hasFailed = postsForDay.some((p) => p.status === 'failed');
                               return (
                                 <div
-                                  key={i}
+                                  key={dateStr}
                                   onClick={() => {
                                     setCalendarMode('week');
                                     setCalendarDate(d);
