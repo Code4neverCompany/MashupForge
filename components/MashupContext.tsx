@@ -204,10 +204,16 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     if (approvedPost) finalizePipelineImagesForPosts([approvedPost]);
   };
 
+  // V050-009 BUG-DEV-001: status guard mirrors the approve path. Without
+  // it, rejecting any post id (e.g. a stale UI reference) would silently
+  // flip an already-scheduled / posted / failed post to 'rejected',
+  // pulling it out of the auto-poster's view with no recovery path.
   const rejectScheduledPost = (postId: string) => {
     updateSettings((prev) => ({
       scheduledPosts: (prev.scheduledPosts || []).map((p) =>
-        p.id === postId ? { ...p, status: 'rejected' as const } : p
+        p.id === postId && p.status === 'pending_approval'
+          ? { ...p, status: 'rejected' as const }
+          : p
       ),
     }));
   };
@@ -233,12 +239,17 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     if (approvedPosts.length > 0) finalizePipelineImagesForPosts(approvedPosts);
   };
 
+  // V050-009 BUG-DEV-001: same status guard as the singular reject —
+  // bulk reject must only touch pending_approval posts. Mirrors the
+  // bulkApprove guard at lines 226-229.
   const bulkRejectScheduledPosts = (postIds: string[]) => {
     if (postIds.length === 0) return;
     const idSet = new Set(postIds);
     updateSettings((prev) => ({
       scheduledPosts: (prev.scheduledPosts || []).map((p) =>
-        idSet.has(p.id) ? { ...p, status: 'rejected' as const } : p
+        idSet.has(p.id) && p.status === 'pending_approval'
+          ? { ...p, status: 'rejected' as const }
+          : p
       ),
     }));
   };
