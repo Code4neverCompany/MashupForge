@@ -628,51 +628,60 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
           if (runAbort.signal.aborted) break;
 
           if (readContinuous()) {
-            const targetDays = readTargetDays();
+            // V060-004: continuous mode is now "fill week → pre-schedule
+            // 2 weeks → pause → repeat". The daemon checks the 2-week
+            // (14d) horizon: while it's not yet filled, the next cycle
+            // fires immediately so the engagement-best slots in week 1
+            // (then week 2) get filled back-to-back. Once the 2-week
+            // target is met, sleep the configurable `interval` timer
+            // before rolling forward into the following week.
+            const settingsTargetDays = readTargetDays();
             const intervalMin = readInterval();
+            const targetPerDay =
+              latestPropsRef.current.settings.pipelinePostsPerDay ?? 2;
             const allPosts = [
               ...(latestPropsRef.current.settings.scheduledPosts || []),
               ...accumulatedPosts,
             ];
-            const futurePosts = countFutureScheduledPosts(allPosts, targetDays);
-            // V030-004: per-day target is now user-configurable via
-            // pipelinePostsPerDay. Defaults to 2 for back-compat.
-            const targetPerDay =
-              latestPropsRef.current.settings.pipelinePostsPerDay ?? 2;
-            const targetTotal = targetDays * targetPerDay;
+            // 2-week pre-schedule horizon = max(settings.targetDays, 14).
+            // settings.targetDays still drives the UI Week Progress meter
+            // and the per-cycle "filled?" check; this just ensures the
+            // daemon's pre-schedule window is at least 2 weeks even when
+            // the user configured a smaller target.
+            const horizonDays = Math.max(settingsTargetDays, 14);
+            const futurePosts = countFutureScheduledPosts(allPosts, horizonDays);
+            const targetTotal = horizonDays * targetPerDay;
 
             if (futurePosts < targetTotal) {
               addLog(
                 'daemon',
                 '',
                 'success',
-                `Schedule has ${futurePosts}/${targetTotal} posts in next ${targetDays}d — will continue after sleep`,
+                `Schedule has ${futurePosts}/${targetTotal} posts in next ${horizonDays}d — running next cycle immediately`,
               );
-            } else {
-              // V030-004: fire the week-filled prompt once per run so the
-              // UI can react (e.g. show "ready for next week"). The daemon
-              // itself still sleeps — whether to continue is the user's call.
-              if (!weekFilledPromptedThisRun) {
-                addLog(
-                  'pipeline-week-filled',
-                  '',
-                  'success',
-                  `Week filled: ${futurePosts}/${targetTotal} posts across ${targetDays}d — continue to next week?`,
-                );
-                weekFilledPromptedThisRun = true;
-              }
+              continue;
+            }
+
+            if (!weekFilledPromptedThisRun) {
               addLog(
-                'daemon',
+                'pipeline-week-filled',
                 '',
                 'success',
-                `Schedule target met (${futurePosts}/${targetTotal}) — sleeping ${intervalMin}m`,
+                `2-week schedule filled: ${futurePosts}/${targetTotal} posts across ${horizonDays}d — pausing ${intervalMin}m before next week`,
               );
+              weekFilledPromptedThisRun = true;
             }
+            addLog(
+              'daemon',
+              '',
+              'success',
+              `Schedule target met (${futurePosts}/${targetTotal}) — sleeping ${intervalMin}m before next week`,
+            );
 
             setPipelineProgress({
               current: 0,
               total: 0,
-              currentStep: `Next cycle in ${intervalMin} min`,
+              currentStep: `Next week in ${intervalMin} min`,
               currentIdea: '',
             });
             const sleepMs = intervalMin * 60 * 1000;
@@ -684,6 +693,9 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
             ) {
               await wait(Math.min(sliceMs, sleepMs - slept));
             }
+            // Reset the one-shot prompt so the next 2-week horizon can
+            // log its own "filled" event.
+            weekFilledPromptedThisRun = false;
           }
         } while (readContinuous() && !runAbort.signal.aborted);
 

@@ -11,12 +11,12 @@ import {
   type PipelineProgress,
 } from '../types/mashup';
 import {
-  findBestSlot,
   loadEngagementData,
   type CachedEngagement,
   type EngagementHour,
   type EngagementDay,
 } from '@/lib/smartScheduler';
+import { pickFillWeekSlot } from '@/lib/fill-week-scheduler';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import {
   processIdea as processIdeaFn,
@@ -54,9 +54,19 @@ function findNextAvailableSlot(
   engagement: CachedEngagement | undefined,
   platforms: string[] | undefined,
   caps: UserSettings['pipelineDailyCaps'] | undefined,
+  postsPerDay: number,
 ): { date: string; time: string; reason: string } {
   const eng = engagement || loadEngagementData();
-  const slot = findBestSlot(existingPosts, eng, { platforms, caps });
+  // V060-004: route through pickFillWeekSlot so the engagement-best
+  // slot lands in the current week until it's filled, then extends
+  // into week 2.
+  const slot = pickFillWeekSlot({
+    posts: existingPosts,
+    engagement: eng,
+    postsPerDay,
+    platforms,
+    caps,
+  });
   const topHour = eng.hours.reduce((a: EngagementHour, b: EngagementHour) =>
     a.weight > b.weight ? a : b,
   );
@@ -66,12 +76,12 @@ function findNextAvailableSlot(
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const slotDate = new Date(slot.date);
   const capsActive = caps && Object.values(caps).some(v => typeof v === 'number');
-  const reason = `${slot.time} on ${dayNames[slotDate.getDay()]} (${
+  const reason = `${slot.time} on ${dayNames[slotDate.getDay()]} (week ${slot.week}, ${
     eng.source === 'instagram' ? 'IG insights' : 'research'
   } — best hour ${topHour.hour}:00, best day ${dayNames[topDay.day]}${
     capsActive ? ', caps applied' : ''
   })`;
-  return { ...slot, reason };
+  return { date: slot.date, time: slot.time, reason };
 }
 
 /**
@@ -177,7 +187,14 @@ Return ONLY the prompt text, nothing else.`;
         },
         updateIdeaStatus,
         updateSettings,
-        findNextAvailableSlot,
+        findNextAvailableSlot: (posts, eng, platforms, caps) =>
+          findNextAvailableSlot(
+            posts,
+            eng,
+            platforms,
+            caps,
+            getSettings().pipelinePostsPerDay ?? 2,
+          ),
         addLog,
         setPipelineProgress,
         writeCheckpoint: checkpoint,

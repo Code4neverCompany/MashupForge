@@ -206,12 +206,13 @@ export interface UserSettings {
   /** Persistent carousel groups (multi-image posts). */
   carouselGroups?: CarouselGroup[];
   /** Pipeline stage toggles. Default (undefined) is treated as true for
-   *  auto-tag/caption/schedule and false for auto-post. */
+   *  auto-tag/caption/schedule. The auto-post toggle was removed in
+   *  V060-004 — every pipeline post lands as pending_approval and
+   *  publishes through the approval flow. */
   pipelineAutoTag?: boolean;
   pipelineAutoCaption?: boolean;
   pipelineAutoSchedule?: boolean;
-  pipelineAutoPost?: boolean;
-  /** Platforms the pipeline should publish to when pipelineAutoPost is on. */
+  /** Platforms the pipeline should schedule posts for. */
   pipelinePlatforms?: string[];
   /**
    * V040-008: per-platform approval gating. When a pipeline-produced

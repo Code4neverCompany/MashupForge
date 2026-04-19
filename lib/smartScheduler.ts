@@ -335,12 +335,20 @@ export function findBestSlots(
     platforms?: string[];
     /** Per-platform daily caps. Missing entry = no cap. */
     caps?: DailyCaps;
+    /**
+     * V060-004: cap the candidate window. Defaults to 14 days for
+     * back-compat; `pickFillWeekSlot` passes 7 when the current week
+     * is unfilled so the engagement-best slot can't leak into next
+     * week before this one is full.
+     */
+    horizonDays?: number;
   },
 ): SlotScore[] {
   const eng = engagement || loadEngagementData();
   const taken = new Set(existingPosts.map(p => `${p.date}T${p.time}`));
   const platforms = options?.platforms || [];
   const caps = options?.caps || {};
+  const horizonDays = Math.max(1, options?.horizonDays ?? 14);
   const platDayCounts = buildPerDayPlatformCounts(existingPosts);
   const dayCounts = buildPerDayCounts(existingPosts);
 
@@ -362,8 +370,7 @@ export function findBestSlots(
   const startDate = new Date(now);
   startDate.setDate(startDate.getDate() + 1);
 
-  // Generate candidates for next 14 days
-  for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
+  for (let dayOffset = 0; dayOffset < horizonDays; dayOffset++) {
     const checkDate = new Date(startDate);
     checkDate.setDate(checkDate.getDate() + dayOffset);
     const dateStr = checkDate.toISOString().split('T')[0];
@@ -406,6 +413,8 @@ export function findBestSlot(
   options?: {
     platforms?: string[];
     caps?: DailyCaps;
+    /** V060-004: see `findBestSlots`. */
+    horizonDays?: number;
   },
 ): { date: string; time: string } {
   const slots = findBestSlots(existingPosts, 1, engagement, options);

@@ -6,14 +6,12 @@ import {
   Tag,
   Edit3,
   Calendar,
-  Send,
 } from 'lucide-react';
 
 export type PipelineToggleKey =
   | 'pipelineAutoTag'
   | 'pipelineAutoCaption'
-  | 'pipelineAutoSchedule'
-  | 'pipelineAutoPost';
+  | 'pipelineAutoSchedule';
 
 export type Stage = {
   key: string;
@@ -33,5 +31,4 @@ export const STAGES: Stage[] = [
   { key: 'tag',      label: 'Tag',      icon: Tag,         matchStep: 'Tagging',   toggleKey: 'pipelineAutoTag',      dotColor: 'bg-sky-400' },
   { key: 'caption',  label: 'Caption',  icon: Edit3,       matchStep: 'Captioning', toggleKey: 'pipelineAutoCaption', dotColor: 'bg-violet-400' },
   { key: 'schedule', label: 'Schedule', icon: Calendar,    matchStep: 'Scheduling', toggleKey: 'pipelineAutoSchedule', dotColor: 'bg-amber-400' },
-  { key: 'post',     label: 'Post',     icon: Send,        matchStep: 'Posting',   toggleKey: 'pipelineAutoPost',     dotColor: 'bg-[#c5a062]' },
 ];

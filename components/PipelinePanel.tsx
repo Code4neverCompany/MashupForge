@@ -179,7 +179,6 @@ export function PipelinePanel() {
   const autoTag = settings.pipelineAutoTag ?? true;
   const autoCaption = settings.pipelineAutoCaption ?? true;
   const autoSchedule = settings.pipelineAutoSchedule ?? true;
-  const autoPost = settings.pipelineAutoPost ?? false;
   const platforms: PipelinePlatform[] = (settings.pipelinePlatforms as PipelinePlatform[]) || [];
 
   const hasCreds = (p: PipelinePlatform): boolean =>
@@ -207,13 +206,12 @@ export function PipelinePanel() {
     updateSettings({ pipelineDailyCaps: next });
   };
 
-  const toggleStage = (key: 'pipelineAutoTag' | 'pipelineAutoCaption' | 'pipelineAutoSchedule' | 'pipelineAutoPost') => {
+  const toggleStage = (key: 'pipelineAutoTag' | 'pipelineAutoCaption' | 'pipelineAutoSchedule') => {
     const current = settings[key];
     const defaults: Record<string, boolean> = {
       pipelineAutoTag: true,
       pipelineAutoCaption: true,
       pipelineAutoSchedule: true,
-      pipelineAutoPost: false,
     };
     const effective = current ?? defaults[key];
     updateSettings({ [key]: !effective } as Partial<UserSettings>);
@@ -409,7 +407,6 @@ export function PipelinePanel() {
               { key: 'pipelineAutoTag' as const, label: 'Auto-tag images', value: autoTag },
               { key: 'pipelineAutoCaption' as const, label: 'Auto-caption', value: autoCaption },
               { key: 'pipelineAutoSchedule' as const, label: 'Auto-schedule posts', value: autoSchedule },
-              { key: 'pipelineAutoPost' as const, label: 'Auto-post to platforms', value: autoPost },
             ].map((opt) => (
               <label
                 key={opt.key}
@@ -465,12 +462,11 @@ export function PipelinePanel() {
           </label>
         </div>
 
-        {/* Platform picker — shown whenever scheduling or posting is on
-            (V040-HOTFIX-006). Previously gated on autoPost only, which
-            left users with the common autoSchedule=on / autoPost=off
-            config unable to pick platforms — the pipeline then aborted
-            scheduling with "No platforms configured". */}
-        {(autoPost || autoSchedule) && (
+        {/* Platform picker — shown whenever scheduling is on. Auto-post
+            was removed in V060-004 (every pipeline post lands as
+            pending_approval, then publishes via the approval flow), so
+            the picker now only depends on autoSchedule. */}
+        {autoSchedule && (
           <div className="pt-2 border-t border-[#c5a062]/15 space-y-2">
             <p className="label-overline">Platforms</p>
             {availablePlatforms.length === 0 ? (

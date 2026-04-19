@@ -46,7 +46,6 @@ function makeSettings(overrides?: Partial<UserSettings>): UserSettings {
     defaultLeonardoModel: 'phoenix',
     pipelineAutoCaption: true,
     pipelineAutoSchedule: true,
-    pipelineAutoPost: false,
     pipelineCarouselMode: false,
     ...overrides,
   };

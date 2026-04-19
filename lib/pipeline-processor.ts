@@ -139,7 +139,6 @@ export async function processIdea(
 
   const autoCaption = settings.pipelineAutoCaption ?? true;
   const autoSchedule = settings.pipelineAutoSchedule ?? true;
-  const autoPost = settings.pipelineAutoPost ?? false;
 
   const explicitPlatforms =
     settings.pipelinePlatforms && settings.pipelinePlatforms.length > 0
@@ -429,7 +428,6 @@ export async function processIdea(
         }
       }
 
-      let scheduledPostId: string | null = null;
       if (autoSchedule) {
         setPipelineProgress({
           current: index + 1,
@@ -465,53 +463,11 @@ export async function processIdea(
             ),
             sourceIdeaId: idea.id,
           };
-          scheduledPostId = newPost.id;
           accumulatedPosts.push(newPost);
           updateSettings((prev) => ({
             scheduledPosts: [...(prev.scheduledPosts || []), newPost],
           }));
           addLog('schedule', idea.id, 'success', `[${modelLabel}] ${slot.reason}`);
-        }
-      }
-
-      if (autoPost && pipelinePlatforms.length > 0) {
-        setPipelineProgress({
-          current: index + 1,
-          total,
-          currentStep: `Posting ${modelLabel}`,
-          currentIdea: idea.concept,
-          currentIdeaId: idea.id,
-        });
-        try {
-          const res = await fetch('/api/social/post', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              caption: captionedImg.postCaption || expandedPrompt,
-              platforms: pipelinePlatforms,
-              mediaUrl: img.url,
-              mediaBase64: img.base64,
-              credentials: {
-                instagram: settings.apiKeys.instagram,
-                twitter: settings.apiKeys.twitter,
-                pinterest: settings.apiKeys.pinterest,
-                discord: { webhookUrl: settings.apiKeys.discordWebhook },
-              },
-            }),
-          });
-          const data = (await res.json()) as { error?: string };
-          if (!res.ok) throw new Error(data.error || 'post failed');
-          addLog('post', idea.id, 'success', `[${modelLabel}] Posted to ${pipelinePlatforms.join(', ')}`);
-          if (scheduledPostId) {
-            const postedId = scheduledPostId;
-            updateSettings((prev) => ({
-              scheduledPosts: (prev.scheduledPosts || []).map((p) =>
-                p.id === postedId ? { ...p, status: 'posted' as const } : p,
-              ),
-            }));
-          }
-        } catch {
-          addLog('post', idea.id, 'error', `[${modelLabel}] Auto-post failed`);
         }
       }
     }
