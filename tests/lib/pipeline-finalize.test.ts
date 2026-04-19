@@ -101,4 +101,42 @@ describe('finalizePipelineImage', () => {
     expect(out.pipelinePending).toBe(false);
     expect(out.url).toBe('https://cdn.example.com/raw.jpg');
   });
+
+  // BUG-CRIT-013: markPostReady drives Post Ready tab membership. The
+  // approve path passes true (scheduled content belongs in Post Ready);
+  // the reject path passes false (rejected images go to Gallery only).
+  it('does NOT set isPostReady when markPostReady is omitted (default)', async () => {
+    const wm = vi.fn();
+    const img = mkImg({ id: 'a', pipelinePending: true });
+    const out = await finalizePipelineImage(img, undefined, undefined, wm);
+    expect(out.isPostReady).toBeUndefined();
+  });
+
+  it('does NOT set isPostReady when markPostReady is false (reject path)', async () => {
+    const wm = vi.fn();
+    const img = mkImg({ id: 'a', pipelinePending: true });
+    const out = await finalizePipelineImage(img, undefined, undefined, wm, false);
+    expect(out.isPostReady).toBeUndefined();
+  });
+
+  it('sets isPostReady=true when markPostReady is true (approve path)', async () => {
+    const wm = vi.fn();
+    const img = mkImg({ id: 'a', pipelinePending: true });
+    const out = await finalizePipelineImage(img, undefined, undefined, wm, true);
+    expect(out.isPostReady).toBe(true);
+    expect(out.pipelinePending).toBe(false);
+  });
+
+  it('preserves isPostReady=true through a watermark pass on the approve path', async () => {
+    const wm = vi.fn().mockResolvedValue('https://cdn.example.com/wm.png');
+    const img = mkImg({
+      id: 'a',
+      pipelinePending: true,
+      url: 'https://cdn.example.com/raw.jpg',
+    });
+    const out = await finalizePipelineImage(img, enabledWm, 'chan', wm, true);
+    expect(out.isPostReady).toBe(true);
+    expect(out.url).toBe('https://cdn.example.com/wm.png');
+    expect(out.pipelinePending).toBe(false);
+  });
 });

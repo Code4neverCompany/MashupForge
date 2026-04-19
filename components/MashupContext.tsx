@@ -166,12 +166,25 @@ export function MashupProvider({ children }: { children: ReactNode }) {
   // unlike pickComparisonWinner's finalize step). Flag flip is
   // synchronous so Gallery lights up immediately; watermark is applied
   // best-effort in the background and swaps the URL when ready.
-  const finalizePipelineImagesForPosts = (posts: import('../types/mashup').ScheduledPost[]) => {
+  // BUG-CRIT-013: `markPostReady` flips `isPostReady: true` on each
+  // finalized image so it surfaces in the Post Ready tab. Approve path
+  // passes true (scheduled content belongs in Post Ready); reject path
+  // passes false (rejected images land in Gallery only).
+  const finalizePipelineImagesForPosts = (
+    posts: import('../types/mashup').ScheduledPost[],
+    markPostReady: boolean,
+  ) => {
     for (const post of posts) {
       const targets = collectFinalizeTargets(post, savedImages);
       if (targets.length === 0) continue;
       // Step 1 — instant flag flip: Gallery renders these now.
-      for (const img of targets) saveImage({ ...img, pipelinePending: false });
+      for (const img of targets) {
+        saveImage({
+          ...img,
+          pipelinePending: false,
+          ...(markPostReady ? { isPostReady: true } : {}),
+        });
+      }
       // Step 2 — background watermark pass. Best-effort: failures keep
       // the original URL (handled inside finalizePipelineImage).
       // BUG-DEV-004: per-image catch surfaces unexpected failures
@@ -187,6 +200,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
                 settings.watermark,
                 settings.channelName,
                 applyWatermark,
+                markPostReady,
               );
               saveImage(finalized);
             } catch (err) {
@@ -215,7 +229,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     updateSettings((prev) => ({
       scheduledPosts: nextPosts(prev.scheduledPosts || []),
     }));
-    finalizePipelineImagesForPosts(toFinalize);
+    finalizePipelineImagesForPosts(toFinalize, true);
   };
 
   // V050-009 BUG-DEV-001: status guard mirrors the approve path. Without
@@ -242,7 +256,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     updateSettings((prev) => ({
       scheduledPosts: nextPosts(prev.scheduledPosts || []),
     }));
-    finalizePipelineImagesForPosts(toFinalize);
+    finalizePipelineImagesForPosts(toFinalize, false);
   };
 
   // Bulk variants — single functional-updater pass so N approvals applied
@@ -263,7 +277,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
         ),
       };
     });
-    if (approvedPosts.length > 0) finalizePipelineImagesForPosts(approvedPosts);
+    if (approvedPosts.length > 0) finalizePipelineImagesForPosts(approvedPosts, true);
   };
 
   // V050-009 BUG-DEV-001: same status guard as the singular reject —
@@ -288,7 +302,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
         ),
       };
     });
-    if (rejectedPosts.length > 0) finalizePipelineImagesForPosts(rejectedPosts);
+    if (rejectedPosts.length > 0) finalizePipelineImagesForPosts(rejectedPosts, false);
   };
 
   // V050-005: inline caption editing from the approval queue. Updates

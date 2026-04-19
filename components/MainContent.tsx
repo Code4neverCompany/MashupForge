@@ -518,6 +518,12 @@ export function MainContent() {
       };
       return { scheduledPosts: [...existingPosts, scheduled] };
     });
+    // BUG-CRIT-013: surface the image in the Post Ready tab. Before
+    // this, scheduling from anywhere outside Post Ready (e.g. directly
+    // from a calendar slot or a captioning card) created the
+    // ScheduledPost but left the image with isPostReady=false, so it
+    // was invisible in Post Ready even though it had a real schedule.
+    if (!img.isPostReady) patchImage(img, { isPostReady: true });
     setPostStatus((prev) => ({
       ...prev,
       [img.id]: `Scheduled for ${date} ${time}`,
@@ -715,6 +721,13 @@ export function MainContent() {
       }));
       return { scheduledPosts: [...existingPosts, ...newPosts] };
     });
+    // BUG-CRIT-013: surface every image in the carousel in Post Ready,
+    // matching scheduleImage's per-image behaviour. Without this,
+    // scheduling a carousel from outside Post Ready left all siblings
+    // invisible in the Post Ready tab.
+    for (const img of item.images) {
+      if (!img.isPostReady) patchImage(img, { isPostReady: true });
+    }
     setPostStatus((prev) => ({
       ...prev,
       [`carousel-${item.id}`]: `Scheduled carousel for ${date} ${time}`,

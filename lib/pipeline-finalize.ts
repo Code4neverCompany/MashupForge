@@ -47,12 +47,19 @@ export function collectFinalizeTargets(
  * must never block an approval, because the ScheduledPost has already
  * flipped to `scheduled` and the auto-poster may pick it up at any
  * moment.
+ *
+ * BUG-CRIT-013: when `markPostReady` is true, also flips `isPostReady`
+ * so the image surfaces in the Post Ready tab. Approve path passes
+ * true (the user just approved a scheduled post — Post Ready is where
+ * scheduled content lives). Reject path passes false (rejected images
+ * land in Gallery only, never Post Ready).
  */
 export async function finalizePipelineImage(
   img: GeneratedImage,
   watermark: WatermarkSettings | undefined,
   channelName: string | undefined,
   applyWatermark: ApplyWatermarkFn,
+  markPostReady = false,
 ): Promise<GeneratedImage> {
   let finalUrl = img.url;
   if (watermark?.enabled && finalUrl) {
@@ -68,5 +75,10 @@ export async function finalizePipelineImage(
       finalUrl = img.url;
     }
   }
-  return { ...img, url: finalUrl, pipelinePending: false };
+  return {
+    ...img,
+    url: finalUrl,
+    pipelinePending: false,
+    ...(markPostReady ? { isPostReady: true } : {}),
+  };
 }
