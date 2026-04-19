@@ -230,7 +230,10 @@ describe('processIdea — carousel mode', () => {
     expect(deps.updateIdeaStatus).toHaveBeenCalledWith(expect.any(String), 'done');
   });
 
-  it('sets CarouselGroup.status = scheduled when every platform auto-approves (V040-HOTFIX-004)', async () => {
+  it('always gates carousels through approval — even when every platform auto-approves (BUG-CRIT-001)', async () => {
+    // Pre-fix: this configuration would land as `scheduled`. Post-fix:
+    // pipeline output unconditionally sits in pending_approval until the
+    // user reviews. CarouselGroup.status mirrors at `draft`.
     const images = [makeImage(), makeImage()];
     const deps = makeDeps({ waitForImages: vi.fn().mockResolvedValue(images) });
     const settings = makeSettings({
@@ -247,8 +250,8 @@ describe('processIdea — carousel mode', () => {
     expect(updaterCall).toBeDefined();
     const patch = (updaterCall![0] as (prev: Partial<UserSettings>) => Partial<UserSettings>)({});
     expect(patch.carouselGroups).toHaveLength(1);
-    expect(patch.carouselGroups![0].status).toBe('scheduled');
-    expect(patch.scheduledPosts!.every((p) => p.status === 'scheduled')).toBe(true);
+    expect(patch.carouselGroups![0].status).toBe('draft');
+    expect(patch.scheduledPosts!.every((p) => p.status === 'pending_approval')).toBe(true);
   });
 
   it('sets CarouselGroup.status = draft when any platform requires manual approval (V040-HOTFIX-004)', async () => {
@@ -290,7 +293,11 @@ describe('processIdea — carousel mode', () => {
     }
   });
 
-  it('leaves saved images pipelinePending=undefined when every platform auto-approves (V040-HOTFIX-007)', async () => {
+  it('always marks saved images pipelinePending=true so they stay out of Gallery until approval (BUG-CRIT-001)', async () => {
+    // Pre-fix: every-platform-auto-approves left pipelinePending undefined,
+    // images appeared in Gallery un-watermarked. Post-fix: pipelinePending
+    // is true for every pipeline-produced image, so Gallery + watermark
+    // both wait until approveScheduledPost runs.
     const images = [makeImage(), makeImage()];
     const deps = makeDeps({ waitForImages: vi.fn().mockResolvedValue(images) });
     const settings = makeSettings({
@@ -304,7 +311,7 @@ describe('processIdea — carousel mode', () => {
     const saveCalls = (deps.saveImage as ReturnType<typeof vi.fn>).mock.calls;
     expect(saveCalls.length).toBeGreaterThan(0);
     for (const [saved] of saveCalls) {
-      expect(saved.pipelinePending).toBeUndefined();
+      expect(saved.pipelinePending).toBe(true);
     }
   });
 

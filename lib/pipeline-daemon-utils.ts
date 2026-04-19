@@ -46,27 +46,34 @@ export function isPlatformAutoApproved(
 }
 
 /**
- * Resolves the initial status of a pipeline-produced post based on
- * its platform set + the user's per-platform auto-approve config.
+ * BUG-CRIT-001: pipeline-produced posts ALWAYS land as
+ * `pending_approval`. Two reasons:
  *
- * Logic: a post lands as `scheduled` only when ALL of its platforms
- * are auto-approved. If any one platform requires manual review, the
- * entire post gates through the approval queue. This is deliberately
- * strict — a carousel that fans out to Instagram (manual) + Twitter
- * (auto) is still one mistake away from a misfire, so the manual
- * gate applies to the whole post. Users who want per-channel
- * granularity can schedule single-platform posts.
+ *   1. Safety. Auto-scheduling without a human review step means
+ *      AI-generated content can hit live channels with zero gating.
+ *      A bad caption, mis-tagged image, or model hallucination
+ *      goes straight to the audience.
+ *   2. Watermark. The watermark pass is performed inside
+ *      MashupContext.approveScheduledPost (via
+ *      finalizePipelineImagesForPosts). Posts that bypass approval
+ *      ALSO bypass the watermark. The fastest way to guarantee
+ *      every published image is watermarked is to require every
+ *      published post to pass through approval.
  *
- * An empty platforms array falls back to `pending_approval` (nothing
- * is auto-approvable if there's nothing to approve against).
+ * The `platforms` and `config` parameters are accepted for
+ * backwards compatibility with existing call sites; the previous
+ * `pipelineAutoApprove` per-platform fast-path is no longer
+ * consulted. The setting is kept on `UserSettings` for now (the
+ * PipelinePanel UI still renders the checkboxes) so saved user
+ * configurations don't get blown away — wiring will be cleaned up
+ * in a follow-up. Any platforms array — empty or not — returns
+ * `'pending_approval'`.
  */
 export function resolvePipelinePostStatus(
-  platforms: string[],
-  config: AutoApproveMap | undefined,
+  _platforms: string[],
+  _config: AutoApproveMap | undefined,
 ): 'scheduled' | 'pending_approval' {
-  if (platforms.length === 0) return 'pending_approval';
-  const allAuto = platforms.every((p) => isPlatformAutoApproved(p, config));
-  return allAuto ? 'scheduled' : 'pending_approval';
+  return 'pending_approval';
 }
 
 

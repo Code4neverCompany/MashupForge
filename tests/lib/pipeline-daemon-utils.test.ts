@@ -31,38 +31,36 @@ describe('isPlatformAutoApproved', () => {
   });
 });
 
-describe('resolvePipelinePostStatus', () => {
-  it('lands as scheduled when every platform is auto-approved', () => {
-    expect(resolvePipelinePostStatus(['twitter', 'discord'], undefined)).toBe('scheduled');
+describe('resolvePipelinePostStatus (BUG-CRIT-001 — always pending_approval)', () => {
+  // Every pipeline-produced post now gates through approval, regardless
+  // of platform set or pipelineAutoApprove config. This is the core
+  // safety + watermark fix from BUG-CRIT-001.
+
+  it('returns pending_approval for any single auto-approved platform', () => {
+    expect(resolvePipelinePostStatus(['twitter'], undefined)).toBe('pending_approval');
+    expect(resolvePipelinePostStatus(['discord'], undefined)).toBe('pending_approval');
+    expect(resolvePipelinePostStatus(['instagram'], undefined)).toBe('pending_approval');
+    expect(resolvePipelinePostStatus(['pinterest'], undefined)).toBe('pending_approval');
   });
 
-  it('lands as scheduled for Instagram by default after the hotfix', () => {
-    expect(resolvePipelinePostStatus(['instagram'], undefined)).toBe('scheduled');
-    expect(resolvePipelinePostStatus(['twitter', 'instagram'], undefined)).toBe('scheduled');
-  });
-
-  it('lands as pending_approval when ANY platform is explicitly disabled', () => {
+  it('returns pending_approval for multi-platform posts', () => {
     expect(
-      resolvePipelinePostStatus(['twitter', 'instagram'], { instagram: false }),
+      resolvePipelinePostStatus(['twitter', 'discord', 'instagram'], undefined),
     ).toBe('pending_approval');
   });
 
-  it('respects explicit overrides — Instagram on, others off', () => {
+  it('ignores pipelineAutoApprove config — even an explicit all-true map gates', () => {
     expect(
-      resolvePipelinePostStatus(['instagram'], {
+      resolvePipelinePostStatus(['twitter', 'instagram'], {
         instagram: true,
-        twitter: false,
+        twitter: true,
+        discord: true,
+        pinterest: true,
       }),
-    ).toBe('scheduled');
-  });
-
-  it('flips to manual when user disables a previously-auto platform', () => {
-    expect(
-      resolvePipelinePostStatus(['twitter'], { twitter: false }),
     ).toBe('pending_approval');
   });
 
-  it('treats an empty platforms array as pending_approval', () => {
+  it('returns pending_approval for an empty platforms array', () => {
     expect(resolvePipelinePostStatus([], undefined)).toBe('pending_approval');
   });
 });
