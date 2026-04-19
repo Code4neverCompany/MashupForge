@@ -328,7 +328,17 @@ type CheckResult =
   | { kind: 'none' }
   | { kind: 'available'; version: string; body: string }
   | { kind: 'installing'; version: string; pct: number | null }
+  // V060-003: ACL-denied / plugin unavailable. Distinct from 'error' so
+  // we can render a calm informational note + manual download link
+  // instead of a red warning. The user has nothing to action other
+  // than visiting GitHub Releases, so framing this as an error was
+  // misleading.
+  | { kind: 'unavailable'; releasesUrl: string }
   | { kind: 'error'; message: string };
+
+// V060-003: surfaced in the unavailable + idle states. Derived from
+// tauri.conf.json bundle.homepage rather than hard-coded again.
+const RELEASES_URL = 'https://github.com/Code4neverCompany/MashupForge/releases';
 
 interface UpdaterModule {
   check: () => Promise<{
@@ -363,14 +373,19 @@ function UpdatesSection({ behavior, onBehaviorChange }: UpdatesSectionProps) {
   const handleCheckNow = useCallback(async () => {
     traceUpdater('manual:check-clicked');
     setResult({ kind: 'checking' });
+    // V060-003: stamp "last checked" the moment we begin. Previously
+    // this only fired after a successful check — when the ACL bug
+    // (BUG-ACL-005) tripped, the panel stayed at "Last checked: never"
+    // even though we'd tried multiple times. Recording the attempt
+    // timestamp here makes the panel honest.
+    const startedAt = Date.now();
+    try { localStorage.setItem(LAST_CHECKED_AT_KEY, String(startedAt)); } catch { /* ignore */ }
+    setLastCheckedAt(startedAt);
     try {
       traceUpdater('manual:importing-updater-plugin');
       const updaterMod = (await import('@tauri-apps/plugin-updater')) as unknown as UpdaterModule;
       traceUpdater('manual:calling-check');
       const update = await updaterMod.check();
-      const now = Date.now();
-      try { localStorage.setItem(LAST_CHECKED_AT_KEY, String(now)); } catch { /* ignore */ }
-      setLastCheckedAt(now);
       traceUpdater('manual:check-returned', {
         available: update?.available ?? null,
         remoteVersion: update?.version ?? null,
@@ -405,20 +420,18 @@ function UpdatesSection({ behavior, onBehaviorChange }: UpdatesSectionProps) {
       // BUG-ACL-005: tauri-plugin-updater v2.10.1 sometimes raises
       // "plugin:updater|check not allowed by ACL" on Windows even
       // though updater:allow-check is in capabilities/default.json.
-      // Surface a friendly sentence instead of the raw ACL string so
-      // the panel stays usable; console has the underlying detail.
+      // V060-003: route this to the calm 'unavailable' state rather
+      // than a red 'error' — the user has nothing to action beyond
+      // visiting GitHub Releases, and the warning was being read as
+      // a system fault.
       const detail = e instanceof Error ? e.message : String(e);
       traceUpdater('manual:check-threw', { error: detail });
       if (/not allowed by ACL/i.test(detail)) {
         console.warn(
-          '[UpdatesSection] updater ACL denied check() — likely plugin bug; reinstall of the latest release may resolve.',
+          '[UpdatesSection] updater ACL denied check() — likely plugin bug; visit GitHub Releases to download manually.',
           detail,
         );
-        setResult({
-          kind: 'error',
-          message:
-            'Auto-update check unavailable — please check for a new release manually.',
-        });
+        setResult({ kind: 'unavailable', releasesUrl: RELEASES_URL });
       } else {
         setResult({ kind: 'error', message: detail });
       }
@@ -532,6 +545,27 @@ function UpdatesSection({ behavior, onBehaviorChange }: UpdatesSectionProps) {
           <Loader2 className="w-3 h-3 animate-spin" />
           Installing v{result.version}{result.pct !== null ? ` — ${result.pct}%` : '…'}
         </p>
+      )}
+      {result.kind === 'unavailable' && (
+        <div
+          role="status"
+          aria-label="Auto-update unavailable on this system"
+          className="rounded-lg border border-zinc-800/60 bg-[#050505]/40 p-3 space-y-1"
+        >
+          <p className="text-[11px] text-zinc-300">
+            Auto-update isn&apos;t available on this system. The latest installer
+            is always on GitHub.
+          </p>
+          <a
+            href={result.releasesUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#00e6ff] hover:text-[#33eaff]"
+          >
+            <Download className="w-3 h-3" />
+            Visit GitHub Releases
+          </a>
+        </div>
       )}
       {result.kind === 'error' && (
         <p className="text-[11px] text-red-400 flex items-center gap-1">

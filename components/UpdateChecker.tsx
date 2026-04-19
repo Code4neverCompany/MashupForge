@@ -121,12 +121,20 @@ export function UpdateChecker() {
         return;
       }
 
+      // V060-003: stamp the attempt timestamp BEFORE calling check() so
+      // the Settings panel's "Last checked: <when>" reflects reality
+      // even when the underlying check throws (BUG-ACL-005). Previously
+      // the setItem fired only after a successful check, leaving the
+      // panel stuck on "Last checked: never" on systems hitting the ACL
+      // bug — which read as "the launch-time check is broken" when it
+      // was just being silently swallowed.
+      try { localStorage.setItem(LAST_CHECKED_AT_KEY, String(Date.now())); } catch { /* ignore */ }
+
       try {
         traceUpdater('run:importing-updater-plugin');
         const updaterMod = await import('@tauri-apps/plugin-updater');
         traceUpdater('run:calling-check');
         const update = (await updaterMod.check()) as unknown as UpdateLike | null;
-        try { localStorage.setItem(LAST_CHECKED_AT_KEY, String(Date.now())); } catch { /* ignore */ }
         traceUpdater('run:check-returned', {
           available: update?.available ?? null,
           remoteVersion: update?.version ?? null,
