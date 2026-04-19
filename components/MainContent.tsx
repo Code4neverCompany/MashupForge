@@ -91,6 +91,7 @@ const PipelinePanel = dynamic(
 import { streamAIToString, extractJsonArrayFromLLM, extractJsonObjectFromLLM } from '@/lib/aiClient';
 import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import { getErrorMessage } from '@/lib/errors';
+import { findPostingBlock, isStillScheduled } from '@/lib/post-approval-gate';
 import { useSmartScheduler } from '@/hooks/useSmartScheduler';
 import { SmartScheduleModal } from './SmartScheduleModal';
 import {
@@ -432,6 +433,14 @@ export function MainContent() {
   /** Post a single image immediately to the selected platforms. */
   const postImageNow = async (img: GeneratedImage, platforms: PostPlatform[]) => {
     if (platforms.length === 0) return;
+    // BUG-CRIT-011: enforce the approval gate at the manual click site.
+    // Without this check, Post Now bypassed ScheduledPost.status entirely
+    // and rejected/pending pipeline content went live anyway.
+    const block = findPostingBlock([img.id], settings.scheduledPosts);
+    if (block) {
+      setPostStatus((prev) => ({ ...prev, [img.id]: block.message }));
+      return;
+    }
     setPostBusy((prev) => ({ ...prev, [img.id]: 'posting' }));
     setPostStatus((prev) => ({ ...prev, [img.id]: null }));
     try {
@@ -719,6 +728,18 @@ export function MainContent() {
   ) => {
     if (platforms.length === 0 || item.images.length === 0) return;
     const key = `carousel-${item.id}`;
+    // BUG-CRIT-011: a single rejected (or pending-approval) sibling
+    // blocks the whole carousel. Bulk-rejecting in the approval queue
+    // marks each ScheduledPost in the group; without this gate the
+    // user could still publish the entire carousel via Post Now.
+    const block = findPostingBlock(
+      item.images.map((i) => i.id),
+      settings.scheduledPosts,
+    );
+    if (block) {
+      setPostStatus((prev) => ({ ...prev, [key]: block.message }));
+      return;
+    }
     setPostBusy((prev) => ({ ...prev, [key]: 'posting' }));
     setPostStatus((prev) => ({ ...prev, [key]: null }));
     try {
@@ -1152,6 +1173,16 @@ export function MainContent() {
     comparisonOptions.negativePrompt,
   ]);
 
+  // BUG-CRIT-011: live ref so the auto-poster can re-check status
+  // immediately before each fetch. The outer effect's snapshot is taken
+  // when the tick fires; if the user rejects a post mid-loop the
+  // snapshot still says 'scheduled' and the post would publish anyway.
+  // Reading scheduledPostsRef.current at fetch time closes that race.
+  const scheduledPostsRef = useRef(settings.scheduledPosts);
+  useEffect(() => {
+    scheduledPostsRef.current = settings.scheduledPosts;
+  }, [settings.scheduledPosts]);
+
   // Auto-posting effect
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -1218,6 +1249,18 @@ export function MainContent() {
             continue;
           }
 
+          // BUG-CRIT-011: re-check live status of every group member
+          // right before the fetch. If the user rejected any sibling
+          // between snapshot and now, abort the whole carousel publish.
+          const liveScheduledPosts = scheduledPostsRef.current;
+          const groupStillPostable = groupPosts.every((gp) =>
+            isStillScheduled(gp.id, liveScheduledPosts),
+          );
+          if (!groupStillPostable) {
+            groupPosts.forEach((gp) => processedIds.add(gp.id));
+            continue;
+          }
+
           try {
             const mediaUrls = groupImages.map((i) => i.url).filter(Boolean) as string[];
             const res = await fetch('/api/social/post', {
@@ -1252,6 +1295,14 @@ export function MainContent() {
         const image = savedImages.find((img) => img.id === post.imageId);
         if (!image) {
           statusPatches.set(post.id, 'failed');
+          continue;
+        }
+
+        // BUG-CRIT-011: re-check live status right before the fetch.
+        // If the user rejected this post between snapshot and now,
+        // skip without marking failed — the rejection is a normal
+        // outcome, not a posting error.
+        if (!isStillScheduled(post.id, scheduledPostsRef.current)) {
           continue;
         }
 
