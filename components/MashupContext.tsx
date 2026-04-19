@@ -206,7 +206,9 @@ export function MashupProvider({ children }: { children: ReactNode }) {
 
   const rejectScheduledPost = (postId: string) => {
     updateSettings((prev) => ({
-      scheduledPosts: (prev.scheduledPosts || []).filter((p) => p.id !== postId),
+      scheduledPosts: (prev.scheduledPosts || []).map((p) =>
+        p.id === postId ? { ...p, status: 'rejected' as const } : p
+      ),
     }));
   };
 
@@ -235,7 +237,9 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     if (postIds.length === 0) return;
     const idSet = new Set(postIds);
     updateSettings((prev) => ({
-      scheduledPosts: (prev.scheduledPosts || []).filter((p) => !idSet.has(p.id)),
+      scheduledPosts: (prev.scheduledPosts || []).map((p) =>
+        idSet.has(p.id) ? { ...p, status: 'rejected' as const } : p
+      ),
     }));
   };
 

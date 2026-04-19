@@ -368,20 +368,30 @@ describe('processIdea — pipeline stage toggles', () => {
     expect(deps.updateIdeaStatus).toHaveBeenCalledWith(expect.any(String), 'done');
   });
 
-  it('logs "no platforms configured" when apiKeys is empty and no explicit platforms set', async () => {
+  it('still creates a pending_approval post (with empty platforms) when no platforms configured — BUG-CRIT-009', async () => {
+    // BUG-CRIT-009: pre-fix, an autoSchedule run with missing creds
+    // logged "No platforms" and skipped scheduling — but the image
+    // had already been saved with pipelinePending=true, leaving it
+    // orphaned (hidden from Gallery, no approval card to release it).
+    // Post-fix: the pipeline still creates a ScheduledPost with
+    // platforms=[] in pending_approval status so the approval queue
+    // has an entry that can clear pipelinePending later.
     const deps = makeDeps();
     const settings = makeSettings({ apiKeys: { leonardo: undefined } });
     const idea = makeIdea();
 
     await processIdea(idea, 0, 1, makeEngagement(), [], settings, deps);
 
-    expect(deps.addLog).toHaveBeenCalledWith(
-      'schedule',
-      idea.id,
-      'error',
-      expect.stringContaining('No platforms'),
+    const updaterCall = (deps.updateSettings as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([arg]) => typeof arg === 'function',
     );
-    expect(deps.findNextAvailableSlot).not.toHaveBeenCalled();
+    expect(updaterCall).toBeDefined();
+    const patch = (updaterCall![0] as (prev: Partial<UserSettings>) => Partial<UserSettings>)({});
+    expect(patch.scheduledPosts!.length).toBeGreaterThan(0);
+    const post = patch.scheduledPosts![0]!;
+    expect(post.status).toBe('pending_approval');
+    expect(post.platforms).toEqual([]);
+    expect(deps.findNextAvailableSlot).toHaveBeenCalled();
   });
 
   // V041-HOTFIX-IG: regression — desktop users with creds in config.json
@@ -418,10 +428,14 @@ describe('processIdea — pipeline stage toggles', () => {
     );
   });
 
-  it('treats { accessToken: "", igAccountId: "" } as NOT configured', async () => {
-    // Pre-fix bug: naive object truthiness on settings.apiKeys.instagram
-    // accepted empty-string fields as a configured platform, then the
-    // scheduler would build a post that the social API immediately rejected.
+  it('treats { accessToken: "", igAccountId: "" } as NOT configured (post lands with empty platforms)', async () => {
+    // Pre-fix bug (V041-HOTFIX-IG): naive object truthiness on
+    // settings.apiKeys.instagram accepted empty-string fields as a
+    // configured platform, then the scheduler would build a post
+    // that the social API immediately rejected.
+    // BUG-CRIT-009: we now still create the ScheduledPost (so the
+    // pipelinePending image has an approval entry to release it),
+    // but with platforms=[] so the auto-poster correctly skips it.
     const deps = makeDeps();
     const settings = makeSettings({
       apiKeys: { instagram: { accessToken: '', igAccountId: '' } },
@@ -430,12 +444,12 @@ describe('processIdea — pipeline stage toggles', () => {
 
     await processIdea(idea, 0, 1, makeEngagement(), [], settings, deps);
 
-    expect(deps.addLog).toHaveBeenCalledWith(
-      'schedule',
-      idea.id,
-      'error',
-      expect.stringContaining('No platforms'),
+    const updaterCall = (deps.updateSettings as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([arg]) => typeof arg === 'function',
     );
+    expect(updaterCall).toBeDefined();
+    const patch = (updaterCall![0] as (prev: Partial<UserSettings>) => Partial<UserSettings>)({});
+    expect(patch.scheduledPosts![0]!.platforms).toEqual([]);
   });
 });
 

@@ -90,7 +90,7 @@ export function countFutureScheduledPosts(
   const now = Date.now();
   const horizon = now + daysAhead * 24 * 60 * 60 * 1000;
   return posts.filter(p => {
-    if (p.status === 'posted' || p.status === 'failed') return false;
+    if (p.status === 'posted' || p.status === 'failed' || p.status === 'rejected') return false;
     const t = new Date(`${p.date}T${p.time}:00`).getTime();
     return t >= now && t <= horizon;
   }).length;

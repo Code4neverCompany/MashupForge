@@ -251,12 +251,14 @@ export function computeWeekScores(
 }
 
 /** Richer post shape used for cap-aware scheduling. All fields optional
- *  so legacy callers passing `{ date, time }` still type-check. */
+ *  so legacy callers passing `{ date, time }` still type-check.
+ *  Status union mirrors `ScheduledPost.status` so callers can pass
+ *  `ScheduledPost[]` directly without a cast. */
 export interface ExistingPost {
   date: string;
   time: string;
   platforms?: string[];
-  status?: 'pending_approval' | 'scheduled' | 'posted' | 'failed';
+  status?: 'pending_approval' | 'scheduled' | 'posted' | 'failed' | 'rejected';
 }
 
 /** Per-platform daily caps. Missing entry = no cap for that platform. */
@@ -272,7 +274,7 @@ export type DailyCaps = Partial<Record<string, number>>;
 function buildPerDayPlatformCounts(posts: ExistingPost[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const p of posts) {
-    if (p.status === 'posted' || p.status === 'failed') continue;
+    if (p.status === 'posted' || p.status === 'failed' || p.status === 'rejected') continue; // BUG-CRIT-009: rejected posts must not lock days either
     const platforms = p.platforms || [];
     for (const plat of platforms) {
       const key = `${p.date}|${plat}`;
@@ -292,7 +294,7 @@ function buildPerDayPlatformCounts(posts: ExistingPost[]): Record<string, number
 function buildPerDayCounts(posts: ExistingPost[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const p of posts) {
-    if (p.status === 'posted' || p.status === 'failed') continue;
+    if (p.status === 'posted' || p.status === 'failed' || p.status === 'rejected') continue; // BUG-CRIT-009: rejected posts must not lock days either
     counts[p.date] = (counts[p.date] || 0) + 1;
   }
   return counts;

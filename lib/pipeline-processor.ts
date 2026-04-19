@@ -152,15 +152,24 @@ export async function processIdea(
   const inferredPlatforms: PipelinePlatform[] = configuredPlatforms(settings, deps.desktopCreds);
   const pipelinePlatforms = explicitPlatforms ?? inferredPlatforms;
 
-  // V040-HOTFIX-007: when this run will produce a post that lands in
-  // `pending_approval`, the associated images must stay OUT of Gallery
-  // until the user approves them (at which point the watermark is
-  // applied + the flag cleared in MashupContext.approveScheduledPost).
-  // Auto-approved posts (all platforms opt-in) skip the holding pen
-  // and images go straight to Gallery, matching pre-HOTFIX behavior.
-  const willSchedule = autoSchedule && pipelinePlatforms.length > 0;
+  // V040-HOTFIX-007 + BUG-CRIT-009: when this run will produce a post
+  // that lands in `pending_approval`, the associated images must stay
+  // OUT of Gallery until the user approves them (at which point the
+  // watermark is applied + the flag cleared in
+  // MashupContext.approveScheduledPost).
+  //
+  // BUG-CRIT-009 update: gate is `autoSchedule` only — the previous
+  // `pipelinePlatforms.length > 0` extra constraint silently dropped
+  // the flag whenever platform credential detection failed, so the
+  // image leaked straight into Gallery un-reviewed and un-watermarked.
+  // The downstream scheduling block now always creates a
+  // `pending_approval` ScheduledPost (with `platforms: []` when none
+  // are configured) so the approval queue has an entry that can clear
+  // the flag for every pipeline-produced image. After BUG-CRIT-001
+  // `resolvePipelinePostStatus` always returns 'pending_approval', so
+  // the call here just documents intent — the result is always true.
   const pipelinePending =
-    willSchedule &&
+    autoSchedule &&
     resolvePipelinePostStatus(pipelinePlatforms, settings.pipelineAutoApprove) ===
       'pending_approval';
   const savePipelineImage = (img: GeneratedImage) =>
@@ -320,9 +329,13 @@ export async function processIdea(
         currentIdea: idea.concept,
         currentIdeaId: idea.id,
       });
-      if (pipelinePlatforms.length === 0) {
-        addLog('schedule', idea.id, 'error', 'No platforms configured — skipped');
-      } else {
+      // BUG-CRIT-009: always create the ScheduledPost (with empty
+      // `platforms` when none are configured) so the approval queue
+      // has an entry that can later clear `pipelinePending` on the
+      // images. Without this, a pipeline run with autoSchedule=true
+      // but no platforms would orphan its pipelinePending images
+      // (hidden from Gallery, no approval card to release them).
+      {
         const nowStamp = Date.now();
         const groupId = `carousel-${nowStamp}-${Math.random().toString(36).slice(2, 9)}`;
         const allPosts = [...getScheduledPosts(), ...accumulatedPosts];
@@ -425,9 +438,13 @@ export async function processIdea(
           currentIdea: idea.concept,
           currentIdeaId: idea.id,
         });
-        if (pipelinePlatforms.length === 0) {
-          addLog('schedule', idea.id, 'error', 'No platforms configured — skipped');
-        } else {
+        // BUG-CRIT-009: always create the ScheduledPost (with empty
+        // `platforms` when none are configured) so the approval queue
+        // has an entry that can later clear `pipelinePending` on the
+        // image. Without this, an autoSchedule=true run with missing
+        // platform credentials would orphan its pipelinePending image
+        // (hidden from Gallery, no approval card to release it).
+        {
           const allPosts = [...getScheduledPosts(), ...accumulatedPosts];
           const slot = findNextAvailableSlot(
             allPosts,

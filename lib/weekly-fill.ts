@@ -76,7 +76,7 @@ export function computeWeekFillStatus(
   const counts = new Map<string, number>();
   if (posts && posts.length > 0) {
     for (const p of posts) {
-      if (p.status === 'posted' || p.status === 'failed') continue;
+      if (p.status === 'posted' || p.status === 'failed' || p.status === 'rejected') continue;
       // Treat malformed date/time strings as "skip" rather than throwing —
       // callers include user-edited settings that may be half-filled.
       const ts = new Date(`${p.date}T${p.time}:00`).getTime();

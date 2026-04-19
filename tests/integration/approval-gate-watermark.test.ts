@@ -155,6 +155,29 @@ describe('BUG-CRIT-001 — pipeline always gates through approval', () => {
       expect(saved.pipelinePending).toBe(true);
     }
   });
+
+  it('BUG-CRIT-009: still flags pipelinePending=true AND lands an approval entry when no platforms are configured', async () => {
+    // Regression for the orphan case: pre-fix, missing platform creds
+    // logged "No platforms — skipped" → image saved with
+    // pipelinePending=true → no ScheduledPost created → image hidden
+    // from Gallery forever with no approval card to release it.
+    const deps = mkDeps();
+    const settings = mkSettings({
+      apiKeys: { leonardo: 'k' }, // no social platforms
+    });
+
+    const accumulated: ScheduledPost[] = [];
+    await processIdea(mkIdea(), 0, 1, mkEngagement(), accumulated, settings, deps);
+
+    const saveCalls = (deps.saveImage as ReturnType<typeof vi.fn>).mock.calls;
+    expect(saveCalls.length).toBeGreaterThan(0);
+    for (const [saved] of saveCalls) {
+      expect(saved.pipelinePending).toBe(true);
+    }
+    expect(accumulated).toHaveLength(1);
+    expect(accumulated[0]!.status).toBe('pending_approval');
+    expect(accumulated[0]!.platforms).toEqual([]);
+  });
 });
 
 describe('BUG-CRIT-001 — watermark-on-approval contract', () => {

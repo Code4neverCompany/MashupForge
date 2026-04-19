@@ -146,7 +146,13 @@ describe('pipeline platform detection — end-to-end ScheduledPost shape', () =>
     expect(accumulated[0]!.platforms).toEqual(['pinterest']);
   });
 
-  it('skips and logs when neither settings.apiKeys nor desktopCreds carry any platform', async () => {
+  it('still creates a pending_approval post with platforms:[] when no creds are configured (BUG-CRIT-009)', async () => {
+    // Post BUG-CRIT-009: instead of skipping with a "No platforms" log
+    // (which orphaned the pipelinePending image with no approval entry
+    // to release it), the pipeline now lands a ScheduledPost with
+    // platforms=[] in pending_approval status. The auto-poster
+    // correctly skips empty-platforms posts; the user can either fix
+    // platforms then approve, or reject from the queue.
     const deps = mkDeps();
     const accumulated: ScheduledPost[] = [];
 
@@ -160,19 +166,16 @@ describe('pipeline platform detection — end-to-end ScheduledPost shape', () =>
       deps,
     );
 
-    expect(accumulated).toHaveLength(0);
-    expect(deps.addLog).toHaveBeenCalledWith(
-      'schedule',
-      'idea-001',
-      'error',
-      expect.stringContaining('No platforms'),
-    );
+    expect(accumulated).toHaveLength(1);
+    expect(accumulated[0]!.platforms).toEqual([]);
+    expect(accumulated[0]!.status).toBe('pending_approval');
   });
 
-  it('treats settings.apiKeys.instagram = { accessToken: "", igAccountId: "" } as not configured', async () => {
+  it('treats settings.apiKeys.instagram = { accessToken: "", igAccountId: "" } as not configured (post lands with platforms:[])', async () => {
     // Pre-fix bug: the naive Object.entries filter accepted empty-string
-    // fields as configured. The integration check: nothing lands in
-    // accumulatedPosts in that scenario.
+    // fields as configured. Post BUG-CRIT-009: post still lands so the
+    // approval queue can release pipelinePending, but with platforms=[]
+    // so the auto-poster won't try to publish to a dead channel.
     const deps = mkDeps();
     const accumulated: ScheduledPost[] = [];
 
@@ -188,6 +191,7 @@ describe('pipeline platform detection — end-to-end ScheduledPost shape', () =>
       deps,
     );
 
-    expect(accumulated).toHaveLength(0);
+    expect(accumulated).toHaveLength(1);
+    expect(accumulated[0]!.platforms).toEqual([]);
   });
 });

@@ -45,7 +45,6 @@ import {
   LogOut,
   Copy,
   Check,
-  FileJson,
   Wand2,
   Clock,
   Send,
@@ -541,9 +540,10 @@ export function MainContent() {
     return `${y}-${m}-${day}`;
   };
   /** Colour class for a scheduled-post status badge on the calendar. */
-  const calendarColorFor = (status?: 'pending_approval' | 'scheduled' | 'posted' | 'failed'): string => {
+  const calendarColorFor = (status?: ScheduledPost['status']): string => {
     if (status === 'posted') return 'bg-emerald-500/80 border-emerald-400/60 text-emerald-50';
     if (status === 'failed') return 'bg-red-500/80 border-red-400/60 text-red-50';
+    if (status === 'rejected') return 'bg-zinc-500/80 border-zinc-400/60 text-zinc-50';
     if (status === 'pending_approval') return 'bg-indigo-500/80 border-indigo-400/60 text-indigo-50';
     return 'bg-amber-500/80 border-amber-400/60 text-amber-50';
   };
@@ -922,27 +922,6 @@ export function MainContent() {
       // Leave the final progress on screen briefly so the user sees "N/N".
       setTimeout(() => setBatchProgress(null), 2000);
     }
-  };
-
-  /** Download a JSON file of all post-ready items. */
-  const exportPostsAsJson = (items: GeneratedImage[]) => {
-    const payload = items.map((img) => ({
-      id: img.id,
-      prompt: img.prompt,
-      url: img.url,
-      caption: img.postCaption || '',
-      hashtags: img.postHashtags || [],
-      tags: img.tags || [],
-    }));
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `mashup-posts-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   // Pi.dev runtime status, polled when the Settings panel is open.
@@ -2428,7 +2407,7 @@ export function MainContent() {
                                       value={anchor.postCaption || ''}
                                       onChange={(e) => {
                                         // Fan edits to every image so Post Now
-                                        // and Copy All pick up the same text.
+                                        // and per-card Copy pick up the same text.
                                         propagateCaptionToGroup(entry.images, e.target.value, undefined);
                                       }}
                                       placeholder="No caption yet…"
@@ -2630,7 +2609,7 @@ export function MainContent() {
                                   <div className="flex gap-1" title="Remove from Captioning? Image stays in Gallery.">
                                     <button
                                       onClick={() => {
-                                        patchImage(img, { postCaption: '', postHashtags: [], tags: [] });
+                                        patchImage(img, { approved: false, postCaption: '', postHashtags: [], tags: [] });
                                         setPendingRemoveId(null);
                                       }}
                                       className="px-2 py-1.5 text-xs bg-red-600/90 hover:bg-red-500 text-white rounded-lg flex items-center gap-1 transition-colors"
@@ -2671,11 +2650,6 @@ export function MainContent() {
                 // posts consume one slot each instead of N individual slots.
                 const postItems = computeCarouselView(ready);
                 const available = availablePlatforms();
-
-                const copyAllPosts = () => {
-                  const formatted = ready.map(formatPost).join('\n\n---\n\n');
-                  copyWithFeedback(formatted, '__all__');
-                };
 
                 const postAllNow = async () => {
                   for (const img of ready) {
@@ -2735,28 +2709,6 @@ export function MainContent() {
                             Calendar
                           </button>
                         </div>
-                        <button
-                          onClick={copyAllPosts}
-                          disabled={ready.length === 0}
-                          className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5 transition-colors"
-                        >
-                          {copiedId === '__all__' ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5" /> Copy All
-                            </>
-                          )}
-                        </button>
-                        <button
-                          onClick={() => exportPostsAsJson(ready)}
-                          disabled={ready.length === 0}
-                          className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5 transition-colors"
-                        >
-                          <FileJson className="w-3.5 h-3.5" /> Export JSON
-                        </button>
                         {/* Create Carousel — opens the lifted multi-source
                             picker. Source pool is every approved saved
                             image so users can mix Post-Ready and
@@ -3583,6 +3535,25 @@ export function MainContent() {
                             const selPlatforms = getSelectedPlatforms(key);
                             const carouselSchedule = getSchedule(key);
                             const isCarouselRegen = preparingPostId === anchor.id;
+                            // BUG-DES-001: parity with single-image card —
+                            // carousels must show scheduled/posted/failed
+                            // status from the auto-poster path, not just
+                            // the manual Post Now anchor.postedAt/postError.
+                            // Sibling posts share status (group ships atomically)
+                            // so checking the anchor's latest scheduled post
+                            // is sufficient.
+                            const carouselScheduled = latestScheduleFor(anchor.id);
+                            const carouselBadge = anchor.postedAt
+                              ? { text: `Posted${anchor.postedTo?.length ? ` to ${anchor.postedTo.join(', ')}` : ''}`, color: 'bg-emerald-600' }
+                              : anchor.postError
+                                ? { text: 'Failed', color: 'bg-red-600' }
+                                : carouselScheduled?.status === 'posted'
+                                  ? { text: 'Posted', color: 'bg-emerald-600' }
+                                  : carouselScheduled?.status === 'failed'
+                                    ? { text: 'Failed', color: 'bg-red-600' }
+                                    : carouselScheduled?.status === 'scheduled'
+                                      ? { text: `Scheduled ${carouselScheduled.date} ${formatTimeShort(carouselScheduled.time)}`, color: 'bg-amber-600' }
+                                      : null;
                             return (
                               <div
                                 key={item.id}
@@ -3603,9 +3574,16 @@ export function MainContent() {
                                       />
                                     ))}
                                   </div>
-                                  <span className="absolute top-3 left-3 inline-flex items-center gap-1 px-2 py-0.5 bg-[#00e6ff]/15 border border-[#00e6ff]/30 text-[10px] font-medium text-[#00e6ff] rounded-full">
-                                    <LayoutGrid className="w-3 h-3" /> Carousel · {item.images.length} images
-                                  </span>
+                                  <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#00e6ff]/15 border border-[#00e6ff]/30 text-[10px] font-medium text-[#00e6ff] rounded-full">
+                                      <LayoutGrid className="w-3 h-3" /> Carousel · {item.images.length} images
+                                    </span>
+                                    {carouselBadge && (
+                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 ${carouselBadge.color}/90 text-[10px] font-medium text-white rounded-full`}>
+                                        {carouselBadge.text}
+                                      </span>
+                                    )}
+                                  </div>
                                   {isExplicit && (
                                     <span className="absolute top-3 right-3 inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-800/80 text-[10px] font-medium text-zinc-300 rounded-full border border-zinc-700">
                                       manual
@@ -3618,17 +3596,19 @@ export function MainContent() {
                                     in-flight feedback). Anchor's persistent
                                     fields apply to the whole carousel because
                                     postCarouselNow patches every image. */}
-                                {(anchor.postedAt || anchor.postError) && (
+                                {(anchor.postedAt || anchor.postError || carouselScheduled?.status === 'posted' || carouselScheduled?.status === 'failed') && (
                                   <div
                                     className={`px-4 py-2 text-[11px] font-medium border-b ${
-                                      anchor.postError
+                                      anchor.postError || carouselScheduled?.status === 'failed'
                                         ? `${uiStatus.error.subtleBg} ${uiStatus.error.text} border-red-500/30`
                                         : `${uiStatus.success.subtleBg} ${uiStatus.success.text} border-emerald-500/30`
                                     }`}
                                   >
                                     {anchor.postError
                                       ? `Failed: ${anchor.postError}`
-                                      : `Posted${anchor.postedTo?.length ? ` to ${anchor.postedTo.join(', ')}` : ''} ✓`}
+                                      : carouselScheduled?.status === 'failed'
+                                        ? `Failed`
+                                        : `Posted${anchor.postedTo?.length ? ` to ${anchor.postedTo.join(', ')}` : ''} ✓`}
                                   </div>
                                 )}
 
@@ -4342,7 +4322,13 @@ export function MainContent() {
           createCollection={createCollection}
           handleAnimate={handleAnimate}
           toggleApproveImage={toggleApproveImage}
-          deleteImage={deleteImage}
+          deleteImage={(id, fromSaved) => {
+            if (view === 'post-ready') {
+              const img = savedImages.find((i) => i.id === id);
+              if (img) { patchImage(img, { isPostReady: false }); return; }
+            }
+            deleteImage(id, fromSaved);
+          }}
         />
       )}
 

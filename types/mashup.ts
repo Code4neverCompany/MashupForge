@@ -155,7 +155,7 @@ export interface ScheduledPost {
    * poster will pick them up. User-scheduled posts go straight to
    * 'scheduled' and skip the approval queue.
    */
-  status?: 'pending_approval' | 'scheduled' | 'posted' | 'failed';
+  status?: 'pending_approval' | 'scheduled' | 'posted' | 'failed' | 'rejected';
   /**
    * Optional link between scheduled posts that belong to the same
    * carousel. When set, the auto-post worker collects every post with
@@ -817,7 +817,7 @@ export interface MashupContextType {
   clearPipelineLog: () => void;
   /** Approve a pending_approval post — flips its status to 'scheduled'. */
   approveScheduledPost: (postId: string) => void;
-  /** Reject a pending_approval post — removes it from scheduledPosts. */
+  /** Reject a pending_approval post — sets its status to 'rejected' (content stays visible). */
   rejectScheduledPost: (postId: string) => void;
   /** Bulk-approve N pending_approval posts in a single state pass. */
   bulkApproveScheduledPosts: (postIds: string[]) => void;
