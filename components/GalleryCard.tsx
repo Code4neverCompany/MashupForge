@@ -248,8 +248,14 @@ export function GalleryCard({
           </span>
         )}
 
-        {/* Top Actions Overlay — compact icon row. */}
-        <div className="absolute top-0 left-0 right-0 p-2 flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+        {/* Top Actions Overlay — compact icon row.
+            BUG-CRIT-010: z-30 keeps the row (and its KebabMenu dropdown,
+            which opens downward into the prompt area) painted above the
+            bottom prompt overlay at z-[20] (line ~444). Without the
+            bump, the overlay's later DOM order beat the row at the same
+            z-20, so kebab items rendered behind the prompt and the
+            Delete button was unclickable. */}
+        <div className="absolute top-0 left-0 right-0 p-2 flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-30">
           {img.imageId && !img.isVideo && view !== 'gallery' && (
             <button
               onClick={(e) => { e.stopPropagation(); handleAnimate(img); }}
