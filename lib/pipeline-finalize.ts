@@ -79,6 +79,11 @@ export async function finalizePipelineImage(
     ...img,
     url: finalUrl,
     pipelinePending: false,
-    ...(markPostReady ? { isPostReady: true } : {}),
+    // F-001: explicit `false` on the reject path so a previously-approved
+    // image (already isPostReady: true in the gallery) doesn't keep
+    // appearing in Post Ready after rejection. The empty-spread variant
+    // would have been a no-op and silently violated the "rejected
+    // images land in Gallery only, never Post Ready" contract.
+    isPostReady: markPostReady,
   };
 }

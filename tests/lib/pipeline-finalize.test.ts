@@ -105,18 +105,30 @@ describe('finalizePipelineImage', () => {
   // BUG-CRIT-013: markPostReady drives Post Ready tab membership. The
   // approve path passes true (scheduled content belongs in Post Ready);
   // the reject path passes false (rejected images go to Gallery only).
-  it('does NOT set isPostReady when markPostReady is omitted (default)', async () => {
+  // F-001: the reject path must write an EXPLICIT `false` so a
+  // previously-approved image (already isPostReady: true in the
+  // gallery) gets cleared instead of staying in Post Ready. The old
+  // empty-spread variant was a no-op and silently leaked rejected
+  // images into Post Ready.
+  it('sets isPostReady=false when markPostReady is omitted (default)', async () => {
     const wm = vi.fn();
     const img = mkImg({ id: 'a', pipelinePending: true });
     const out = await finalizePipelineImage(img, undefined, undefined, wm);
-    expect(out.isPostReady).toBeUndefined();
+    expect(out.isPostReady).toBe(false);
   });
 
-  it('does NOT set isPostReady when markPostReady is false (reject path)', async () => {
+  it('sets isPostReady=false when markPostReady is false (reject path)', async () => {
     const wm = vi.fn();
     const img = mkImg({ id: 'a', pipelinePending: true });
     const out = await finalizePipelineImage(img, undefined, undefined, wm, false);
-    expect(out.isPostReady).toBeUndefined();
+    expect(out.isPostReady).toBe(false);
+  });
+
+  it('F-001: clears isPostReady=true when rejecting a previously-approved image', async () => {
+    const wm = vi.fn();
+    const img = mkImg({ id: 'a', pipelinePending: true, isPostReady: true });
+    const out = await finalizePipelineImage(img, undefined, undefined, wm, false);
+    expect(out.isPostReady).toBe(false);
   });
 
   it('sets isPostReady=true when markPostReady is true (approve path)', async () => {
