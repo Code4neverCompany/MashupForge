@@ -11,6 +11,12 @@ import {
 } from '@/lib/desktop-config-keys';
 import { LAST_CHECKED_AT_KEY } from './UpdateChecker';
 import { PortConflictBanner } from './PortConflictBanner';
+import {
+  traceUpdater,
+  getUpdaterTrace,
+  clearUpdaterTrace,
+  formatTraceEntry,
+} from '@/lib/updater-trace';
 
 // Provider/model changes need pi to respawn so the new env reaches the
 // child process. The next prompt will auto-restart pi after stop().
@@ -281,32 +287,46 @@ function UpdatesSection({ behavior, onBehaviorChange }: UpdatesSectionProps) {
   }, []);
 
   const handleCheckNow = useCallback(async () => {
+    traceUpdater('manual:check-clicked');
     setResult({ kind: 'checking' });
     try {
+      traceUpdater('manual:importing-updater-plugin');
       const updaterMod = (await import('@tauri-apps/plugin-updater')) as unknown as UpdaterModule;
+      traceUpdater('manual:calling-check');
       const update = await updaterMod.check();
       const now = Date.now();
       try { localStorage.setItem(LAST_CHECKED_AT_KEY, String(now)); } catch { /* ignore */ }
       setLastCheckedAt(now);
+      traceUpdater('manual:check-returned', {
+        available: update?.available ?? null,
+        remoteVersion: update?.version ?? null,
+      });
       if (!update?.available) {
+        traceUpdater('manual:no-update-available');
         setResult({ kind: 'none' });
         return;
       }
       setResult({ kind: 'available', version: update.version, body: (update.body ?? '').trim() });
       // Stash the update for the install button via closure.
-      installRef.current = () => update.downloadAndInstall((event) => {
-        if (event.event === 'Started') {
-          setResult({ kind: 'installing', version: update.version, pct: null });
-        } else if (event.event === 'Progress') {
-          setResult((prev) => {
-            if (prev.kind !== 'installing') return prev;
-            const total = event.data?.contentLength;
-            const chunk = event.data?.chunkLength ?? 0;
-            const next = (prev.pct ?? 0) + (total ? (chunk / total) * 100 : 0);
-            return { ...prev, pct: total ? Math.min(99, Math.round(next)) : null };
-          });
-        }
-      });
+      installRef.current = () => {
+        traceUpdater('manual:install-clicked', { version: update.version });
+        return update.downloadAndInstall((event) => {
+          if (event.event === 'Started') {
+            traceUpdater('manual:download-started', { contentLength: event.data?.contentLength ?? null });
+            setResult({ kind: 'installing', version: update.version, pct: null });
+          } else if (event.event === 'Progress') {
+            setResult((prev) => {
+              if (prev.kind !== 'installing') return prev;
+              const total = event.data?.contentLength;
+              const chunk = event.data?.chunkLength ?? 0;
+              const next = (prev.pct ?? 0) + (total ? (chunk / total) * 100 : 0);
+              return { ...prev, pct: total ? Math.min(99, Math.round(next)) : null };
+            });
+          } else {
+            traceUpdater('manual:install-event', { event: event.event });
+          }
+        });
+      };
     } catch (e: unknown) {
       // BUG-ACL-005: tauri-plugin-updater v2.10.1 sometimes raises
       // "plugin:updater|check not allowed by ACL" on Windows even
@@ -314,6 +334,7 @@ function UpdatesSection({ behavior, onBehaviorChange }: UpdatesSectionProps) {
       // Surface a friendly sentence instead of the raw ACL string so
       // the panel stays usable; console has the underlying detail.
       const detail = e instanceof Error ? e.message : String(e);
+      traceUpdater('manual:check-threw', { error: detail });
       if (/not allowed by ACL/i.test(detail)) {
         console.warn(
           '[UpdatesSection] updater ACL denied check() — likely plugin bug; reinstall of the latest release may resolve.',
@@ -444,7 +465,76 @@ function UpdatesSection({ behavior, onBehaviorChange }: UpdatesSectionProps) {
           {result.message}
         </p>
       )}
+
+      <UpdaterDiagnosticLog />
     </div>
+  );
+}
+
+function UpdaterDiagnosticLog() {
+  const [open, setOpen] = useState(false);
+  const [trace, setTrace] = useState<ReturnType<typeof getUpdaterTrace>>([]);
+
+  const refresh = useCallback(() => {
+    setTrace(getUpdaterTrace());
+  }, []);
+
+  useEffect(() => {
+    if (open) refresh();
+  }, [open, refresh]);
+
+  const handleCopy = useCallback(() => {
+    const text = trace.map(formatTraceEntry).join('\n');
+    try {
+      void navigator.clipboard.writeText(text);
+    } catch { /* ignore — best-effort */ }
+  }, [trace]);
+
+  const handleClear = useCallback(() => {
+    clearUpdaterTrace();
+    refresh();
+  }, [refresh]);
+
+  return (
+    <details className="text-[10px]" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300 select-none">
+        Diagnostic log {trace.length > 0 ? `(${trace.length})` : ''}
+      </summary>
+      <div className="mt-2 space-y-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={refresh}
+            className="px-2 py-1 rounded text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
+          >
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={handleCopy}
+            disabled={trace.length === 0}
+            className="px-2 py-1 rounded text-[10px] bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200"
+          >
+            Copy
+          </button>
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={trace.length === 0}
+            className="px-2 py-1 rounded text-[10px] bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200"
+          >
+            Clear
+          </button>
+        </div>
+        {trace.length === 0 ? (
+          <p className="text-zinc-600">No trace entries yet. The auto-check on launch and "Check for updates" both write here.</p>
+        ) : (
+          <pre className="max-h-40 overflow-auto rounded bg-[#050505] border border-zinc-800/60 p-2 font-mono text-zinc-400 whitespace-pre-wrap">
+            {trace.map(formatTraceEntry).join('\n')}
+          </pre>
+        )}
+      </div>
+    </details>
   );
 }
 

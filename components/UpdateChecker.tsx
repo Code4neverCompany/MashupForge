@@ -10,6 +10,7 @@ import {
   computePostponeDeadline,
   shouldFireInstall,
 } from '@/lib/update-postpone';
+import { traceUpdater } from '@/lib/updater-trace';
 
 // Local minimal shape for the Tauri updater Update object — typed loosely
 // because we import the real type dynamically and only touch a few fields.
@@ -50,21 +51,31 @@ export function UpdateChecker() {
 
   // Run the check + post-update toast detection once per mount in desktop mode.
   useEffect(() => {
-    if (isDesktop !== true) return;
-    if (ranRef.current) return;
+    traceUpdater('mount-effect', { isDesktop });
+    if (isDesktop !== true) {
+      traceUpdater('exit:not-desktop', { isDesktop });
+      return;
+    }
+    if (ranRef.current) {
+      traceUpdater('exit:already-ran');
+      return;
+    }
     ranRef.current = true;
 
     let cancelled = false;
 
     const run = async () => {
+      traceUpdater('run:start');
       // Tauri's getVersion is the authoritative source for the running app's
       // version — the npm package is version-agnostic.
       let currentVersion: string | null = null;
       try {
         const appMod = await import('@tauri-apps/api/app');
         currentVersion = await appMod.getVersion();
-      } catch {
+        traceUpdater('run:got-current-version', { currentVersion });
+      } catch (e) {
         // Non-desktop or plugin missing — silently skip.
+        traceUpdater('run:getVersion-failed', { error: e instanceof Error ? e.message : String(e) });
       }
 
       // Post-restart "Updated to vX.Y.Z" toast: compare the running version
@@ -97,21 +108,47 @@ export function UpdateChecker() {
         const cfg = (await cfgRes.json()) as { keys?: Record<string, string> };
         const raw = cfg.keys?.UPDATE_BEHAVIOR;
         if (raw === 'auto' || raw === 'notify' || raw === 'off') behavior = raw;
-      } catch { /* fall through with default */ }
+        traceUpdater('run:resolved-behavior', { behavior, raw });
+      } catch (e) {
+        traceUpdater('run:config-fetch-failed', {
+          error: e instanceof Error ? e.message : String(e),
+          fallbackBehavior: behavior,
+        });
+      }
 
-      if (behavior === 'off') return;
+      if (behavior === 'off') {
+        traceUpdater('exit:behavior-off');
+        return;
+      }
 
       try {
+        traceUpdater('run:importing-updater-plugin');
         const updaterMod = await import('@tauri-apps/plugin-updater');
+        traceUpdater('run:calling-check');
         const update = (await updaterMod.check()) as unknown as UpdateLike | null;
         try { localStorage.setItem(LAST_CHECKED_AT_KEY, String(Date.now())); } catch { /* ignore */ }
-        if (!update?.available || cancelled) return;
+        traceUpdater('run:check-returned', {
+          available: update?.available ?? null,
+          remoteVersion: update?.version ?? null,
+          currentVersion,
+        });
+        if (!update?.available || cancelled) {
+          traceUpdater('exit:no-update-or-cancelled', {
+            available: update?.available ?? null,
+            cancelled,
+          });
+          return;
+        }
 
         // Skip if the user already dismissed this exact version.
         try {
-          if (localStorage.getItem(DISMISS_KEY(update.version)) === '1') return;
+          if (localStorage.getItem(DISMISS_KEY(update.version)) === '1') {
+            traceUpdater('exit:version-dismissed', { version: update.version });
+            return;
+          }
         } catch { /* ignore */ }
 
+        traceUpdater('run:setting-available-state', { version: update.version, behavior });
         if (behavior === 'auto') {
           // Silent path — the install gate (handleUpdate) handles the
           // pipeline-busy postponement before downloadAndInstall fires.
@@ -133,6 +170,7 @@ export function UpdateChecker() {
         // updater:default). Suspected plugin-side bug. We log with a
         // distinct prefix so it's searchable in the console.
         const detail = e instanceof Error ? e.message : String(e);
+        traceUpdater('exit:check-threw', { error: detail });
         if (/not allowed by ACL/i.test(detail)) {
           console.warn(
             '[UpdateChecker] updater ACL denied check() — capability is granted in source; likely tauri-plugin-updater v2.10.1 bug. Manual check in Settings still works.',
@@ -153,10 +191,12 @@ export function UpdateChecker() {
   }, [isDesktop]);
 
   const performInstall = useCallback(async (update: UpdateLike) => {
+    traceUpdater('install:start', { version: update.version });
     setState({ kind: 'downloading', update, downloaded: 0, total: null });
     try {
       await update.downloadAndInstall((event) => {
         if (event.event === 'Started') {
+          traceUpdater('install:download-started', { contentLength: event.data?.contentLength ?? null });
           setState((prev) =>
             prev.kind === 'downloading'
               ? { ...prev, total: event.data?.contentLength ?? null }
@@ -168,8 +208,11 @@ export function UpdateChecker() {
               ? { ...prev, downloaded: prev.downloaded + (event.data?.chunkLength ?? 0) }
               : prev,
           );
+        } else {
+          traceUpdater('install:event', { event: event.event });
         }
       });
+      traceUpdater('install:downloadAndInstall-resolved', { version: update.version });
       // BUG-002: NSIS only RELAUNCHES via `/R`, it does NOT kill the parent.
       // Without an explicit exit the old instance keeps holding sidecar port
       // 19782 (DESKTOP_PORT in src-tauri/src/lib.rs) and the new instance
@@ -179,9 +222,11 @@ export function UpdateChecker() {
       // WindowEvent::CloseRequested in lib.rs, the sidecar Child is killed,
       // port 19782 frees, and Tauri spawns the freshly installed binary.
       const processMod = await import('@tauri-apps/plugin-process');
+      traceUpdater('install:calling-relaunch');
       await processMod.relaunch();
     } catch (e: unknown) {
       const detail = e instanceof Error ? e.message : String(e);
+      traceUpdater('install:failed', { error: detail });
       setState({ kind: 'download-error', update, message: detail });
     }
   }, []);
