@@ -230,4 +230,37 @@ describe('BUG-CRIT-001 — watermark-on-approval contract', () => {
     expect(out.url).toBe('original-url');
     expect(out.pipelinePending).toBe(false);
   });
+
+  // BUG-DEV-004: watermark failures used to swallow silently. The
+  // catch now both keeps the original URL (existing contract) AND
+  // surfaces a warning to the dev console (new contract) so a broken
+  // watermark service is debuggable.
+  it('keeps the original URL AND warns when applyWatermark rejects', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const applyWatermark = vi.fn().mockRejectedValue(new Error('canvas blew up'));
+      const img: GeneratedImage = {
+        id: 'i-broken',
+        prompt: 'p',
+        url: 'original-url',
+        pipelinePending: true,
+      };
+
+      const out = await finalizePipelineImage(img, enabledWatermark, 'chan', applyWatermark);
+
+      // Existing contract: original URL preserved, pipelinePending cleared.
+      expect(out.url).toBe('original-url');
+      expect(out.pipelinePending).toBe(false);
+
+      // New contract: warning logged with module tag + image id + error.
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const [msg, id, err] = warnSpy.mock.calls[0]!;
+      expect(msg).toBe('[pipeline-finalize] watermark failed for');
+      expect(id).toBe('i-broken');
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toBe('canvas blew up');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
 });

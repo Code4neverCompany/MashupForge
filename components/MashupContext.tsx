@@ -173,16 +173,24 @@ export function MashupProvider({ children }: { children: ReactNode }) {
       for (const img of targets) saveImage({ ...img, pipelinePending: false });
       // Step 2 — background watermark pass. Best-effort: failures keep
       // the original URL (handled inside finalizePipelineImage).
+      // BUG-DEV-004: per-image catch surfaces unexpected failures
+      // (saveImage IDB quota, etc.) that escape finalizePipelineImage's
+      // internal try/catch. Without this, a Promise.all rejection from
+      // any image silently aborts the rest of the batch.
       if (settings.watermark?.enabled) {
         void Promise.all(
           targets.map(async (img) => {
-            const finalized = await finalizePipelineImage(
-              img,
-              settings.watermark,
-              settings.channelName,
-              applyWatermark,
-            );
-            saveImage(finalized);
+            try {
+              const finalized = await finalizePipelineImage(
+                img,
+                settings.watermark,
+                settings.channelName,
+                applyWatermark,
+              );
+              saveImage(finalized);
+            } catch (err) {
+              console.warn('[MashupContext] finalize/save failed for', img.id, err);
+            }
           }),
         );
       }

@@ -58,8 +58,13 @@ export async function finalizePipelineImage(
   if (watermark?.enabled && finalUrl) {
     try {
       finalUrl = await applyWatermark(finalUrl, watermark, channelName);
-    } catch {
+    } catch (err) {
       // Watermark failed — keep the original URL and ship as-is.
+      // BUG-DEV-004: surface the failure to the dev console so a broken
+      // watermark service is debuggable. Silent fallback masked an
+      // outage where every approved image landed un-watermarked with
+      // no signal to the developer or user.
+      console.warn('[pipeline-finalize] watermark failed for', img.id, err);
       finalUrl = img.url;
     }
   }
