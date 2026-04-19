@@ -42,6 +42,7 @@ import { useSocial } from '../hooks/useSocial';
 import { usePipeline } from '../hooks/usePipeline';
 import { collectFinalizeTargets, finalizePipelineImage } from '../lib/pipeline-finalize';
 import { applyCaptionEdit } from '../lib/caption-edit';
+import { planApproveScheduledPost, planRejectScheduledPost } from '../lib/approval-actions';
 
 const MashupContext = createContext<MashupContextType | null>(null);
 
@@ -197,19 +198,24 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // BUG-CRIT-012: read the target post from the rendered settings
+  // snapshot BEFORE updateSettings rather than from inside the
+  // functional updater. The old shape relied on React's "eager state
+  // update" optimization (the functional updater runs synchronously
+  // only when the queue is empty) — which silently broke for the 2nd+
+  // call in a row. CarouselApprovalCard fans out N approve calls back-
+  // to-back, so images 2..N got status='scheduled' but kept
+  // pipelinePending=true (hidden from Gallery, no watermark).
   const approveScheduledPost = (postId: string) => {
-    let approvedPost: import('../types/mashup').ScheduledPost | undefined;
-    updateSettings((prev) => {
-      approvedPost = (prev.scheduledPosts || []).find(
-        (p) => p.id === postId && p.status === 'pending_approval',
-      );
-      return {
-        scheduledPosts: (prev.scheduledPosts || []).map((p) =>
-          p.id === postId ? { ...p, status: 'scheduled' as const } : p
-        ),
-      };
-    });
-    if (approvedPost) finalizePipelineImagesForPosts([approvedPost]);
+    const { toFinalize, nextPosts } = planApproveScheduledPost(
+      settings.scheduledPosts || [],
+      postId,
+    );
+    if (toFinalize.length === 0) return;
+    updateSettings((prev) => ({
+      scheduledPosts: nextPosts(prev.scheduledPosts || []),
+    }));
+    finalizePipelineImagesForPosts(toFinalize);
   };
 
   // V050-009 BUG-DEV-001: status guard mirrors the approve path. Without
@@ -224,21 +230,19 @@ export function MashupProvider({ children }: { children: ReactNode }) {
   // we surface the image in Gallery (watermarked, like approve does) and
   // let them delete it explicitly if they really don't want it. Carousel
   // siblings are released as a group via collectFinalizeTargets.
+  // BUG-CRIT-012: same closure-timing fix as approveScheduledPost.
+  // Carousel "Reject carousel" fans out N reject calls; without the
+  // pre-update lookup, only the first image landed in Gallery.
   const rejectScheduledPost = (postId: string) => {
-    let rejectedPost: import('../types/mashup').ScheduledPost | undefined;
-    updateSettings((prev) => {
-      rejectedPost = (prev.scheduledPosts || []).find(
-        (p) => p.id === postId && p.status === 'pending_approval',
-      );
-      return {
-        scheduledPosts: (prev.scheduledPosts || []).map((p) =>
-          p.id === postId && p.status === 'pending_approval'
-            ? { ...p, status: 'rejected' as const }
-            : p
-        ),
-      };
-    });
-    if (rejectedPost) finalizePipelineImagesForPosts([rejectedPost]);
+    const { toFinalize, nextPosts } = planRejectScheduledPost(
+      settings.scheduledPosts || [],
+      postId,
+    );
+    if (toFinalize.length === 0) return;
+    updateSettings((prev) => ({
+      scheduledPosts: nextPosts(prev.scheduledPosts || []),
+    }));
+    finalizePipelineImagesForPosts(toFinalize);
   };
 
   // Bulk variants — single functional-updater pass so N approvals applied
