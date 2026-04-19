@@ -132,6 +132,101 @@ describe('findBestSlots', () => {
     const slots = findBestSlots([], 1, makeEngagement());
     expect(slots[0].reason).toContain('research');
   });
+
+  describe('BUG-CRIT-002 — distributes across the week instead of piling on one day', () => {
+    it('spreads 10 picks across multiple days, not all on one day', () => {
+      const slots = findBestSlots([], 10, makeEngagement());
+      const dayCounts = slots.reduce<Record<string, number>>((acc, s) => {
+        acc[s.date] = (acc[s.date] || 0) + 1;
+        return acc;
+      }, {});
+      const distinctDays = Object.keys(dayCounts).length;
+      expect(distinctDays).toBeGreaterThanOrEqual(5);
+      const maxOnAnyDay = Math.max(...Object.values(dayCounts));
+      expect(maxOnAnyDay).toBeLessThanOrEqual(3);
+    });
+
+    it('penalizes a day proportionally to existing posts on it', () => {
+      const eng = makeEngagement();
+      const baseline = findBestSlots([], 1, eng);
+      const bestDay = baseline[0].date;
+      const existing: ExistingPost[] = [
+        { date: bestDay, time: '12:00', platforms: ['instagram'], status: 'scheduled' },
+        { date: bestDay, time: '18:00', platforms: ['instagram'], status: 'scheduled' },
+        { date: bestDay, time: '20:00', platforms: ['instagram'], status: 'scheduled' },
+      ];
+      const next = findBestSlots(existing, 1, eng);
+      expect(next[0].date).not.toBe(bestDay);
+    });
+
+    it('cross-platform: a Twitter post on a day still penalizes that day for an Instagram pick', () => {
+      const eng = makeEngagement();
+      const baseline = findBestSlots([], 1, eng);
+      const bestDay = baseline[0].date;
+      const existing: ExistingPost[] = [
+        { date: bestDay, time: '20:00', platforms: ['twitter'], status: 'scheduled' },
+        { date: bestDay, time: '18:00', platforms: ['twitter'], status: 'scheduled' },
+        { date: bestDay, time: '12:00', platforms: ['twitter'], status: 'scheduled' },
+      ];
+      const next = findBestSlots(existing, 1, eng, { platforms: ['instagram'] });
+      expect(next[0].date).not.toBe(bestDay);
+    });
+
+    it('iterative single-slot picks (simulating the pipeline loop) distribute across days', () => {
+      const eng = makeEngagement();
+      const accumulated: ExistingPost[] = [];
+      for (let i = 0; i < 12; i++) {
+        const [pick] = findBestSlots(accumulated, 1, eng);
+        accumulated.push({
+          date: pick.date,
+          time: pick.time,
+          platforms: ['instagram'],
+          status: 'scheduled',
+        });
+      }
+      const dayCounts = accumulated.reduce<Record<string, number>>((acc, p) => {
+        acc[p.date] = (acc[p.date] || 0) + 1;
+        return acc;
+      }, {});
+      expect(Object.keys(dayCounts).length).toBeGreaterThanOrEqual(5);
+      expect(Math.max(...Object.values(dayCounts))).toBeLessThanOrEqual(3);
+    });
+
+    it('overflows to the second week once the first week is uniformly saturated', () => {
+      const eng = makeEngagement();
+      const accumulated: ExistingPost[] = [];
+      // Saturate the first week — 14 picks is enough to push the algorithm past the first 7 days.
+      for (let i = 0; i < 14; i++) {
+        const [pick] = findBestSlots(accumulated, 1, eng);
+        accumulated.push({
+          date: pick.date,
+          time: pick.time,
+          platforms: ['instagram'],
+          status: 'scheduled',
+        });
+      }
+      const startMs = new Date('2026-04-16').getTime();
+      const week1End = startMs + 7 * 24 * 60 * 60 * 1000;
+      const week2Picks = accumulated.filter(p => new Date(p.date).getTime() >= week1End);
+      expect(week2Picks.length).toBeGreaterThan(0);
+    });
+
+    it('historical posted/failed entries do NOT penalize a day for distribution', () => {
+      const eng = makeEngagement();
+      const baseline = findBestSlots([], 1, eng);
+      const bestDay = baseline[0].date;
+      // Use a historical hour OUTSIDE the engagement window so the slot
+      // itself doesn't get marked taken — we're isolating the "should
+      // posted/failed count toward the distribution divisor?" question
+      // from the orthogonal "is the exact time slot still free?" check.
+      const existing: ExistingPost[] = [
+        { date: bestDay, time: '07:00', platforms: ['instagram'], status: 'posted' },
+        { date: bestDay, time: '08:00', platforms: ['instagram'], status: 'failed' },
+      ];
+      const next = findBestSlots(existing, 1, eng);
+      expect(next[0].date).toBe(bestDay);
+    });
+  });
 });
 
 describe('findBestSlot', () => {

@@ -283,11 +283,46 @@ function buildPerDayPlatformCounts(posts: ExistingPost[]): Record<string, number
 }
 
 /**
+ * BUG-CRIT-002: per-day post count (any platform). Drives the
+ * saturation penalty in `findBestSlots` so back-to-back
+ * `findBestSlot` calls in a pipeline don't pile every post onto the
+ * single highest-scoring day. Same status filter as the per-platform
+ * counts above — historical posted/failed don't penalize future days.
+ */
+function buildPerDayCounts(posts: ExistingPost[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const p of posts) {
+    if (p.status === 'posted' || p.status === 'failed') continue;
+    counts[p.date] = (counts[p.date] || 0) + 1;
+  }
+  return counts;
+}
+
+/**
  * Find the N best upcoming slots.
  * Skips already-taken slots, picks optimal times based on engagement.
  *
  * If `caps` and `platforms` are supplied, also skips any day where any
  * of the requested platforms has already hit its cap.
+ *
+ * BUG-CRIT-002: each candidate's score is divided by `(1 + posts
+ * already on that day)` so successive picks naturally spread across
+ * the week. Without this penalty, the top 12 slots in a single
+ * `findBestSlots(N)` call (or 12 sequential `findBestSlot` calls
+ * during pipeline auto-schedule) all land on the highest-scoring day,
+ * because the next-best-on-Saturday always beats the best-on-Friday
+ * by a wide margin under raw engagement weights. The divisor turns
+ * the second post on a day into half-score, third into a third, etc.
+ * Once a day is saturated, lower-engagement days outrank further
+ * picks on it; once the entire 14-day window is uniformly saturated,
+ * the algorithm naturally wraps onto the next week (offset 7..13)
+ * with a fresh penalty.
+ *
+ * The penalty is applied per-day (any platform), not per-platform —
+ * if Saturday already has an Instagram post, scheduling a Twitter
+ * post on Saturday still pays the penalty because we want
+ * cross-platform distribution too. Per-platform hard caps via
+ * `options.caps` still take precedence.
  */
 export function findBestSlots(
   existingPosts: ExistingPost[],
@@ -304,7 +339,8 @@ export function findBestSlots(
   const taken = new Set(existingPosts.map(p => `${p.date}T${p.time}`));
   const platforms = options?.platforms || [];
   const caps = options?.caps || {};
-  const dayCounts = buildPerDayPlatformCounts(existingPosts);
+  const platDayCounts = buildPerDayPlatformCounts(existingPosts);
+  const dayCounts = buildPerDayCounts(existingPosts);
 
   // Helper — would adding one more post to `dateStr` for any of the
   // target platforms blow past that platform's cap?
@@ -313,7 +349,7 @@ export function findBestSlots(
     for (const plat of platforms) {
       const cap = caps[plat];
       if (cap == null) continue; // no cap → fine
-      const current = dayCounts[`${dateStr}|${plat}`] || 0;
+      const current = platDayCounts[`${dateStr}|${plat}`] || 0;
       if (current >= cap) return true;
     }
     return false;
@@ -333,6 +369,8 @@ export function findBestSlots(
     // Skip whole day if any target platform is at cap.
     if (dayWouldExceedCap(dateStr)) continue;
 
+    const dayDivisor = 1 + (dayCounts[dateStr] || 0);
+
     // Only consider hours with significant engagement weight
     for (const { hour } of eng.hours) {
       if (hour < 6 || hour > 23) continue;
@@ -340,7 +378,8 @@ export function findBestSlots(
       const time = `${String(hour).padStart(2, '0')}:00`;
       if (taken.has(`${dateStr}T${time}`)) continue;
 
-      const score = scoreSlot(checkDate, hour, eng);
+      const rawScore = scoreSlot(checkDate, hour, eng);
+      const score = rawScore / dayDivisor;
       const hourEng = eng.hours.find(h => h.hour === hour);
       const dayEng = eng.days.find(d => d.day === checkDate.getDay());
       const reason = `${hourEng?.weight || 0}h weight, ${dayEng?.multiplier || 0}x day${eng.source === 'instagram' ? ' (IG data)' : ' (research)'}`;
