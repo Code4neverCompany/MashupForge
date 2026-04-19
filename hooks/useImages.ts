@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { get, set } from 'idb-keyval';
 import { type GeneratedImage } from '../types/mashup';
 
@@ -16,6 +16,8 @@ function normalizeOnLoad(img: GeneratedImage): GeneratedImage {
 export function useImages() {
   const [savedImages, setSavedImages] = useState<GeneratedImage[]>([]);
   const [isImagesLoaded, setIsImagesLoaded] = useState(false);
+  const savedImagesRef = useRef(savedImages);
+  savedImagesRef.current = savedImages;
 
   useEffect(() => {
     const loadImages = async () => {
@@ -55,6 +57,26 @@ export function useImages() {
     }, 200);
     return () => clearTimeout(timer);
   }, [savedImages, isImagesLoaded]);
+
+  // BUG-DES-002: flush-on-unload safety net for the 200ms debounce
+  // window. Without this, a manual Post Now (postedAt/postError) made
+  // <200ms before the user reloads is lost — IDB never gets the write,
+  // so the badge "resets on reload". Writes synchronously to
+  // localStorage; the load path migrates localStorage → IDB on next
+  // session start. Mirrors the useSettings beforeunload flush.
+  useEffect(() => {
+    if (!isImagesLoaded) return;
+    const flush = () => {
+      try {
+        localStorage.setItem(
+          'mashup_saved_images',
+          JSON.stringify(savedImagesRef.current),
+        );
+      } catch { /* storage quota — silent */ }
+    };
+    window.addEventListener('beforeunload', flush);
+    return () => window.removeEventListener('beforeunload', flush);
+  }, [isImagesLoaded]);
 
   const saveImage = (img: GeneratedImage) => {
     setSavedImages(prev => {
