@@ -67,7 +67,7 @@ import {
   type ViewType,
 } from './MashupContext';
 import { LEONARDO_SHARED_STYLES, getModelProviderLabel } from '@/types/mashup';
-import { suggestParametersAI, type ParamSuggestion } from '@/lib/param-suggest';
+import { suggestParametersAI, type ParamSuggestion, type PerModelSuggestion } from '@/lib/param-suggest';
 import { pushIdeaToStudio } from '@/lib/push-idea-to-studio';
 import { ParamSuggestionCard } from './ParamSuggestionCard';
 import { KebabMenu, type KebabMenuItem } from './KebabMenu';
@@ -1148,6 +1148,19 @@ export function MainContent() {
     localStorage.setItem('mashup_comparison_models', JSON.stringify(comparisonModels));
   }, [comparisonModels]);
 
+  // Clean up stale per-model overrides when comparison models change.
+  useEffect(() => {
+    setPerModelOverrides(prev => {
+      const modelSet = new Set(comparisonModels);
+      const filtered = Object.fromEntries(
+        Object.entries(prev).filter(([key]) => modelSet.has(key))
+      );
+      // Avoid unnecessary re-render if nothing changed.
+      if (Object.keys(filtered).length === Object.keys(prev).length) return prev;
+      return filtered;
+    });
+  }, [comparisonModels]);
+
   /** Preview per-model parameters whenever the prompt or models change. */
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -1455,7 +1468,7 @@ export function MainContent() {
   const handleApplySuggestion = (
     modelIds: string[],
     options: Partial<GenerateOptions>,
-    perModel: Record<string, unknown>,
+    perModel: Record<string, PerModelSuggestion>,
   ) => {
     setComparisonModels(modelIds);
     setComparisonOptions(prev => ({ ...prev, ...options }));
@@ -1464,12 +1477,12 @@ export function MainContent() {
     // preview and generation instead of sharing the first model's values.
     const overrides: Record<string, { style?: string; aspectRatio?: string; negativePrompt?: string }> = {};
     for (const id of modelIds) {
-      const entry = perModel[id] as { style?: string; aspectRatio?: string; negativePrompt?: string } | undefined;
+      const entry = perModel[id];
       if (entry) {
         overrides[id] = {
-          style: entry.style,
           aspectRatio: entry.aspectRatio,
-          negativePrompt: entry.negativePrompt,
+          ...('style' in entry ? { style: entry.style } : {}),
+          ...('negativePrompt' in entry ? { negativePrompt: entry.negativePrompt } : {}),
         };
       }
     }
