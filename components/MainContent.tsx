@@ -244,6 +244,8 @@ export function MainContent() {
   const [modelPreviews, setModelPreviews] = useState<Record<string, { prompt?: string; style?: string; aspectRatio?: string; negativePrompt?: string; lighting?: string; angle?: string }>>({});
   /** V030-007: smart pre-fill suggestion card visibility + payload. */
   const [paramSuggestion, setParamSuggestion] = useState<ParamSuggestion | null>(null);
+  /** V030-008-per-model: per-model overrides from the suggestion card Apply. */
+  const [perModelOverrides, setPerModelOverrides] = useState<Record<string, { style?: string; aspectRatio?: string; negativePrompt?: string }>>({});
   /** V030-008: pi.dev is reasoning about parameters — show spinner while it works. */
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
@@ -1158,10 +1160,11 @@ export function MainContent() {
       const previews: Record<string, { prompt?: string; style?: string; aspectRatio?: string; negativePrompt?: string; lighting?: string; angle?: string }> = {};
       await Promise.all(comparisonModels.map(async (modelId) => {
         try {
+          const overrides = perModelOverrides[modelId];
           const enh = await enhancePromptForModel(comparisonPrompt, modelId, {
-            style: comparisonOptions.style,
-            aspectRatio: comparisonOptions.aspectRatio,
-            negativePrompt: comparisonOptions.negativePrompt,
+            style: overrides?.style ?? comparisonOptions.style,
+            aspectRatio: overrides?.aspectRatio ?? comparisonOptions.aspectRatio,
+            negativePrompt: overrides?.negativePrompt ?? comparisonOptions.negativePrompt,
           });
           previews[modelId] = {
             prompt: enh.prompt,
@@ -1184,6 +1187,7 @@ export function MainContent() {
     comparisonOptions.style,
     comparisonOptions.aspectRatio,
     comparisonOptions.negativePrompt,
+    perModelOverrides,
   ]);
 
   // BUG-CRIT-011: live ref so the auto-poster can re-check status
@@ -1451,16 +1455,25 @@ export function MainContent() {
   const handleApplySuggestion = (
     modelIds: string[],
     options: Partial<GenerateOptions>,
-    // V030-008-per-model: per-model map is plumbed in but not yet wired
-    // through to per-model state in the Compare tab — comparisonOptions
-    // is currently a single shared GenerateOptions. The map informs the
-    // user via the card; the shared options below come from the first
-    // (highest-ranked) model's resolved suggestion. Future work: thread
-    // perModel into a per-model overrides state inside the Compare tab.
-    _perModel: Record<string, unknown>,
+    perModel: Record<string, unknown>,
   ) => {
     setComparisonModels(modelIds);
     setComparisonOptions(prev => ({ ...prev, ...options }));
+    // V030-008-per-model: extract per-model overrides so each model
+    // can use its own style / aspectRatio / negativePrompt during
+    // preview and generation instead of sharing the first model's values.
+    const overrides: Record<string, { style?: string; aspectRatio?: string; negativePrompt?: string }> = {};
+    for (const id of modelIds) {
+      const entry = perModel[id] as { style?: string; aspectRatio?: string; negativePrompt?: string } | undefined;
+      if (entry) {
+        overrides[id] = {
+          style: entry.style,
+          aspectRatio: entry.aspectRatio,
+          negativePrompt: entry.negativePrompt,
+        };
+      }
+    }
+    setPerModelOverrides(overrides);
     setParamSuggestion(null);
     showToast('Parameters applied. You can still tweak anything before generating.', 'success');
   };
@@ -1477,7 +1490,16 @@ export function MainContent() {
 
     setIsComparing(true);
     try {
-      await generateComparison(comparisonPrompt, comparisonModels, comparisonOptions, modelPreviews);
+      // Merge per-model overrides into cached enhancements so each model
+      // uses its own style / aspectRatio / negativePrompt during generation.
+      const mergedEnhancements: Record<string, { prompt?: string; style?: string; aspectRatio?: string; negativePrompt?: string }> = { ...modelPreviews };
+      for (const [id, overrides] of Object.entries(perModelOverrides)) {
+        mergedEnhancements[id] = {
+          ...mergedEnhancements[id],
+          ...overrides,
+        };
+      }
+      await generateComparison(comparisonPrompt, comparisonModels, comparisonOptions, mergedEnhancements);
     } catch {
       // generateComparison already surfaces error via setComparisonError
     } finally {
