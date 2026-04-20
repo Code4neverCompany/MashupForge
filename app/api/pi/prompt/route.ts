@@ -1,9 +1,11 @@
 import { prompt as piPrompt, start as piStart, isRunning } from '@/lib/pi-client';
 import { getErrorMessage } from '@/lib/errors';
+import { coerceMemory, formatMemoryForPrompt } from '@/lib/pipeline-memory';
+import { webSearch, type WebSearchResult } from '@/lib/web-search';
 
 /**
  * POST /api/pi/prompt
- *   { message, mode?, systemPrompt? }
+ *   { message, mode?, systemPrompt?, memory? }
  *
  * Returns text/event-stream:
  *   data: {"text":"<delta>"}\n\n
@@ -18,7 +20,32 @@ import { getErrorMessage } from '@/lib/errors';
  * `systemPrompt` is an additional freeform system instruction from the
  * caller (typically the user's Settings-panel system prompt). It's
  * layered after the mode directive.
+ *
+ * `memory` is the client's PipelineMemory snapshot (localStorage-backed).
+ * It's only consulted for `idea` and `generate` modes — other modes don't
+ * benefit from cross-call coherence and we'd rather keep their prompts
+ * tight. For `idea`, we additionally fire a best-effort DuckDuckGo search
+ * for current trends. Both are injected BEFORE the mode directive so the
+ * LLM reads them as standing context.
  */
+
+const TRENDING_SEARCH_QUERY = 'crossover fan art trending 2026';
+const TRENDING_RESULT_COUNT = 3;
+const TRENDING_MAX_CHARS = 900; // ≈ 150 words
+const TRENDING_SNIPPET_CHARS = 220;
+
+function formatTrendingContext(results: WebSearchResult[]): string {
+  if (!results || results.length === 0) return '';
+  const lines = ['[TRENDING CONTEXT]', `(from a live web search; treat as signal, not ground truth)`];
+  for (const r of results) {
+    const title = r.title.trim();
+    const snippet = r.snippet.trim().slice(0, TRENDING_SNIPPET_CHARS);
+    if (!title) continue;
+    lines.push(snippet ? `- ${title} — ${snippet}` : `- ${title}`);
+  }
+  const joined = lines.join('\n');
+  return joined.length > TRENDING_MAX_CHARS ? joined.slice(0, TRENDING_MAX_CHARS) + '…' : joined;
+}
 
 export type PiMode =
   | 'chat'
@@ -65,7 +92,7 @@ export async function POST(req: Request) {
     });
   }
 
-  const { message, mode, systemPrompt } = body || {};
+  const { message, mode, systemPrompt, memory } = body || {};
   if (typeof message !== 'string' || !message.trim()) {
     return new Response(JSON.stringify({ error: 'message is required' }), {
       status: 400,
@@ -86,7 +113,28 @@ export async function POST(req: Request) {
   }
 
   const directive = directiveFor(mode);
-  const composedSystem = [directive, systemPrompt].filter(Boolean).join('\n\n') || undefined;
+
+  // Memory + trending enrichment — only for modes that generate net-new
+  // concepts. Both are best-effort: a web-search failure, a corrupt
+  // memory blob, or an empty memory all degrade to the pre-enrichment
+  // prompt, never to an error.
+  const enrichBlocks: string[] = [];
+  if (mode === 'idea' || mode === 'generate') {
+    const memBlock = formatMemoryForPrompt(coerceMemory(memory));
+    if (memBlock) enrichBlocks.push(memBlock);
+  }
+  if (mode === 'idea') {
+    try {
+      const results = await webSearch(TRENDING_SEARCH_QUERY, TRENDING_RESULT_COUNT);
+      const trending = formatTrendingContext(results);
+      if (trending) enrichBlocks.push(trending);
+    } catch {
+      /* silent — trending is optional enrichment */
+    }
+  }
+
+  const composedSystem =
+    [...enrichBlocks, directive, systemPrompt].filter(Boolean).join('\n\n') || undefined;
 
   const encoder = new TextEncoder();
 
