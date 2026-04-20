@@ -158,7 +158,7 @@ export function PostReadyCarouselCard({
 
   return (
     <div
-      className={`bg-zinc-900/80 backdrop-blur-sm border-2 ${v.border} rounded-2xl overflow-hidden hover:border-opacity-80 transition-all duration-300 flex flex-col`}
+      className={`bg-zinc-900/80 backdrop-blur-sm border-2 ${v.border} rounded-2xl overflow-visible hover:border-opacity-80 transition-all duration-300 flex flex-col`}
     >
       {/* Status pill row */}
       <div className="px-3 pt-3 pb-2 flex items-center gap-2 flex-wrap">

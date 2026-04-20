@@ -163,7 +163,7 @@ export function PostReadyCard({
 
   return (
     <div
-      className={`bg-zinc-900/80 backdrop-blur-sm border-2 ${v.border} rounded-2xl overflow-hidden hover:border-opacity-80 transition-all duration-300`}
+      className={`bg-zinc-900/80 backdrop-blur-sm border-2 ${v.border} rounded-2xl overflow-visible hover:border-opacity-80 transition-all duration-300`}
     >
       {/* Status pill row — top of card */}
       <div className="px-3 pt-3 pb-2 flex items-center gap-2">
