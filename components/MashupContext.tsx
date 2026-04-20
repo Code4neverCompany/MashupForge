@@ -43,6 +43,7 @@ import { usePipeline } from '../hooks/usePipeline';
 import { collectFinalizeTargets, finalizePipelineImage } from '../lib/pipeline-finalize';
 import { applyCaptionEdit } from '../lib/caption-edit';
 import { planApproveScheduledPost, planRejectScheduledPost } from '../lib/approval-actions';
+import { recordOutcome } from '../lib/outcome-tracker';
 
 const MashupContext = createContext<MashupContextType | null>(null);
 
@@ -257,6 +258,22 @@ export function MashupProvider({ children }: { children: ReactNode }) {
       scheduledPosts: nextPosts(prev.scheduledPosts || []),
     }));
     finalizePipelineImagesForPosts(toFinalize, false);
+    // Record rejection outcome for each post's image (feedback loop scaffold).
+    for (const post of toFinalize) {
+      const img = [...images, ...savedImages].find((i) => i.id === post.imageId);
+      if (img) {
+        recordOutcome({
+          imageId: img.id,
+          prompt: img.prompt,
+          style: img.style ?? '',
+          aspectRatio: img.aspectRatio ?? '',
+          model: img.modelInfo?.modelName ?? img.modelInfo?.modelId ?? '',
+          status: 'rejected',
+          platform: post.platforms.join(','),
+          timestamp: Date.now(),
+        });
+      }
+    }
   };
 
   // Bulk variants — single functional-updater pass so N approvals applied

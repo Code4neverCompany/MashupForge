@@ -91,6 +91,7 @@ const PipelinePanel = dynamic(
 import { streamAIToString, extractJsonArrayFromLLM, extractJsonObjectFromLLM } from '@/lib/aiClient';
 import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import { getErrorMessage } from '@/lib/errors';
+import { recordOutcome } from '@/lib/outcome-tracker';
 import { findPostingBlock, isStillScheduled } from '@/lib/post-approval-gate';
 import { useSmartScheduler } from '@/hooks/useSmartScheduler';
 import { SmartScheduleModal } from './SmartScheduleModal';
@@ -468,6 +469,16 @@ export function MainContent() {
         postedAt: Date.now(),
         postedTo: platforms,
         postError: undefined,
+      });
+      recordOutcome({
+        imageId: img.id,
+        prompt: img.prompt,
+        style: img.style ?? '',
+        aspectRatio: img.aspectRatio ?? '',
+        model: img.modelInfo?.modelName ?? img.modelInfo?.modelId ?? '',
+        status: 'posted',
+        platform: platforms.join(','),
+        timestamp: Date.now(),
       });
       setPostStatus((prev) => ({
         ...prev,
