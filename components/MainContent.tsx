@@ -1478,13 +1478,14 @@ export function MainContent() {
     const overrides: Record<string, { style?: string; aspectRatio?: string; negativePrompt?: string }> = {};
     for (const id of modelIds) {
       const entry = perModel[id];
-      if (entry) {
-        overrides[id] = {
-          aspectRatio: entry.aspectRatio,
-          ...('style' in entry ? { style: entry.style } : {}),
-          ...('negativePrompt' in entry ? { negativePrompt: entry.negativePrompt } : {}),
-        };
-      }
+      if (!entry) continue;
+      overrides[id] = entry.type === 'image'
+        ? {
+            aspectRatio: entry.aspectRatio,
+            style: entry.style,
+            negativePrompt: entry.negativePrompt,
+          }
+        : { aspectRatio: entry.aspectRatio };
     }
     setPerModelOverrides(overrides);
     setParamSuggestion(null);
