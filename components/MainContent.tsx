@@ -49,7 +49,7 @@ import {
   Clock,
   Send,
   TrendingUp,
-  ImageOff
+  ImageOff,
 } from 'lucide-react';
 import {
   useMashup,
@@ -1769,6 +1769,37 @@ export function MainContent() {
     await Promise.allSettled(imagesToAnimate.map(img => handleAnimate(img, true)));
   };
 
+  const handleBatchDelete = () => {
+    const ids = Array.from(selectedForBatch);
+    if (ids.length === 0) return;
+    for (const id of ids) deleteImage(id, true);
+    setSelectedForBatch(new Set());
+    showToast(`Deleted ${ids.length} image${ids.length === 1 ? '' : 's'}.`, 'success');
+  };
+
+  const handleBatchCaption = () => {
+    if (selectedForBatch.size === 0) return;
+    setView('captioning');
+  };
+
+  const handleBatchPostReady = async () => {
+    const targets = savedImages.filter(img => selectedForBatch.has(img.id));
+    if (targets.length === 0) return;
+    await Promise.allSettled(
+      targets.map(img => saveImage({ ...img, isPostReady: true })),
+    );
+    setSelectedForBatch(new Set());
+    setView('post-ready');
+  };
+
+  const handleSelectAllGallery = () => {
+    setSelectedForBatch(new Set(displayedImages.map(img => img.id)));
+  };
+
+  const handleClearGallerySelection = () => {
+    setSelectedForBatch(new Set());
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden relative">
       {/* Header */}
@@ -1940,20 +1971,61 @@ export function MainContent() {
                               {selectedForBatch.size} selected
                             </span>
                             <button
+                              onClick={handleBatchPostReady}
+                              className="px-3 py-2 bg-[#c5a062] hover:bg-[#d4b478] active:bg-[#a68748] text-[#050505] rounded-xl text-xs font-semibold transition-colors flex items-center gap-2"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                              Post Ready
+                            </button>
+                            <button
+                              onClick={handleBatchCaption}
+                              className="btn-blue-sm py-2"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              Caption
+                            </button>
+                            <button
                               onClick={handleBatchAnimate}
                               className="btn-blue-sm py-2"
                             >
                               <Video className="w-3.5 h-3.5" />
-                              Batch Animate
+                              Animate
                             </button>
                             <button
                               onClick={() => setShowBulkTagModal(true)}
                               className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-medium transition-colors flex items-center gap-2"
                             >
                               <Tag className="w-3.5 h-3.5" />
-                              Bulk Tag
+                              Tag
+                            </button>
+                            <button
+                              onClick={handleBatchDelete}
+                              className="px-3 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-300 rounded-xl text-xs font-medium transition-colors flex items-center gap-2 border border-red-500/30"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Delete
+                            </button>
+                            <button
+                              onClick={handleSelectAllGallery}
+                              className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-medium transition-colors"
+                            >
+                              Select All
+                            </button>
+                            <button
+                              onClick={handleClearGallerySelection}
+                              className="px-2 py-2 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors"
+                            >
+                              Clear
                             </button>
                           </>
+                        )}
+                        {selectedForBatch.size === 0 && displayedImages.length > 0 && (
+                          <button
+                            onClick={handleSelectAllGallery}
+                            className="px-3 py-2 bg-zinc-800/60 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-medium transition-colors"
+                          >
+                            Select All
+                          </button>
                         )}
                         <div className="flex items-center gap-2">
                           <Filter className="w-4 h-4 text-zinc-500" />
