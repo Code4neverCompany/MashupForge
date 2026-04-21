@@ -10,6 +10,7 @@ import type {
 } from '@/lib/param-suggest';
 import { buildRuleFallbackForModel } from '@/lib/param-suggest';
 import { LEONARDO_MODELS, type GenerateOptions } from '@/types/mashup';
+import { getModelSpec } from '@/lib/model-specs';
 
 interface Props {
   suggestion: ParamSuggestion;
@@ -210,6 +211,7 @@ export function ParamSuggestionCard({
                     rules
                   </span>
                 </div>
+                <CapabilityBadges modelId={id} />
                 <p className="text-[11px] text-zinc-500 italic">
                   No parameters available for this model. Generate anyway with defaults.
                 </p>
@@ -241,6 +243,7 @@ export function ParamSuggestionCard({
                   {sug.source === 'ai' ? 'pi' : sug.source === 'ai+rules' ? 'pi + rules' : 'rules'}
                 </span>
               </div>
+              <CapabilityBadges modelId={id} />
 
               {!editMode ? (
                 <div className="space-y-1 text-[11px] text-zinc-300">
@@ -322,6 +325,37 @@ function ParamLine({ label, value }: { label: string; value: string }) {
 
 function formatModel(id: string): string {
   return LEONARDO_MODELS.find(m => m.id === id)?.name ?? id;
+}
+
+function CapabilityBadges({ modelId }: { modelId: string }) {
+  const spec = getModelSpec(modelId);
+  if (!spec) return null;
+  const caps = spec.capabilities;
+  const labels: string[] = [];
+  if (caps.styles) labels.push('styles');
+  if (caps.negativePrompt) labels.push('negative');
+  if (caps.imageSize) labels.push('size');
+  if (caps.promptEnhance) labels.push('enhance');
+  if (caps.audio) labels.push('audio');
+  if (caps.startFrame) labels.push('start frame');
+  if (caps.endFrame) labels.push('end frame');
+  if (caps.imageReference) labels.push('img ref');
+  if (caps.videoReference) labels.push('vid ref');
+  if (caps.seed) labels.push('seed');
+  if (labels.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <span className="text-[9px] uppercase tracking-wider text-zinc-600">can:</span>
+      {labels.map(label => (
+        <span
+          key={label}
+          className="text-[9px] px-1.5 py-0.5 rounded border border-zinc-800 text-zinc-400 bg-zinc-900/40"
+        >
+          {label}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 interface ImageEditorProps {
