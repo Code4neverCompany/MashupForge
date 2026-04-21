@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTrendingQuery, dedupeByUrl } from '@/app/api/pi/prompt/route';
+import { buildTrendingQuery, dedupeByUrl, pickFromPool } from '@/app/api/pi/prompt/route';
 import type { WebSearchResult } from '@/lib/web-search';
 
 // Deterministic RNG → rng close to 1 forces `j = i` each Fisher-Yates
@@ -63,6 +63,61 @@ describe('buildTrendingQuery', () => {
     // With 5 niches → 20 distinct ordered pairs; after 20 draws we should
     // see at least 2 distinct results with overwhelming probability.
     expect(seen.size).toBeGreaterThan(1);
+  });
+});
+
+describe('buildTrendingQuery — freshness + genre rotation', () => {
+  it('honours a custom freshness suffix', () => {
+    const q = buildTrendingQuery(['Dune'], undefined, rngStable, 'viral this month');
+    expect(q).toContain('viral this month');
+    expect(q).not.toContain('trending 2026');
+  });
+
+  it('defaults freshness to "trending 2026" when omitted (back-compat)', () => {
+    const q = buildTrendingQuery(['Dune'], undefined, rngStable);
+    expect(q).toContain('trending 2026');
+  });
+
+  it('rotates genre across calls when multiple genres are configured', () => {
+    const genres = ['grimdark', 'cyberpunk', 'cozy'];
+    const q0 = buildTrendingQuery(['Dune'], genres, rngStable, 'trending 2026', 0);
+    const q1 = buildTrendingQuery(['Dune'], genres, rngStable, 'trending 2026', 1);
+    const q2 = buildTrendingQuery(['Dune'], genres, rngStable, 'trending 2026', 2);
+    expect(q0).toContain('grimdark');
+    expect(q1).toContain('cyberpunk');
+    expect(q2).toContain('cozy');
+  });
+
+  it('wraps genre index modulo length', () => {
+    const genres = ['grimdark', 'cyberpunk'];
+    const q4 = buildTrendingQuery(['Dune'], genres, rngStable, 'trending 2026', 4);
+    expect(q4).toContain('grimdark'); // 4 % 2 = 0
+  });
+});
+
+describe('pickFromPool', () => {
+  it('returns a stable element for a given (offset, bucket)', () => {
+    const pool = ['a', 'b', 'c', 'd'];
+    expect(pickFromPool(pool, 0, 0)).toBe('a');
+    expect(pickFromPool(pool, 0, 1)).toBe('b');
+    expect(pickFromPool(pool, 1, 0)).toBe('b');
+    expect(pickFromPool(pool, 0, 4)).toBe('a'); // wraps
+  });
+
+  it('different offsets with same bucket can pick different entries', () => {
+    const pool = ['a', 'b', 'c', 'd'];
+    const bucket = 7;
+    const picks = new Set([
+      pickFromPool(pool, 0, bucket),
+      pickFromPool(pool, 1, bucket),
+      pickFromPool(pool, 2, bucket),
+      pickFromPool(pool, 3, bucket),
+    ]);
+    expect(picks.size).toBe(4);
+  });
+
+  it('throws on empty pool', () => {
+    expect(() => pickFromPool([], 0, 0)).toThrow();
   });
 });
 

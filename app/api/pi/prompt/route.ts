@@ -41,7 +41,80 @@ const TRENDING_MAX_CHARS = 900; // ≈ 150 words
 const TRENDING_SNIPPET_CHARS = 220;
 const TRENDING_TAG_LIMIT = 10;
 const DEFAULT_NICHES = ['Star Wars', 'Marvel', 'Warhammer 40k'];
-const TRENDING_FALLBACK_QUERY = 'popular crossover fan art new characters 2026';
+
+/**
+ * Freshness/suffix pool. A single fixed suffix ("trending 2026") caused
+ * every idea run to collapse onto the same top-ranked pages. Rotating
+ * across a small pool of period + framing modifiers perturbs the query
+ * enough that DDG/Brave return different canonical pages each time
+ * without departing from the "what's trending right now" intent.
+ */
+const FRESHNESS_POOL = [
+  'trending 2026',
+  'trending this week',
+  'new this month',
+  'latest 2026',
+  'recent buzz',
+  'viral this year',
+];
+
+/**
+ * Fallback-query pool. Used when niche-derived queries come up empty or
+ * as the third probe per run. Previously a single hardcoded string, which
+ * meant at least 2 duplicate results pinned to every pipeline run.
+ */
+const TRENDING_FALLBACK_POOL = [
+  'popular crossover fan art new characters 2026',
+  'viral mashup character concepts fandom 2026',
+  'best crossover art reddit twitter recent',
+  'trending fandom crossover illustrations this month',
+  'new fan-made character mashups buzz',
+];
+
+/**
+ * Cross-run URL exclusion. `webSearch` is stateless and DDG/Brave pin
+ * the same top result for similar queries, so the trending block ended
+ * up echoing the same 2–3 subreddit pages on every idea run. A capped
+ * FIFO Set of recently-emitted URLs lets us drop any hit we've shown in
+ * the last ~N runs so each run surfaces fresh material even when the
+ * query rotation produces overlapping result sets. Module scope persists
+ * across requests in the long-lived desktop Node process; HMR/serverless
+ * cold starts will reset it, which is an acceptable degradation.
+ */
+const RECENT_URLS_CAPACITY = 150;
+const recentTrendingUrls: string[] = [];
+const recentTrendingUrlSet = new Set<string>();
+
+function rememberTrendingUrls(urls: string[]): void {
+  for (const u of urls) {
+    if (!u || recentTrendingUrlSet.has(u)) continue;
+    recentTrendingUrlSet.add(u);
+    recentTrendingUrls.push(u);
+    while (recentTrendingUrls.length > RECENT_URLS_CAPACITY) {
+      const evicted = recentTrendingUrls.shift();
+      if (evicted) recentTrendingUrlSet.delete(evicted);
+    }
+  }
+}
+
+/**
+ * 15-minute time bucket. Keeps results stable inside a burst of related
+ * requests but rotates across hours so consecutive pipeline runs pick
+ * different pool entries.
+ */
+function currentRotationBucket(): number {
+  return Math.floor(Date.now() / (1000 * 60 * 15));
+}
+
+/**
+ * Deterministic pool picker keyed by the rotation bucket + an offset so
+ * the fallback query doesn't align with the freshness suffix.
+ */
+export function pickFromPool<T>(pool: readonly T[], offset: number, bucket: number): T {
+  if (pool.length === 0) throw new Error('pickFromPool called with empty pool');
+  const idx = Math.abs((bucket + offset) % pool.length);
+  return pool[idx];
+}
 
 function sanitizeStringArray(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
@@ -63,6 +136,8 @@ export function buildTrendingQuery(
   niches?: string[],
   genres?: string[],
   rng: () => number = Math.random,
+  freshness: string = 'trending 2026',
+  genreIndex: number = 0,
 ): string {
   const cleanedNiches = sanitizeStringArray(niches);
   const active = cleanedNiches.length > 0 ? cleanedNiches : DEFAULT_NICHES;
@@ -75,9 +150,16 @@ export function buildTrendingQuery(
   const pick = shuffled.slice(0, Math.min(2, shuffled.length));
 
   const cleanedGenres = sanitizeStringArray(genres);
-  const genreHint = cleanedGenres[0] ?? '';
+  // Rotate which genre drives the query across calls. With a single
+  // genre this degenerates to index 0 (original behavior); with several
+  // configured, consecutive runs touch different ones so the search
+  // intent shifts instead of always anchoring on cleanedGenres[0].
+  const genreHint =
+    cleanedGenres.length > 0
+      ? cleanedGenres[Math.abs(genreIndex) % cleanedGenres.length]
+      : '';
 
-  return [pick.join(' x '), 'crossover fan art', genreHint, 'trending 2026']
+  return [pick.join(' x '), 'crossover fan art', genreHint, freshness]
     .filter((s) => s.length > 0)
     .join(' ')
     .replace(/\s+/g, ' ')
@@ -226,14 +308,19 @@ export async function POST(req: Request) {
 
     // Three queries instead of one: two niche-tailored shuffles (the
     // Fisher-Yates in buildTrendingQuery reseeds from Math.random on each
-    // call, so consecutive calls pick different pairings), plus a
-    // general-fallback probe that's immune to a weirdly-focused niche
-    // set. Aggregated results are deduped by URL and capped so the
-    // trending block can't balloon past our token budget.
+    // call, so consecutive calls pick different pairings) with different
+    // freshness / genre rotations, plus a rotating-pool fallback probe
+    // that's immune to a weirdly-focused niche set. Aggregated results
+    // are filtered against the recent-URL memory, deduped, and capped so
+    // the trending block can't balloon past our token budget.
+    const bucket = currentRotationBucket();
+    const freshA = pickFromPool(FRESHNESS_POOL, 0, bucket);
+    const freshB = pickFromPool(FRESHNESS_POOL, 3, bucket);
+    const fallback = pickFromPool(TRENDING_FALLBACK_POOL, 1, bucket);
     const queries = [
-      buildTrendingQuery(cleanedNiches, cleanedGenres),
-      buildTrendingQuery(cleanedNiches, cleanedGenres),
-      TRENDING_FALLBACK_QUERY,
+      buildTrendingQuery(cleanedNiches, cleanedGenres, Math.random, freshA, bucket),
+      buildTrendingQuery(cleanedNiches, cleanedGenres, Math.random, freshB, bucket + 1),
+      fallback,
     ];
 
     const allResults: WebSearchResult[] = [];
@@ -246,7 +333,17 @@ export async function POST(req: Request) {
       }
     }
 
-    const unique = dedupeByUrl(allResults).slice(0, TRENDING_MAX_RESULTS);
+    // Filter against the recent-URL memory BEFORE dedup + cap: if every
+    // query happened to return the same stale URL, the user would still
+    // see nothing fresh. Filtering first gives new material a chance to
+    // fill the budget before the cap kicks in. If filtering strips
+    // everything (e.g. the memory saturated after many runs with a
+    // narrow niche), fall back to the raw set so enrichment degrades to
+    // "duplicated" rather than "empty".
+    const filtered = allResults.filter((r) => !recentTrendingUrlSet.has(r.url));
+    const pool = filtered.length > 0 ? filtered : allResults;
+    const unique = dedupeByUrl(pool).slice(0, TRENDING_MAX_RESULTS);
+    rememberTrendingUrls(unique.map((r) => r.url));
     const trending = formatTrendingContext(unique);
     if (trending) postBlocks.push(trending);
   }
