@@ -8,6 +8,7 @@ import type {
   PerModelImageSuggestion,
   PerModelVideoSuggestion,
 } from '@/lib/param-suggest';
+import { buildRuleFallbackForModel } from '@/lib/param-suggest';
 import { LEONARDO_MODELS, type GenerateOptions } from '@/types/mashup';
 
 interface Props {
@@ -71,7 +72,15 @@ export function ParamSuggestionCard({
   };
 
   const toggleModel = (id: string) => {
-    setModelIds(prev => (prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]));
+    setModelIds(prev => {
+      if (prev.includes(id)) return prev.filter(m => m !== id);
+      setPerModel(p => {
+        if (p[id]) return p;
+        const fallback = buildRuleFallbackForModel(id, { availableModels: LEONARDO_MODELS });
+        return fallback ? { ...p, [id]: fallback } : p;
+      });
+      return [...prev, id];
+    });
   };
 
   const handleApply = () => {
@@ -93,9 +102,16 @@ export function ParamSuggestionCard({
           }
       : {};
     // Restrict perModel payload to the models the user actually kept.
+    // For any toggled-on model without an entry (e.g. toggled before the
+    // React state propagated), synthesise a rules-based fallback so the
+    // merged payload stays consistent with the card's visible rows.
     const filteredPerModel: Record<string, PerModelSuggestion> = {};
     for (const id of modelIds) {
-      if (perModel[id]) filteredPerModel[id] = perModel[id];
+      const entry =
+        perModel[id] ??
+        buildRuleFallbackForModel(id, { availableModels: LEONARDO_MODELS }) ??
+        undefined;
+      if (entry) filteredPerModel[id] = entry;
     }
     onApply(modelIds, shared, filteredPerModel);
   };

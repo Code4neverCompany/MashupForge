@@ -604,6 +604,56 @@ export function suggestParameters(input: SuggestParametersInput): ParamSuggestio
   };
 }
 
+/**
+ * Synthesise a minimal rules-only PerModelSuggestion for a model not in
+ * the AI shortlist. Used by the param-suggestion card when the user
+ * toggles a model ON after the initial suggestion has been generated,
+ * so the card can show a default panel instead of "(no suggestion)".
+ * Returns null if the model has no spec registered.
+ */
+export function buildRuleFallbackForModel(
+  modelId: string,
+  opts: {
+    availableModels?: LeonardoModelConfig[];
+    modelParams?: Record<string, LeonardoModelSpec>;
+  } = {},
+): PerModelSuggestion | null {
+  const modelParams = opts.modelParams ?? LEONARDO_MODEL_PARAMS;
+  const spec = modelParams[modelId];
+  const cfg = opts.availableModels?.find(m => m.id === modelId);
+  const apiName = spec?.api_name ?? cfg?.apiModelId ?? modelId;
+  if (!spec) return null;
+
+  if (spec.type === 'video') {
+    return {
+      type: 'video',
+      modelId,
+      apiName,
+      aspectRatio: '16:9',
+      width: spec.width,
+      height: spec.height,
+      duration: spec.duration,
+      mode: /1080/.test(spec.mode) ? 'RESOLUTION_1080' : 'RESOLUTION_720',
+      motionHasAudio: spec.motion_has_audio,
+      reason: 'Default parameters — edit to customise.',
+      source: 'rules',
+    };
+  }
+
+  return {
+    type: 'image',
+    modelId,
+    apiName,
+    aspectRatio: '1:1',
+    width: spec.width,
+    height: spec.height,
+    imageSize: '1K',
+    promptEnhance: spec.prompt_enhance,
+    reason: 'Default parameters — edit to customise.',
+    source: 'rules',
+  };
+}
+
 // ── V030-008: AI-driven per-model suggestion via pi.dev ──────────────────────
 
 export interface SuggestParametersAIOptions {
