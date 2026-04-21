@@ -100,6 +100,9 @@ export interface PostReadyCarouselCardProps {
   onSeparate: () => void;
   /** Only invoked when isExplicit is false. */
   onLockGroup: () => void;
+  /** Unschedule all posts in this carousel without rejecting. Only
+   *  shown when at least one post is still scheduled. */
+  onCancelSchedule?: () => void;
 }
 
 export function PostReadyCarouselCard({
@@ -123,6 +126,7 @@ export function PostReadyCarouselCard({
   onUnreadyAll,
   onSeparate,
   onLockGroup,
+  onCancelSchedule,
 }: PostReadyCarouselCardProps) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [captionExpanded, setCaptionExpanded] = useState(false);
@@ -370,6 +374,16 @@ export function PostReadyCarouselCard({
                     label="Lock as group"
                     onClick={() => {
                       onLockGroup();
+                      setKebabOpen(false);
+                    }}
+                  />
+                )}
+                {onCancelSchedule && kind === 'scheduled' && (
+                  <KebabItem
+                    icon={<X className="w-3.5 h-3.5" />}
+                    label="Cancel schedule"
+                    onClick={() => {
+                      onCancelSchedule();
                       setKebabOpen(false);
                     }}
                   />

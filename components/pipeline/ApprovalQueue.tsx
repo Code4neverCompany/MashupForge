@@ -32,6 +32,11 @@ export function ApprovalQueue({
   const [ideaFilter, setIdeaFilter] = useState<string | null>(null);
   const [modelFilter, setModelFilter] = useState<string | null>(null);
   const [platformFilter, setPlatformFilter] = useState<string | null>(null);
+  // Fullscreen preview for an approval thumbnail. Kept local rather
+  // than threading selectedImage through context so this stays a leaf
+  // concern — the pipeline approval queue is the only place these
+  // pipelinePending images live.
+  const [previewImage, setPreviewImage] = useState<GeneratedImage | null>(null);
   // V030-005: transient banner after a bulk action so the user sees
   // confirmation before the cards disappear from the queue.
   const [flash, setFlash] = useState<{ kind: 'approve' | 'reject'; count: number } | null>(null);
@@ -370,6 +375,7 @@ export function ApprovalQueue({
                   triggerFlash('reject', 1);
                 }}
                 onUpdateCaption={(next) => onUpdateCaption(postIds, next)}
+                onImageClick={(clicked) => setPreviewImage(clicked)}
               />
             );
           }
@@ -402,7 +408,8 @@ export function ApprovalQueue({
                   <img
                     src={img.url || (img.base64 ? `data:image/png;base64,${img.base64}` : '')}
                     alt=""
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover cursor-zoom-in"
+                    onClick={() => setPreviewImage(img)}
                     onError={(e) => { e.currentTarget.style.display = 'none'; }}
                   />
                 ) : (
@@ -470,6 +477,35 @@ export function ApprovalQueue({
           );
         })}
       </div>
+
+      {previewImage && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Preview image"
+          onClick={() => setPreviewImage(null)}
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
+        >
+          <button
+            type="button"
+            aria-label="Close preview"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPreviewImage(null);
+            }}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-zinc-900/80 text-zinc-200 hover:bg-zinc-800 flex items-center justify-center"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewImage.url || (previewImage.base64 ? `data:image/png;base64,${previewImage.base64}` : '')}
+            alt={previewImage.prompt || ''}
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-full max-h-full object-contain rounded-lg"
+          />
+        </div>
+      )}
     </div>
   );
 }

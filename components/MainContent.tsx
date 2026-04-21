@@ -295,7 +295,7 @@ export function MainContent() {
   // Transient status line per card ('Posted!', 'Scheduled for ...', error msg).
   const [postStatus, setPostStatus] = useState<Record<string, string | null>>({});
   // Post Ready view toggle + calendar navigation.
-  const [postReadyView, setPostReadyView] = useState<'grid' | 'calendar'>('grid');
+  const [postReadyView, setPostReadyView] = useState<'grid' | 'calendar' | 'history'>('grid');
   const [calendarMode, setCalendarMode] = useState<'week' | 'month'>('week');
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
   // Inline edit popover state for the week view — only one open at a time.
@@ -541,6 +541,37 @@ export function MainContent() {
       ...prev,
       [img.id]: `Scheduled for ${date} ${time}`,
     }));
+  };
+
+  /**
+   * Cancel a scheduled post for this image WITHOUT rejecting it.
+   *
+   * Distinct from `rejectScheduledPost` (which flips status to 'rejected'
+   * so the daemon stops acting on it) and from `deleteImage` (which blows
+   * the image away entirely). "Cancel schedule" just drops any
+   * non-posted ScheduledPost entries for the image so the card reverts
+   * to the plain "Ready" state — the user can then re-schedule or post
+   * now. Already-posted entries are preserved so posting history is
+   * never retroactively hidden.
+   */
+  const unschedulePost = (img: GeneratedImage) => {
+    updateSettings((prev) => ({
+      scheduledPosts: (prev.scheduledPosts || []).filter(
+        (p) => p.imageId !== img.id || p.status === 'posted',
+      ),
+    }));
+    setPostStatus((prev) => ({ ...prev, [img.id]: 'Schedule canceled' }));
+  };
+
+  /** Cancel schedule for every image in a carousel item. */
+  const unscheduleCarousel = (images: GeneratedImage[], statusKey: string) => {
+    const ids = new Set(images.map((i) => i.id));
+    updateSettings((prev) => ({
+      scheduledPosts: (prev.scheduledPosts || []).filter(
+        (p) => !ids.has(p.imageId) || p.status === 'posted',
+      ),
+    }));
+    setPostStatus((prev) => ({ ...prev, [statusKey]: 'Schedule canceled' }));
   };
 
   // ── Calendar helpers ───────────────────────────────────────────────
@@ -1428,9 +1459,39 @@ export function MainContent() {
     [view, images, savedImages, searchQuery, filterModel, filterUniverse, selectedCollectionId, tagQuery, sortBy],
   );
 
+  /**
+   * Active Post-Ready images — everything flagged `isPostReady` EXCEPT
+   * posts where every scheduled entry has already been sent. Fully-posted
+   * images drop off to `postedImages` / the History view so the main
+   * grid stays focused on actionable content. Images with no
+   * scheduledPosts at all (freshly captioned, not yet scheduled) are
+   * kept here — `every` on an empty list returns true, so we explicitly
+   * require at least one 'posted' post before hiding.
+   */
   const postReadyImages = useMemo(
-    () => savedImages.filter((i) => i.isPostReady === true),
-    [savedImages],
+    () =>
+      savedImages.filter((i) => {
+        if (i.isPostReady !== true) return false;
+        const posts = (settings.scheduledPosts || []).filter((p) => p.imageId === i.id);
+        if (posts.length === 0) return true;
+        return !posts.every((p) => p.status === 'posted');
+      }),
+    [savedImages, settings.scheduledPosts],
+  );
+
+  /**
+   * History — Post-Ready images whose ScheduledPosts have all been
+   * posted. Shown in the History view so the user can still see what
+   * went out without cluttering the active grid.
+   */
+  const postedImages = useMemo(
+    () =>
+      savedImages.filter((i) => {
+        if (i.isPostReady !== true) return false;
+        const posts = (settings.scheduledPosts || []).filter((p) => p.imageId === i.id);
+        return posts.length > 0 && posts.every((p) => p.status === 'posted');
+      }),
+    [savedImages, settings.scheduledPosts],
   );
 
   const galleryStats = useMemo(() => {
@@ -2829,7 +2890,7 @@ export function MainContent() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
-                        {/* Grid / Calendar view toggle */}
+                        {/* Grid / Calendar / History view toggle */}
                         <div className="flex bg-zinc-900 border border-zinc-800/60 rounded-full p-0.5 mr-1">
                           <button
                             onClick={() => setPostReadyView('grid')}
@@ -2850,6 +2911,16 @@ export function MainContent() {
                             }`}
                           >
                             Calendar
+                          </button>
+                          <button
+                            onClick={() => setPostReadyView('history')}
+                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                              postReadyView === 'history'
+                                ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                                : 'text-zinc-500 hover:text-zinc-300'
+                            }`}
+                          >
+                            History {postedImages.length > 0 && `(${postedImages.length})`}
                           </button>
                         </div>
                         {/* Create Carousel — opens the lifted multi-source
@@ -3720,6 +3791,7 @@ export function MainContent() {
                                 onLockGroup={() =>
                                   persistCarouselGroup(`manual-${anchor.id}`, item.images.map((i) => i.id))
                                 }
+                                onCancelSchedule={() => unscheduleCarousel(item.images, key)}
                               />
                             );
                           }
@@ -3770,11 +3842,59 @@ export function MainContent() {
                                 }
                               }}
                               onUnready={() => patchImage(img, { isPostReady: false })}
+                              onCancelSchedule={() => unschedulePost(img)}
                             />
                           );
                         })}
                       </div>
                     )
+                    )}
+
+                    {/* History view — posts where every ScheduledPost is
+                        'posted'. Read-only thumbnail grid so users can
+                        still audit what went out without the active
+                        Post-Ready grid being cluttered by them. */}
+                    {postReadyView === 'history' && (
+                      postedImages.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 space-y-3 text-center">
+                          <Check className="w-10 h-10 text-zinc-700" />
+                          <p className="text-sm text-zinc-500">
+                            Nothing posted yet. Successfully posted content will appear here.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                          {postedImages.map((img) => {
+                            const posts = (settings.scheduledPosts || []).filter((p) => p.imageId === img.id);
+                            const last = posts[posts.length - 1];
+                            return (
+                              <button
+                                key={img.id}
+                                type="button"
+                                onClick={() => setSelectedImage(img)}
+                                className="group relative bg-zinc-900/80 border-2 border-emerald-500/40 rounded-xl overflow-hidden hover:border-emerald-400/70 transition-colors text-left"
+                                title={img.postCaption || img.prompt}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={img.url}
+                                  alt={img.prompt}
+                                  loading="lazy"
+                                  className="w-full aspect-square object-cover"
+                                />
+                                <div className="absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/90 text-[10px] font-semibold text-white">
+                                  <Check className="w-3 h-3" /> Posted
+                                </div>
+                                {last && (
+                                  <div className="px-2 py-1.5 text-[10px] text-zinc-400 truncate">
+                                    {last.date} · {last.platforms.join(', ')}
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )
                     )}
 
                     {/* Schedule-All modal — extracted to SmartScheduleModal (PROP-016) */}

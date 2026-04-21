@@ -17,6 +17,7 @@ export function CarouselReviewPanel({
   onApproveRemaining,
   onRejectCarousel,
   onCollapse,
+  onImageClick,
 }: {
   images: GeneratedImage[];
   statuses: Record<string, CarouselImageState>;
@@ -29,6 +30,8 @@ export function CarouselReviewPanel({
   onApproveRemaining: () => void;
   onRejectCarousel: () => void;
   onCollapse: () => void;
+  /** Click handler for the expanded image — opens fullscreen viewer. */
+  onImageClick?: (img: GeneratedImage) => void;
 }) {
   const pendingCount = images.filter((img) => (statuses[img.id] ?? 'pending') === 'pending').length;
 
@@ -68,7 +71,8 @@ export function CarouselReviewPanel({
                   <img
                     src={img.url || `data:image/png;base64,${img.base64}`}
                     alt=""
-                    className={`w-full h-full object-cover ${st === 'rejected' ? 'saturate-50 opacity-50' : ''}`}
+                    onClick={onImageClick ? () => onImageClick(img) : undefined}
+                    className={`w-full h-full object-cover ${onImageClick ? 'cursor-zoom-in' : ''} ${st === 'rejected' ? 'saturate-50 opacity-50' : ''}`}
                     onError={(e) => { e.currentTarget.style.display = 'none'; }}
                   />
                 ) : (

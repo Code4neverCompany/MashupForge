@@ -22,6 +22,8 @@ interface UsePipelineDeps {
   ) => Promise<GeneratedImage[]>;
   generatePostContent: (image: GeneratedImage) => Promise<GeneratedImage | undefined>;
   saveImage: (img: GeneratedImage) => void;
+  /** Used by the skip-cleanup path to purge orphaned pipeline images. */
+  deleteImage: (id: string, fromSaved: boolean) => unknown;
   savedImages: GeneratedImage[];
   images: GeneratedImage[];
 }
@@ -41,6 +43,7 @@ export function usePipeline(deps: UsePipelineDeps) {
     generateComparison,
     generatePostContent,
     saveImage,
+    deleteImage,
     savedImages,
     images,
   } = deps;
@@ -71,6 +74,27 @@ export function usePipeline(deps: UsePipelineDeps) {
     [daemon, processor.processIdea],
   );
 
+  /**
+   * Skip + cleanup. Aborts the current idea via the daemon, then
+   * deletes any pipeline-produced images that were stamped with this
+   * idea's id (so approved-but-then-skipped generations don't linger
+   * as grayed-out pipelinePending entries) and drops their not-yet-
+   * posted ScheduledPosts. Already-posted entries are left alone so
+   * the history view still shows them.
+   */
+  const skipCurrentIdea = useCallback(() => {
+    const currentIdeaId = daemon.pipelineProgress?.currentIdeaId;
+    daemon.skipCurrentIdea();
+    if (!currentIdeaId) return;
+    const orphaned = savedImages.filter((i) => i.sourceIdeaId === currentIdeaId);
+    for (const img of orphaned) deleteImage(img.id, true);
+    updateSettings((prev) => ({
+      scheduledPosts: (prev.scheduledPosts || []).filter(
+        (p) => p.sourceIdeaId !== currentIdeaId || p.status === 'posted',
+      ),
+    }));
+  }, [daemon, savedImages, deleteImage, updateSettings]);
+
   const acceptResume = useCallback(() => {
     applyResumeCheckpoint(daemon.pendingResume, {
       setPipelineDelayState: daemon.setPipelineDelayState,
@@ -98,7 +122,7 @@ export function usePipeline(deps: UsePipelineDeps) {
     togglePipeline: daemon.togglePipeline,
     startPipeline,
     stopPipeline: daemon.stopPipeline,
-    skipCurrentIdea: daemon.skipCurrentIdea,
+    skipCurrentIdea,
     pipelineContinuous: daemon.pipelineContinuous,
     toggleContinuous: daemon.toggleContinuous,
     pipelineInterval: daemon.pipelineInterval,

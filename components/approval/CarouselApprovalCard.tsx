@@ -36,6 +36,7 @@ export function CarouselApprovalCard({
   onApprovePost,
   onRejectPost,
   onUpdateCaption,
+  onImageClick,
 }: {
   groupId: string;
   posts: ScheduledPost[];
@@ -48,6 +49,8 @@ export function CarouselApprovalCard({
   /** V050-005: edit the carousel's shared caption. Parent fans out to
    *  every sibling post and the matching CarouselGroup. */
   onUpdateCaption?: (next: string) => void;
+  /** Optional fullscreen-preview click handler for the expanded panel. */
+  onImageClick?: (img: GeneratedImage) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   // Local optimistic state so the user sees per-image feedback before
@@ -256,6 +259,7 @@ export function CarouselApprovalCard({
           onApproveRemaining={approveRemaining}
           onRejectCarousel={rejectCarousel}
           onCollapse={() => setExpanded(false)}
+          onImageClick={onImageClick}
         />
       )}
 

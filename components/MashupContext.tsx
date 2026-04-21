@@ -149,6 +149,7 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     generateComparison,
     generatePostContent,
     saveImage,
+    deleteImage,
     savedImages,
     images,
   });

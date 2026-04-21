@@ -70,6 +70,9 @@ export interface PostReadyCardProps {
   onCopy: () => void;
   onRegen: () => void;
   onUnready: () => void;
+  /** Unschedule — drop the ScheduledPost without rejecting the image.
+   *  Only offered when there is an active (non-posted) schedule. */
+  onCancelSchedule?: () => void;
 }
 
 /** Map post lifecycle → border + pill colors. */
@@ -130,6 +133,7 @@ export function PostReadyCard({
   onCopy,
   onRegen,
   onUnready,
+  onCancelSchedule,
 }: PostReadyCardProps) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [captionExpanded, setCaptionExpanded] = useState(false);
@@ -371,6 +375,16 @@ export function PostReadyCard({
                       setKebabOpen(false);
                     }}
                   />
+                  {onCancelSchedule && kind === 'scheduled' && (
+                    <KebabItem
+                      icon={<X className="w-3.5 h-3.5" />}
+                      label="Cancel schedule"
+                      onClick={() => {
+                        onCancelSchedule();
+                        setKebabOpen(false);
+                      }}
+                    />
+                  )}
                   <KebabItem
                     icon={<MinusCircle className="w-3.5 h-3.5" />}
                     label="Move out of Post Ready"

@@ -171,8 +171,20 @@ export async function processIdea(
     autoSchedule &&
     resolvePipelinePostStatus(pipelinePlatforms, settings.pipelineAutoApprove) ===
       'pending_approval';
-  const savePipelineImage = (img: GeneratedImage) =>
-    saveImage(pipelinePending ? { ...img, pipelinePending: true } : img);
+  /**
+   * Save a pipeline-produced image. Always stamps `sourceIdeaId` so the
+   * daemon's skip-handler can find every image for this run (including
+   * ones saved before scheduling) and clean them up. Throws SkipIdeaSignal
+   * if the user requested a skip between generation and save, so we
+   * never leave a half-committed image behind when the run aborts.
+   */
+  const savePipelineImage = (img: GeneratedImage) => {
+    checkSkip(isSkipRequested);
+    const stamped: GeneratedImage = pipelinePending
+      ? { ...img, pipelinePending: true, sourceIdeaId: idea.id }
+      : { ...img, sourceIdeaId: idea.id };
+    saveImage(stamped);
+  };
 
   let expandedPrompt: string;
   let readyImages: GeneratedImage[];

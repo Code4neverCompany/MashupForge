@@ -68,6 +68,14 @@ export interface GeneratedImage {
    * auto, post lands as `scheduled` directly).
    */
   pipelinePending?: boolean;
+  /**
+   * For pipeline-produced images, the id of the source Idea that
+   * drove the generation. Mirrors ScheduledPost.sourceIdeaId and lets
+   * the daemon's skip-handler find every image it created for the
+   * current idea (including ones saved before scheduling) so they can
+   * be deleted instead of lingering as orphaned pipelinePending entries.
+   */
+  sourceIdeaId?: string;
 }
 
 /**
