@@ -26,6 +26,14 @@ export interface StreamAIOptions {
   mode?: PiMode;
   systemPrompt?: string;
   signal?: AbortSignal;
+  /**
+   * Active niches/genres from Settings. Forwarded verbatim to the route
+   * so the server can tailor the trending web-search query (see
+   * `buildTrendingQuery` in app/api/pi/prompt/route.ts). Only used for
+   * `mode: 'idea'`; ignored for other modes.
+   */
+  niches?: string[];
+  genres?: string[];
 }
 
 /**
@@ -50,6 +58,8 @@ export async function* streamAI(
       message,
       mode: options?.mode,
       systemPrompt: options?.systemPrompt,
+      niches: options?.niches,
+      genres: options?.genres,
     }),
     signal: options?.signal,
   });

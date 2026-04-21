@@ -257,6 +257,67 @@ export async function webSearch(
   return webSearchDdg(query, count, signal);
 }
 
+/**
+ * Heuristic tag extraction from a batch of search results. Pulls:
+ *   - explicit hashtags (`#foo`, `#star-wars`) as-written
+ *   - Title-Case franchise / character phrases (`Star Wars`, `Warhammer 40k`,
+ *     `Darth Vader`) — 1–3 consecutive Capitalized tokens, optional trailing
+ *     lowercase/digit suffix like `40k`
+ *
+ * Not a content taxonomy — there's no allowlist of "real" franchises. The
+ * goal is a light signal the LLM can notice in the trending block, not
+ * ground truth. Returns a deduped list in first-seen order, lower-cased
+ * for the dedup key so `Star Wars` and `star wars` collapse; the original
+ * casing of the first occurrence is preserved in the returned string.
+ */
+export function extractTrendingTags(results: WebSearchResult[]): string[] {
+  if (!Array.isArray(results) || results.length === 0) return [];
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  const push = (raw: string) => {
+    const cleaned = raw.trim();
+    if (!cleaned) return;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(cleaned);
+  };
+
+  const HASHTAG = /#[A-Za-z][\w-]{1,40}/g;
+  const TITLE_PHRASE = /\b[A-Z][a-zA-Z]+(?:\s+(?:of|the|and|&)\s+[A-Z][a-zA-Z]+)?(?:\s+[A-Z][a-zA-Z]+){0,2}(?:\s+\d+[a-z]*)?\b/g;
+
+  const STOPWORDS = new Set([
+    'The', 'This', 'That', 'These', 'Those',
+    'Our', 'Your', 'Their', 'His', 'Her',
+    'New', 'Latest', 'Best', 'Top', 'Free',
+    'Trending', 'Popular',
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+  ]);
+
+  for (const r of results) {
+    const haystack = `${r.title ?? ''} ${r.snippet ?? ''}`;
+
+    let m: RegExpExecArray | null;
+    HASHTAG.lastIndex = 0;
+    while ((m = HASHTAG.exec(haystack)) !== null) push(m[0]);
+
+    TITLE_PHRASE.lastIndex = 0;
+    while ((m = TITLE_PHRASE.exec(haystack)) !== null) {
+      const phrase = m[0];
+      const first = phrase.split(/\s+/)[0];
+      if (STOPWORDS.has(first)) continue;
+      if (phrase.length < 3) continue;
+      push(phrase);
+    }
+  }
+
+  return out;
+}
+
 export const __test__ = {
   MAX_QUERY_LEN,
   DEFAULT_COUNT,

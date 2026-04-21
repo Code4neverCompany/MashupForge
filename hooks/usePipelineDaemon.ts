@@ -275,7 +275,11 @@ Each idea should be visually striking, shareable, and aligned with the niches/ge
 Return ONLY a JSON array of objects with "concept" and "context" fields. Example:
 [{"concept": "Darth Vader as a grimdark Warhammer inquisitor...", "context": "Star Wars × WH40k crossover"}]`;
 
-    const text = await streamAIToString(systemContext, { mode: 'idea' });
+    const text = await streamAIToString(systemContext, {
+      mode: 'idea',
+      niches: s.agentNiches,
+      genres: s.agentGenres,
+    });
 
     const nowStamp = Date.now();
     const buildIdea = (concept: string, context: string, i: number): Idea => ({

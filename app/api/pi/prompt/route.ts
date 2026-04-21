@@ -1,11 +1,11 @@
 import { prompt as piPrompt, start as piStart, isRunning } from '@/lib/pi-client';
 import { getErrorMessage } from '@/lib/errors';
 import { coerceMemory, formatMemoryForPrompt } from '@/lib/pipeline-memory';
-import { webSearch, type WebSearchResult } from '@/lib/web-search';
+import { webSearch, extractTrendingTags, type WebSearchResult } from '@/lib/web-search';
 
 /**
  * POST /api/pi/prompt
- *   { message, mode?, systemPrompt?, memory? }
+ *   { message, mode?, systemPrompt?, memory?, niches?, genres? }
  *
  * Returns text/event-stream:
  *   data: {"text":"<delta>"}\n\n
@@ -24,15 +24,63 @@ import { webSearch, type WebSearchResult } from '@/lib/web-search';
  * `memory` is the client's PipelineMemory snapshot (localStorage-backed).
  * It's only consulted for `idea` and `generate` modes — other modes don't
  * benefit from cross-call coherence and we'd rather keep their prompts
- * tight. For `idea`, we additionally fire a best-effort DuckDuckGo search
- * for current trends. Both are injected BEFORE the mode directive so the
+ * tight.
+ *
+ * `niches` / `genres` come from Settings and shape the trending web-search
+ * query for `idea` mode (see buildTrendingQuery). Without them, the search
+ * falls back to a generic "crossover fan art" probe, which is why every
+ * run used to surface the same cyberpunk results.
+ *
+ * Memory + trending blocks are injected BEFORE the mode directive so the
  * LLM reads them as standing context.
  */
 
-const TRENDING_SEARCH_QUERY = 'crossover fan art trending 2026';
 const TRENDING_RESULT_COUNT = 3;
 const TRENDING_MAX_CHARS = 900; // ≈ 150 words
 const TRENDING_SNIPPET_CHARS = 220;
+const TRENDING_TAG_LIMIT = 10;
+const DEFAULT_NICHES = ['Star Wars', 'Marvel', 'Warhammer 40k'];
+
+function sanitizeStringArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((s): s is string => typeof s === 'string' && s.trim().length > 0).map((s) => s.trim());
+}
+
+/**
+ * Build the trending-context query from the user's active niches/genres.
+ *
+ * Picks 2 niches to diversify results — a single fixed query was returning
+ * the same cyberpunk thumbnails on every idea run. Two niches joined with
+ * "x" rhymes with the crossover framing the LLM already uses ("Darth
+ * Vader x Warhammer") and gives DDG/Brave a specific enough signal to
+ * surface fresh fan-art coverage.
+ *
+ * `rng` is injectable so tests can pin a deterministic shuffle.
+ */
+export function buildTrendingQuery(
+  niches?: string[],
+  genres?: string[],
+  rng: () => number = Math.random,
+): string {
+  const cleanedNiches = sanitizeStringArray(niches);
+  const active = cleanedNiches.length > 0 ? cleanedNiches : DEFAULT_NICHES;
+
+  const shuffled = [...active];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  const pick = shuffled.slice(0, Math.min(2, shuffled.length));
+
+  const cleanedGenres = sanitizeStringArray(genres);
+  const genreHint = cleanedGenres[0] ?? '';
+
+  return [pick.join(' x '), 'crossover fan art', genreHint, 'trending 2026']
+    .filter((s) => s.length > 0)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 function formatTrendingContext(results: WebSearchResult[]): string {
   if (!results || results.length === 0) return '';
@@ -42,6 +90,10 @@ function formatTrendingContext(results: WebSearchResult[]): string {
     const snippet = r.snippet.trim().slice(0, TRENDING_SNIPPET_CHARS);
     if (!title) continue;
     lines.push(snippet ? `- ${title} — ${snippet}` : `- ${title}`);
+  }
+  const tags = extractTrendingTags(results).slice(0, TRENDING_TAG_LIMIT);
+  if (tags.length > 0) {
+    lines.push(`Tags observed: ${tags.join(', ')}`);
   }
   const joined = lines.join('\n');
   return joined.length > TRENDING_MAX_CHARS ? joined.slice(0, TRENDING_MAX_CHARS) + '…' : joined;
@@ -92,7 +144,7 @@ export async function POST(req: Request) {
     });
   }
 
-  const { message, mode, systemPrompt, memory } = body || {};
+  const { message, mode, systemPrompt, memory, niches, genres } = body || {};
   if (typeof message !== 'string' || !message.trim()) {
     return new Response(JSON.stringify({ error: 'message is required' }), {
       status: 400,
@@ -126,8 +178,12 @@ export async function POST(req: Request) {
   if (mode === 'idea') {
     try {
       const braveKey = (process.env.BRAVE_API_KEY ?? '').trim();
+      const query = buildTrendingQuery(
+        sanitizeStringArray(niches),
+        sanitizeStringArray(genres),
+      );
       const results = await webSearch(
-        TRENDING_SEARCH_QUERY,
+        query,
         TRENDING_RESULT_COUNT,
         undefined,
         braveKey ? { provider: 'brave', braveApiKey: braveKey } : undefined,

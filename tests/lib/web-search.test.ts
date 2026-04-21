@@ -6,6 +6,7 @@ import {
   clampCount,
   webSearch,
   webSearchBrave,
+  extractTrendingTags,
 } from '@/lib/web-search';
 
 const SAMPLE_HTML = `
@@ -291,5 +292,66 @@ describe('webSearch provider routing (fetch mocked)', () => {
     expect(out.length).toBe(1);
     expect(spy).toHaveBeenCalledOnce();
     expect(String(spy.mock.calls[0][0])).toContain('duckduckgo.com');
+  });
+});
+
+describe('extractTrendingTags', () => {
+  it('pulls explicit hashtags', () => {
+    const tags = extractTrendingTags([
+      {
+        title: 'Neon street art #cyberpunk #StarWars',
+        url: 'https://x.example/',
+        snippet: 'also #grim-dark vibes',
+      },
+    ]);
+    expect(tags).toContain('#cyberpunk');
+    expect(tags).toContain('#StarWars');
+    expect(tags).toContain('#grim-dark');
+  });
+
+  it('pulls Title-Case franchise phrases', () => {
+    const tags = extractTrendingTags([
+      {
+        title: 'Star Wars meets Warhammer 40k in new fan art',
+        url: 'https://x.example/',
+        snippet: 'Darth Vader cosplays as an Inquisitor',
+      },
+    ]);
+    expect(tags).toContain('Star Wars');
+    expect(tags).toContain('Warhammer 40k');
+    expect(tags).toContain('Darth Vader');
+  });
+
+  it('dedupes case-insensitively preserving first casing', () => {
+    const tags = extractTrendingTags([
+      { title: 'Star Wars news', url: 'https://a/', snippet: '' },
+      { title: 'more STAR WARS coverage', url: 'https://b/', snippet: 'Star Wars fans say' },
+    ]);
+    const lowered = tags.map((t) => t.toLowerCase());
+    const count = lowered.filter((t) => t === 'star wars').length;
+    expect(count).toBe(1);
+    expect(tags[0]).toBe('Star Wars');
+  });
+
+  it('ignores stopword-led Title-Case phrases', () => {
+    const tags = extractTrendingTags([
+      { title: 'The Latest Trends', url: 'https://x/', snippet: 'Top Tier content' },
+    ]);
+    expect(tags).not.toContain('The Latest Trends');
+    expect(tags).not.toContain('Top Tier');
+    expect(tags).not.toContain('Latest Trends');
+  });
+
+  it('returns [] for empty input', () => {
+    expect(extractTrendingTags([])).toEqual([]);
+  });
+
+  it('handles missing snippet / title gracefully', () => {
+    expect(() =>
+      extractTrendingTags([
+        { title: '', url: 'https://x/', snippet: '' },
+        { title: 'Normal Title', url: 'https://x/', snippet: '' },
+      ]),
+    ).not.toThrow();
   });
 });
