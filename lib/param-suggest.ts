@@ -594,8 +594,12 @@ export function buildPerModelPromptPayload(args: {
     }
     if (modelId === 'gpt-image-1.5') {
       return [
-        'gpt-image-1.5: always evaluate this model with TAILORED settings — never skip it.',
-        '  Pick aspect ratio + quality based on scene; do not copy nano-banana choices.',
+        'gpt-image-1.5: CRITICAL — this model does NOT support style or negativePrompt.',
+        '  Do NOT set style — omit it entirely (leave undefined).',
+        '  Do NOT set negativePrompt — omit it entirely (leave undefined).',
+        '  Valid aspect ratios ONLY: 2:3 (portrait), 1:1 (square), 3:2 (landscape).',
+        '  Quality options: LOW, MEDIUM, HIGH. Pick based on scene detail needs.',
+        '  promptEnhance: ON by default, OFF only if the user prompt is already highly detailed.',
       ].join('\n');
     }
     return `${modelId}: pick parameters TAILORED to this model — do not copy values chosen for sibling models.`;
@@ -810,7 +814,7 @@ function mergePerModelAI(
     const reason = pickString(parsed.reason) ?? fallback.reason;
     if (!pickString(parsed.reason)) blendedSource = 'ai+rules';
 
-    return {
+    const merged: PerModelImageSuggestion = {
       type: 'image',
       modelId,
       apiName,
@@ -825,6 +829,13 @@ function mergePerModelAI(
       reason,
       source: blendedSource,
     };
+
+    if (modelId === 'gpt-image-1.5') {
+      merged.style = undefined;
+      merged.negativePrompt = undefined;
+    }
+
+    return merged;
   }
 
   if (spec.type === 'video' && fallback.type === 'video') {
