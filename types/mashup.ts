@@ -591,6 +591,17 @@ export const LEONARDO_MODEL_PARAMS: Record<string, LeonardoModelSpec> = {
     supports_start_frame: true,
     supports_end_frame: true,
   },
+  'seedance-2.0': {
+    type: 'video',
+    api_name: 'seedance-2.0',
+    width: 1280,
+    height: 720,
+    duration: 8,
+    mode: 'RESOLUTION_720',
+    motion_has_audio: true,
+    supports_start_frame: true,
+    supports_end_frame: true,
+  },
 };
 
 // Video model configs, analogous to LEONARDO_MODELS but carrying the
@@ -641,6 +652,17 @@ export const LEONARDO_VIDEO_MODELS: LeonardoVideoModelConfig[] = [
     supportsStartFrame: true,
     supportsEndFrame: true,
     motionHasAudio: false,
+  },
+  {
+    id: 'seedance-2.0',
+    name: 'Seedance 2.0',
+    apiModelId: 'seedance-2.0',
+    duration: 8,
+    width: 1280,
+    height: 720,
+    supportsStartFrame: true,
+    supportsEndFrame: true,
+    motionHasAudio: true,
   },
 ];
 

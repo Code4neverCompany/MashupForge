@@ -37,6 +37,67 @@ import {
   LEONARDO_API_DOCS,
   LEONARDO_API_DOCS_BY_MODEL,
 } from './leonardo-api-docs';
+import { getModelSpec, getAllModelSpecs } from './model-specs';
+
+/**
+ * Preamble for every pi.dev parameter-selection prompt. Teaches pi how
+ * to read the structured spec blocks below — capabilities tell it what
+ * a model CAN and CANNOT do, and rules expose hard constraints.
+ * Critical: when `capabilities.styles` is false the model has no style
+ * parameter, so pi must omit it entirely.
+ */
+const PARAMETER_SELECTION_GUIDE = [
+  'PARAMETER SELECTION GUIDE:',
+  '- Read each model\'s capabilities carefully.',
+  '- If a model has styles:TRUE, pick a style NAME that matches the prompt\'s mood.',
+  '- If a model has styles:FALSE, OMIT style entirely.',
+  '- If a model has negativePrompt:FALSE, OMIT negativePrompt entirely.',
+  '- Pick aspect ratio based on what the prompt describes:',
+  '  - Portraits / people → 2:3 or 9:16',
+  '  - Landscapes / scenes → 3:2 or 16:9',
+  '  - Square / close-ups → 1:1',
+  '  - Ultra-wide scenes → 21:9',
+  '- For video models: pick duration based on scene complexity (short = punchy, long = cinematic).',
+  '- NEVER set a parameter that the model\'s capabilities mark as FALSE.',
+  '- ALWAYS pick values that the spec\'s allowed sets / aspect-ratio table contain.',
+  '- Each model gets INDEPENDENT parameters — do NOT copy between models.',
+].join('\n');
+
+/**
+ * Render a single model's structured spec as a compact block pi.dev
+ * can parse. Uses the JSON sitting in `lib/model-specs/*.json` as the
+ * source of truth — capabilities, allowed params, aspect-ratio table,
+ * styles (name → UUID), and hard rules.
+ */
+function renderModelSpecBlock(modelId: string): string | null {
+  const spec = getModelSpec(modelId);
+  if (!spec) return null;
+  const lines: string[] = [];
+  lines.push(`### MODEL SPEC — ${spec.modelId} (type: ${spec.type}, API: ${spec.apiName})`);
+  lines.push(`endpoint: ${spec.endpoint}`);
+  lines.push('');
+  lines.push('capabilities:');
+  for (const [k, v] of Object.entries(spec.capabilities)) {
+    lines.push(`  - ${k}: ${v ? 'TRUE' : 'FALSE'}`);
+  }
+  lines.push('');
+  lines.push('parameters:');
+  lines.push(JSON.stringify(spec.parameters, null, 2));
+  if (spec.aspectRatios) {
+    lines.push('');
+    lines.push('aspectRatios (exact width × height pairs):');
+    lines.push(JSON.stringify(spec.aspectRatios, null, 2));
+  }
+  if (spec.styles) {
+    lines.push('');
+    lines.push('styles (NAME → UUID map; return the NAME, the app resolves the UUID):');
+    lines.push(JSON.stringify(spec.styles, null, 2));
+  }
+  lines.push('');
+  lines.push('rules:');
+  for (const r of spec.rules) lines.push(`  - ${r}`);
+  return lines.join('\n');
+}
 
 export type SuggestionSource = 'ai' | 'rules' | 'ai+rules';
 
@@ -577,68 +638,7 @@ export function buildPerModelPromptPayload(args: {
   const styleNames = availableStyles.map(s => s.name);
   const isImage = spec.type === 'image';
 
-  const perModelVariety = (() => {
-    if (modelId === 'nano-banana-2') {
-      return [
-        'nano-banana-2: rotate aspect ratios across runs — prefer 9:16, 16:9, 3:4, or 4:5',
-        '  depending on scene framing. Avoid defaulting to 1:1 unless the scene is truly centered.',
-        '  Use styles that favor crisp character work (Portrait, Portrait Cinematic, Game Concept).',
-      ].join('\n');
-    }
-    if (modelId === 'nano-banana-pro') {
-      return [
-        'nano-banana-pro: pick DIFFERENTLY from nano-banana-2. Favor wider/bolder framing',
-        '  (16:9, 21:9, 3:2) and more cinematic styles (Dynamic, Creative, Pro Film Photography).',
-        '  This model is for hero shots — think panorama, scale, drama.',
-      ].join('\n');
-    }
-    if (modelId === 'gpt-image-1.5') {
-      return [
-        'gpt-image-1.5: CRITICAL — this model does NOT support style or negativePrompt.',
-        '  Do NOT set style — omit it entirely (leave undefined).',
-        '  Do NOT set negativePrompt — omit it entirely (leave undefined).',
-        '  Valid aspect ratios ONLY: 2:3 (portrait), 1:1 (square), 3:2 (landscape).',
-        '  Quality options: LOW, MEDIUM, HIGH. Pick based on scene detail needs.',
-        '  promptEnhance: ON by default, OFF only if the user prompt is already highly detailed.',
-      ].join('\n');
-    }
-    return `${modelId}: pick parameters TAILORED to this model — do not copy values chosen for sibling models.`;
-  })();
-
-  const creativeDirection = [
-    'CREATIVE DIRECTION (read carefully — this shapes your choices):',
-    '',
-    '1. VARIETY — each model is optimized INDEPENDENTLY. Do NOT copy-paste settings',
-    '   across models. If nano-banana-2 gets 9:16 + Dynamic, nano-banana-pro should',
-    '   pick something different (e.g. 16:9 + Creative) unless the scene truly demands',
-    '   the same framing for both. Per-model guidance for this run:',
-    `   → ${perModelVariety}`,
-    '',
-    '2. ASPECT RATIO BY SCENE — read the USER IDEA and map framing to aspect:',
-    '   • vertical character / single figure standing → 9:16',
-    '   • battle panorama / wide landscape / army shot → 16:9 or 21:9',
-    '   • intimate portrait / close-up face / bust shot → 4:5 or 1:1',
-    '   • overhead / boss fight / top-down / god\'s-eye → 3:4',
-    '   Pick the one that best matches this specific idea — do not default.',
-    '',
-    isImage
-      ? [
-          '3. STYLE ROTATION BY MOOD — match style to the emotional tone of the idea:',
-          '   • Cyberpunk / neon / tech-noir → Dynamic or Creative',
-          '   • Dark gothic / throne room / somber royalty → Pro Film Photography, or omit style',
-          '   • Action / combat / explosion / chase → Dynamic or Game Concept',
-          '   • Moody character study / introspective / portrait → Portrait or Portrait Cinematic',
-          '   • Warm daylight / natural / candid → Pro Color Photography',
-          '   Only use a style name from AVAILABLE STYLE NAMES. Rotate — if a sibling model',
-          '   picked Dynamic, prefer a different style here unless Dynamic is clearly best.',
-        ].join('\n')
-      : '3. STYLE ROTATION: not applicable — video model has no style knob.',
-    '',
-    '4. NO COPY-PASTE — every model must receive UNIQUE parameters per scene.',
-    '   Your job is to reason about what THIS model does best for THIS idea, not to',
-    '   reuse a "safe" default. If two models legitimately want the same aspect ratio,',
-    '   differentiate on style, quality, or promptEnhance.',
-  ].join('\n');
+  const structuredSpec = renderModelSpecBlock(modelId);
 
   const responseShape = isImage
     ? [
@@ -665,12 +665,17 @@ export function buildPerModelPromptPayload(args: {
   return [
     `You are tuning Leonardo.AI parameters for a single model: ${modelId} (API: ${apiName}).`,
     'You are NOT choosing a model. The model is fixed. Your job is to read the',
-    "API DOC SLICE below and pick this model's optimal parameters for the user's idea.",
+    "structured MODEL SPEC below and pick this model's optimal parameters for the user's idea.",
+    '',
+    PARAMETER_SELECTION_GUIDE,
     '',
     `USER IDEA:\n${prompt || '(empty)'}`,
     '',
     `MODEL: ${modelId} (API: ${apiName}; type: ${spec.type})`,
-    '--- BEGIN API DOC SLICE ---',
+    '',
+    structuredSpec ?? `(no structured spec available for ${modelId})`,
+    '',
+    '--- BEGIN API DOC SLICE (supplementary) ---',
     apiDocSlice,
     '--- END API DOC SLICE ---',
     '',
@@ -686,15 +691,14 @@ export function buildPerModelPromptPayload(args: {
     'PRIOR WINNERS GENERATED BY THIS MODEL ON SIMILAR IDEAS (calibration):',
     JSON.stringify(priorWinnersOnThisModel, null, 2),
     '',
-    creativeDirection,
-    '',
     'HARD CONSTRAINTS:',
-    '- Choose only values the API DOC SLICE explicitly accepts for THIS model.',
-    '- If this model does not expose a knob, OMIT that field — do not invent values.',
-    '- Aspect ratio / dimensions must be one of the supported sizes in the slice above.',
+    '- Obey the capabilities block: if a capability is FALSE, OMIT that parameter entirely.',
+    '- Obey the rules list: every rule is a constraint the API enforces.',
+    '- Aspect ratio / dimensions must come from the aspectRatios table for this model.',
+    '- Each model gets INDEPENDENT parameters — do not copy values across sibling models.',
     isImage
-      ? '- imageSize is "1K" or "2K" only. quality is LOW/MEDIUM/HIGH only when the model exposes it.'
-      : '- duration must be within the model\'s allowed range from the slice (read carefully).',
+      ? '- imageSize is "1K" or "2K" only, and only when capabilities.imageSize is TRUE.'
+      : '- duration must be within the model\'s allowed range from the spec.',
     '',
     'Return ONLY a JSON object with this shape, no code fences, no commentary:',
     responseShape,
@@ -1106,11 +1110,24 @@ export function buildAIPromptPayload(input: SuggestParametersInput): string {
     return base;
   });
   const styleNames = availableStyles.map(s => s.name);
+  // Structured specs for every known model — lets pi reason over
+  // capabilities + rules rather than the raw text blobs alone.
+  const allSpecs = getAllModelSpecs();
+  const structuredCatalog = Object.keys(allSpecs)
+    .map(id => renderModelSpecBlock(id))
+    .filter((s): s is string => Boolean(s))
+    .join('\n\n');
   return [
     'You are the Leonardo.AI model-selection reasoner for MashupForge.',
+    '',
+    PARAMETER_SELECTION_GUIDE,
+    '',
     `USER IDEA:\n${prompt || '(empty)'}`,
     '',
-    'MODEL DATABASE:',
+    'MODEL DATABASE (structured specs — authoritative):',
+    structuredCatalog,
+    '',
+    'MODEL DATABASE (supplementary text docs):',
     LEONARDO_API_DOCS,
     '',
     `IN-APP ELIGIBILITY (top ${topN}): ${JSON.stringify(matrix, null, 2)}`,
@@ -1118,6 +1135,7 @@ export function buildAIPromptPayload(input: SuggestParametersInput): string {
     '',
     'HARD CONSTRAINTS:',
     '- modelIds must appear in IN-APP ELIGIBILITY.',
+    '- Obey each model\'s capabilities block — never set a parameter marked FALSE.',
     '- Quality LOW | MEDIUM | HIGH only when supported.',
   ].join('\n');
 }

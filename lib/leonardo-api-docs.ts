@@ -169,6 +169,39 @@ Model identifier: "kling-video-o-3".
 1080p: 16:9 1920×1080; 1:1 1440×1440; 9:16 1080×1920.
 `;
 
+const SEEDANCE_20 = `========================================================================
+# Seedance 2.0 (API: seedance-2.0 | seedance-2.0-fast)
+========================================================================
+
+## Endpoint
+POST https://cloud.leonardo.ai/api/rest/v2/generations
+Model identifier: "seedance-2.0" or "seedance-2.0-fast".
+
+## Parameters
+- model (string, required): seedance-2.0 | seedance-2.0-fast.
+- prompt (string, required, ≤1500 chars).
+- duration (integer, optional): 4..15 (any integer). Default 8.
+- mode (string, optional): RESOLUTION_480 | RESOLUTION_720 (default). NO 1080p.
+- width, height (integer, optional). 0,0 = match source image (img2video).
+- prompt_enhance (string, optional): ON | OFF. Auto-OFF when start_frame is set.
+- motion_has_audio (boolean, optional): generates dialogue, SFX, ambient.
+- public (boolean, optional).
+- seed (integer, optional): 0–4294967295, -1 = random.
+- guidances.start_frame (array, max 1): mutually exclusive with image_reference / video_reference_base.
+- guidances.end_frame (array, max 1): requires start_frame.
+- guidances.image_reference (array, max 4): mutually exclusive with start/end_frame.
+- guidances.video_reference_base (array, max 3): mutually exclusive with start/end_frame,
+  may coexist with image_reference.
+
+## Dimensions
+480p: 21:9 992×432; 16:9 864×496; 4:3 752×560; 1:1 640×640;
+      3:4 560×752; 9:16 496×864; 9:21 432×992.
+720p: 21:9 1470×630; 16:9 1280×720; 4:3 1112×834; 1:1 960×960;
+      3:4 834×1112; 9:16 720×1280; 9:21 630×1470.
+Seven aspect ratios × two resolutions = fourteen valid combos.
+Supports ultra-wide 21:9 and 9:21 framings.
+`;
+
 const VEO_31 = `========================================================================
 # Veo 3.1 (API: VEO3_1 | VEO3_1FAST)
 ========================================================================
@@ -207,6 +240,7 @@ export const LEONARDO_API_DOCS_BY_MODEL: Record<string, string> = {
   'kling-3.0': KLING_30,
   'kling-o3': KLING_O3,
   'veo-3.1': VEO_31,
+  'seedance-2.0': SEEDANCE_20,
 };
 
 /**
@@ -221,4 +255,5 @@ ${NANO_BANANA_2}
 ${NANO_BANANA_PRO}
 ${KLING_30}
 ${KLING_O3}
-${VEO_31}`;
+${VEO_31}
+${SEEDANCE_20}`;
