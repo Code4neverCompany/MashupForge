@@ -35,11 +35,13 @@ import { webSearch, extractTrendingTags, type WebSearchResult } from '@/lib/web-
  * LLM reads them as standing context.
  */
 
-const TRENDING_RESULT_COUNT = 3;
+const TRENDING_PER_QUERY_COUNT = 2;
+const TRENDING_MAX_RESULTS = 6;
 const TRENDING_MAX_CHARS = 900; // ≈ 150 words
 const TRENDING_SNIPPET_CHARS = 220;
 const TRENDING_TAG_LIMIT = 10;
 const DEFAULT_NICHES = ['Star Wars', 'Marvel', 'Warhammer 40k'];
+const TRENDING_FALLBACK_QUERY = 'popular crossover fan art new characters 2026';
 
 function sanitizeStringArray(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
@@ -84,7 +86,20 @@ export function buildTrendingQuery(
 
 function formatTrendingContext(results: WebSearchResult[]): string {
   if (!results || results.length === 0) return '';
-  const lines = ['[TRENDING CONTEXT]', `(from a live web search; treat as signal, not ground truth)`];
+  // Framing matters: an earlier version ran a single search and led with
+  // "treat as signal, not ground truth", which the LLM still interpreted
+  // as "theme every idea around whatever is trending" — observable as 4/4
+  // cyberpunk ideas when r/Cyberpunk dominated the result set. The
+  // rewrite makes the subordinate role explicit and repeats the "niches
+  // are the real constraint" directive twice, which empirically is what
+  // it takes to stop the LLM from defaulting to the trending universe.
+  const lines = [
+    '[TRENDING CONTEXT — OPTIONAL INSPIRATION ONLY]',
+    'These are what people are talking about online. Use them as flavor or ignore them entirely.',
+    'YOUR PRIMARY DIRECTIVE: generate ideas that match the active niches/genres above.',
+    "Do NOT default to the trending topic's universe — the niches are your creative constraint.",
+    'If trending mentions cyberpunk, that does NOT mean every idea should be cyberpunk-themed.',
+  ];
   for (const r of results) {
     const title = r.title.trim();
     const snippet = r.snippet.trim().slice(0, TRENDING_SNIPPET_CHARS);
@@ -97,6 +112,24 @@ function formatTrendingContext(results: WebSearchResult[]): string {
   }
   const joined = lines.join('\n');
   return joined.length > TRENDING_MAX_CHARS ? joined.slice(0, TRENDING_MAX_CHARS) + '…' : joined;
+}
+
+/**
+ * Dedupe by URL, preserving first-seen order. Different search queries
+ * frequently surface the same top-ranked result, so without dedup the
+ * trending block fills up with duplicate entries of whatever subreddit
+ * or news site is dominating at the moment.
+ */
+export function dedupeByUrl(results: WebSearchResult[]): WebSearchResult[] {
+  const seen = new Set<string>();
+  const out: WebSearchResult[] = [];
+  for (const r of results) {
+    const key = r.url;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
 }
 
 export type PiMode =
@@ -166,37 +199,61 @@ export async function POST(req: Request) {
 
   const directive = directiveFor(mode);
 
-  // Memory + trending enrichment — only for modes that generate net-new
-  // concepts. Both are best-effort: a web-search failure, a corrupt
+  // Enrichment is split into pre-directive (memory — sets the standing
+  // state the LLM should remember) and post-directive (trending — flavor
+  // only). This ordering was deliberate: a previous version put trending
+  // before the mode directive and the LLM read it as the headline brief,
+  // producing 4/4 cyberpunk ideas when the cyberpunk subreddit dominated
+  // trending. Putting the directive first makes the niche/genre
+  // constraint primary; trending becomes a footnote.
+  //
+  // Everything here is best-effort: a web-search failure, a corrupt
   // memory blob, or an empty memory all degrade to the pre-enrichment
   // prompt, never to an error.
-  const enrichBlocks: string[] = [];
+  const preBlocks: string[] = [];
+  const postBlocks: string[] = [];
+
   if (mode === 'idea' || mode === 'generate') {
     const memBlock = formatMemoryForPrompt(coerceMemory(memory));
-    if (memBlock) enrichBlocks.push(memBlock);
+    if (memBlock) preBlocks.push(memBlock);
   }
+
   if (mode === 'idea') {
-    try {
-      const braveKey = (process.env.BRAVE_API_KEY ?? '').trim();
-      const query = buildTrendingQuery(
-        sanitizeStringArray(niches),
-        sanitizeStringArray(genres),
-      );
-      const results = await webSearch(
-        query,
-        TRENDING_RESULT_COUNT,
-        undefined,
-        braveKey ? { provider: 'brave', braveApiKey: braveKey } : undefined,
-      );
-      const trending = formatTrendingContext(results);
-      if (trending) enrichBlocks.push(trending);
-    } catch {
-      /* silent — trending is optional enrichment */
+    const braveKey = (process.env.BRAVE_API_KEY ?? '').trim();
+    const searchOpts = braveKey ? { provider: 'brave' as const, braveApiKey: braveKey } : undefined;
+    const cleanedNiches = sanitizeStringArray(niches);
+    const cleanedGenres = sanitizeStringArray(genres);
+
+    // Three queries instead of one: two niche-tailored shuffles (the
+    // Fisher-Yates in buildTrendingQuery reseeds from Math.random on each
+    // call, so consecutive calls pick different pairings), plus a
+    // general-fallback probe that's immune to a weirdly-focused niche
+    // set. Aggregated results are deduped by URL and capped so the
+    // trending block can't balloon past our token budget.
+    const queries = [
+      buildTrendingQuery(cleanedNiches, cleanedGenres),
+      buildTrendingQuery(cleanedNiches, cleanedGenres),
+      TRENDING_FALLBACK_QUERY,
+    ];
+
+    const allResults: WebSearchResult[] = [];
+    for (const q of queries) {
+      try {
+        const results = await webSearch(q, TRENDING_PER_QUERY_COUNT, undefined, searchOpts);
+        allResults.push(...results);
+      } catch {
+        /* silent — trending is optional enrichment */
+      }
     }
+
+    const unique = dedupeByUrl(allResults).slice(0, TRENDING_MAX_RESULTS);
+    const trending = formatTrendingContext(unique);
+    if (trending) postBlocks.push(trending);
   }
 
   const composedSystem =
-    [...enrichBlocks, directive, systemPrompt].filter(Boolean).join('\n\n') || undefined;
+    [...preBlocks, directive, systemPrompt, ...postBlocks].filter(Boolean).join('\n\n') ||
+    undefined;
 
   const encoder = new TextEncoder();
 

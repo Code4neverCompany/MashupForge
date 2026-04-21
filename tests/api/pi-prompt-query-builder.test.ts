@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildTrendingQuery } from '@/app/api/pi/prompt/route';
+import { buildTrendingQuery, dedupeByUrl } from '@/app/api/pi/prompt/route';
+import type { WebSearchResult } from '@/lib/web-search';
 
 // Deterministic RNG → rng close to 1 forces `j = i` each Fisher-Yates
 // iteration (since `Math.floor(0.9999 * (i+1)) = i`), so the list stays
@@ -62,5 +63,35 @@ describe('buildTrendingQuery', () => {
     // With 5 niches → 20 distinct ordered pairs; after 20 draws we should
     // see at least 2 distinct results with overwhelming probability.
     expect(seen.size).toBeGreaterThan(1);
+  });
+});
+
+describe('dedupeByUrl', () => {
+  const mk = (url: string, title = url): WebSearchResult => ({ url, title, snippet: '' });
+
+  it('preserves first-seen order', () => {
+    const out = dedupeByUrl([mk('https://a/'), mk('https://b/'), mk('https://c/')]);
+    expect(out.map((r) => r.url)).toEqual(['https://a/', 'https://b/', 'https://c/']);
+  });
+
+  it('drops duplicate URLs', () => {
+    const out = dedupeByUrl([
+      mk('https://a/', 'first'),
+      mk('https://b/'),
+      mk('https://a/', 'dup-should-drop'),
+      mk('https://c/'),
+      mk('https://b/', 'dup-should-drop'),
+    ]);
+    expect(out.map((r) => r.url)).toEqual(['https://a/', 'https://b/', 'https://c/']);
+    expect(out[0].title).toBe('first');
+  });
+
+  it('drops entries with empty url', () => {
+    const out = dedupeByUrl([mk(''), mk('https://a/')]);
+    expect(out.map((r) => r.url)).toEqual(['https://a/']);
+  });
+
+  it('returns [] for empty input', () => {
+    expect(dedupeByUrl([])).toEqual([]);
   });
 });
