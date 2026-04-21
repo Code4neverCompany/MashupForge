@@ -1603,7 +1603,11 @@ export function MainContent() {
     options: Partial<GenerateOptions>,
     perModel: Record<string, PerModelSuggestion>,
   ) => {
-    setComparisonModels(modelIds);
+    setComparisonModels(prev => {
+      const merged = new Set(prev);
+      for (const id of modelIds) merged.add(id);
+      return Array.from(merged);
+    });
     setComparisonOptions(prev => ({ ...prev, ...options }));
     // V030-008-per-model: extract per-model overrides so each model
     // can use its own style / aspectRatio / negativePrompt during
