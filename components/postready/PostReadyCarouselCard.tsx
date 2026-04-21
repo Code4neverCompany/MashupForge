@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Check,
   Clock,
@@ -132,17 +133,36 @@ export function PostReadyCarouselCard({
   const [captionExpanded, setCaptionExpanded] = useState(false);
   const [hashtagsExpanded, setHashtagsExpanded] = useState(false);
   const [kebabOpen, setKebabOpen] = useState(false);
-  const kebabRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const MENU_WIDTH = 192;
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
-    if (!kebabOpen) return;
+    if (!kebabOpen) {
+      setMenuPos(null);
+      return;
+    }
+    const recompute = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setMenuPos({ top: rect.bottom + 4, left: rect.right - MENU_WIDTH });
+    };
+    recompute();
     const onDown = (e: MouseEvent) => {
-      if (kebabRef.current && !kebabRef.current.contains(e.target as Node)) {
-        setKebabOpen(false);
-      }
+      const target = e.target as Node;
+      if (buttonRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setKebabOpen(false);
     };
     window.addEventListener('mousedown', onDown);
-    return () => window.removeEventListener('mousedown', onDown);
+    window.addEventListener('scroll', recompute, true);
+    window.addEventListener('resize', recompute);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('scroll', recompute, true);
+      window.removeEventListener('resize', recompute);
+    };
   }, [kebabOpen]);
 
   const anchor = images[0];
@@ -325,8 +345,9 @@ export function PostReadyCarouselCard({
           >
             <Clock className="w-3.5 h-3.5" /> Schedule
           </button>
-          <div className="relative" ref={kebabRef}>
+          <div className="relative">
             <button
+              ref={buttonRef}
               type="button"
               aria-label="More actions"
               aria-haspopup="menu"
@@ -336,10 +357,12 @@ export function PostReadyCarouselCard({
             >
               <MoreVertical className="w-4 h-4" />
             </button>
-            {kebabOpen && (
+            {kebabOpen && menuPos && typeof document !== 'undefined' && createPortal(
               <div
+                ref={menuRef}
                 role="menu"
-                className="absolute right-0 top-full mt-1 z-20 w-48 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl shadow-black/50 py-1"
+                className="fixed z-[9999] w-48 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl shadow-black/50 py-1"
+                style={{ top: menuPos.top, left: menuPos.left }}
               >
                 <KebabItem
                   icon={copyHighlighted ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -397,7 +420,8 @@ export function PostReadyCarouselCard({
                     setKebabOpen(false);
                   }}
                 />
-              </div>
+              </div>,
+              document.body,
             )}
           </div>
         </div>

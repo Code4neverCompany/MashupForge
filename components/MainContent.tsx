@@ -505,8 +505,42 @@ export function MainContent() {
    * card for the same image. Carousel-bound posts are owned by
    * scheduleCarousel and intentionally skipped here.
    */
+  /**
+   * Collision check for manual scheduling.
+   * Treats a slot as taken when a non-terminal ScheduledPost shares the
+   * same date+time AND any platform overlap, *excluding* the image(s)
+   * being rescheduled and (for carousels) siblings in the same group.
+   * Returns the colliding post or null.
+   */
+  const findScheduleCollision = (
+    date: string,
+    time: string,
+    platforms: readonly string[],
+    ignoreImageIds: Set<string>,
+    ignoreCarouselGroupId?: string | null,
+  ): ScheduledPost | null => {
+    const existing = settings.scheduledPosts || [];
+    const wanted = new Set<string>(platforms);
+    for (const p of existing) {
+      if (p.status === 'posted' || p.status === 'rejected' || p.status === 'failed') continue;
+      if (ignoreImageIds.has(p.imageId)) continue;
+      if (ignoreCarouselGroupId && p.carouselGroupId === ignoreCarouselGroupId) continue;
+      if (p.date !== date || p.time !== time) continue;
+      const pPlatforms = p.platforms || [];
+      if (pPlatforms.some((pl) => wanted.has(pl))) return p;
+    }
+    return null;
+  };
+
   const scheduleImage = (img: GeneratedImage, platforms: PostPlatform[], date: string, time: string) => {
     if (!date || !time || platforms.length === 0) return;
+    const collision = findScheduleCollision(date, time, platforms, new Set([img.id]));
+    if (collision) {
+      const wanted = new Set<string>(platforms);
+      const platformLabel = (collision.platforms || []).find((pl) => wanted.has(pl)) || 'that platform';
+      showToast(`Already scheduled at ${date} ${time} on ${platformLabel}.`, 'error');
+      return;
+    }
     const caption = formatPost(img);
     updateSettings((prev) => {
       const existingPosts = prev.scheduledPosts || [];
@@ -714,8 +748,21 @@ export function MainContent() {
     time: string
   ) => {
     if (platforms.length === 0 || !date || !time || item.images.length === 0) return;
-    const caption = item.group?.caption || formatPost(item.images[0]);
     const imageIds = new Set(item.images.map((i) => i.id));
+    // Match the existing group-match logic below: if a group already
+    // covers exactly these images, we're rescheduling it (no collision).
+    const existingForGroup = (settings.scheduledPosts || []).filter(
+      (p) => p.carouselGroupId && imageIds.has(p.imageId),
+    );
+    const existingGroupId = existingForGroup[0]?.carouselGroupId ?? null;
+    const collision = findScheduleCollision(date, time, platforms, imageIds, existingGroupId);
+    if (collision) {
+      const wanted = new Set<string>(platforms);
+      const platformLabel = (collision.platforms || []).find((pl) => wanted.has(pl)) || 'that platform';
+      showToast(`Already scheduled at ${date} ${time} on ${platformLabel}.`, 'error');
+      return;
+    }
+    const caption = item.group?.caption || formatPost(item.images[0]);
 
     updateSettings((prev) => {
       const existingPosts = prev.scheduledPosts || [];

@@ -653,15 +653,24 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
             // daemon's pre-schedule window is at least 2 weeks even when
             // the user configured a smaller target.
             const horizonDays = Math.max(settingsTargetDays, 14);
+            // Per-day capped fill so over-scheduled days can't mask empty
+            // ones. `filled` is only true when EVERY day in the horizon
+            // has at least `targetPerDay` scheduled posts; the raw
+            // countFutureScheduledPosts total is kept for the log line.
+            const fill = computeWeekFillStatus(allPosts, horizonDays, targetPerDay);
             const futurePosts = countFutureScheduledPosts(allPosts, horizonDays);
-            const targetTotal = horizonDays * targetPerDay;
+            const targetTotal = fill.targetTotal;
+            const emptyDays = fill.days.filter((d) => d.scheduledCount < d.target);
 
-            if (futurePosts < targetTotal) {
+            if (!fill.filled) {
+              const gapSummary = emptyDays.length > 0
+                ? ` (${emptyDays.length} day${emptyDays.length === 1 ? '' : 's'} under cap: ${emptyDays.map((d) => `${d.dayLabel} ${d.scheduledCount}/${d.target}`).join(', ')})`
+                : '';
               addLog(
                 'daemon',
                 '',
                 'success',
-                `Schedule has ${futurePosts}/${targetTotal} posts in next ${horizonDays}d — running next cycle immediately`,
+                `Schedule has ${futurePosts}/${targetTotal} posts in next ${horizonDays}d${gapSummary} — running next cycle immediately`,
               );
               continue;
             }
