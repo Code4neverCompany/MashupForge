@@ -1468,16 +1468,30 @@ export function MainContent() {
    * kept here — `every` on an empty list returns true, so we explicitly
    * require at least one 'posted' post before hiding.
    */
-  const postReadyImages = useMemo(
-    () =>
-      savedImages.filter((i) => {
-        if (i.isPostReady !== true) return false;
-        const posts = (settings.scheduledPosts || []).filter((p) => p.imageId === i.id);
-        if (posts.length === 0) return true;
-        return !posts.every((p) => p.status === 'posted');
-      }),
-    [savedImages, settings.scheduledPosts],
-  );
+  const postReadyImages = useMemo(() => {
+    const allPosts = settings.scheduledPosts || [];
+    const filtered = savedImages.filter((i) => {
+      if (i.isPostReady !== true) return false;
+      const posts = allPosts.filter((p) => p.imageId === i.id);
+      if (posts.length === 0) return true;
+      return !posts.every((p) => p.status === 'posted');
+    });
+    // Sort: scheduled items first (soonest date+time at top), unscheduled after.
+    const upcomingFor = (imageId: string) =>
+      allPosts.find((p) => p.imageId === imageId && p.status !== 'posted');
+    return filtered.slice().sort((a, b) => {
+      const aPost = upcomingFor(a.id);
+      const bPost = upcomingFor(b.id);
+      if (aPost && bPost) {
+        const aTime = new Date(`${aPost.date}T${aPost.time}`).getTime();
+        const bTime = new Date(`${bPost.date}T${bPost.time}`).getTime();
+        return aTime - bTime;
+      }
+      if (aPost) return -1;
+      if (bPost) return 1;
+      return 0;
+    });
+  }, [savedImages, settings.scheduledPosts]);
 
   /**
    * History — Post-Ready images whose ScheduledPosts have all been
