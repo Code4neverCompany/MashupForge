@@ -750,6 +750,34 @@ function resolveStyleAlias(
   return ci?.name;
 }
 
+/**
+ * Resolve (width, height) for a video model given an aspect ratio and
+ * resolution mode by reading the structured spec's `aspectRatios`
+ * table. The JSON shape is `{ [tier]: { [aspect]: { width, height } } }`
+ * — e.g. `{ "720p": { "16:9": { width: 1280, height: 720 } } }` — so
+ * the lookup is `spec.aspectRatios[tier][aspect]`. If the tier or
+ * aspect is missing, fall back to the caller-provided defaults so the
+ * merge never silently clamps to a wrong shape.
+ */
+function resolveVideoDims(
+  modelId: string,
+  aspectRatio: string,
+  mode: 'RESOLUTION_480' | 'RESOLUTION_720' | 'RESOLUTION_1080',
+  fallback: { width: number; height: number },
+): { width: number; height: number } {
+  const spec = getModelSpec(modelId);
+  if (!spec || !spec.aspectRatios) return fallback;
+  const tier = mode === 'RESOLUTION_480' ? '480p' : mode === 'RESOLUTION_720' ? '720p' : '1080p';
+  const tierTable = (spec.aspectRatios as Record<string, unknown>)[tier] as
+    | Record<string, { width: number; height: number }>
+    | undefined;
+  const hit = tierTable?.[aspectRatio];
+  if (hit && typeof hit.width === 'number' && typeof hit.height === 'number') {
+    return { width: hit.width, height: hit.height };
+  }
+  return fallback;
+}
+
 /** Resolve dimensions for an aspect ratio against an image model's supported_sizes list. */
 function resolveImageDims(
   spec: LeonardoImageModelSpec,
@@ -847,19 +875,6 @@ function mergePerModelAI(
     const aspectRatio = pickString(parsed.aspectRatio) ?? fallback.aspectRatio;
     if (!pickString(parsed.aspectRatio)) blendedSource = 'ai+rules';
 
-    let width = fallback.width;
-    let height = fallback.height;
-    if (aspectRatio === '9:16') {
-      width = 1080;
-      height = 1920;
-    } else if (aspectRatio === '1:1') {
-      width = 1440;
-      height = 1440;
-    } else if (aspectRatio === '16:9') {
-      width = 1920;
-      height = 1080;
-    }
-
     const durationCandidate =
       typeof parsed.duration === 'number' && Number.isFinite(parsed.duration)
         ? parsed.duration
@@ -872,6 +887,14 @@ function mergePerModelAI(
       modeCandidate === 'RESOLUTION_720' || modeCandidate === 'RESOLUTION_1080'
         ? modeCandidate
         : fallback.mode;
+
+    // Resolve dimensions dynamically from the model spec's aspectRatios
+    // table — covers every aspect the model actually supports (including
+    // seedance's 21:9 / 9:21 / 4:3 / 3:4) instead of a hardcoded trio.
+    const { width, height } = resolveVideoDims(modelId, aspectRatio, mode, {
+      width: fallback.width,
+      height: fallback.height,
+    });
 
     let motionHasAudio: boolean | undefined;
     if (typeof parsed.motionHasAudio === 'boolean') {

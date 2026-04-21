@@ -10,46 +10,88 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Leonardo API key is missing. Open Settings (gear icon, top-right) → paste your key from https://app.leonardo.ai/api-access → Save.' }, { status: 400 });
     }
 
-    const isKling = model === 'kling-3.0' || model === 'kling-video-o-3';
-    const endpoint = isKling 
-      ? 'https://cloud.leonardo.ai/api/rest/v2/generations' 
-      : 'https://cloud.leonardo.ai/api/rest/v1/generations-motion-svd';
+    // Classify the incoming model id into a payload family. The v2
+    // generations endpoint serves kling / seedance / veo — each needs
+    // a different payload shape. Legacy ray-v1 / ray-v2 still hit the
+    // older motion-svd endpoint.
+    type Family = 'kling' | 'seedance' | 'veo' | 'legacy';
+    const m = String(model || '');
+    const classify = (): { family: Family; apiModel: string } => {
+      if (m === 'kling-3.0') return { family: 'kling', apiModel: 'kling-3.0' };
+      if (m === 'kling-video-o-3' || m === 'kling-o3') return { family: 'kling', apiModel: 'kling-video-o-3' };
+      if (m === 'seedance-2.0' || m === 'seedance-2.0-fast') return { family: 'seedance', apiModel: m };
+      if (m === 'veo-3.1' || m === 'VEO3_1') return { family: 'veo', apiModel: 'VEO3_1' };
+      if (m === 'VEO3_1FAST') return { family: 'veo', apiModel: 'VEO3_1FAST' };
+      return { family: 'legacy', apiModel: m };
+    };
+    const { family, apiModel } = classify();
+
+    const endpoint = family === 'legacy'
+      ? 'https://cloud.leonardo.ai/api/rest/v1/generations-motion-svd'
+      : 'https://cloud.leonardo.ai/api/rest/v2/generations';
 
     let body: Record<string, unknown>;
-    if (isKling) {
+    if (family === 'kling') {
       const parameters: Record<string, unknown> = {
         prompt: String(prompt || 'Animate this image'),
         duration: Number(duration) || 3,
-        mode: "RESOLUTION_1080",
+        mode: 'RESOLUTION_1080',
         motion_has_audio: true,
       };
-
       if (imageId) {
         parameters.guidances = {
-          start_frame: [
-            {
-              image: {
-                id: imageId,
-                type: "GENERATED"
-              }
-            }
-          ]
+          start_frame: [{ image: { id: imageId, type: 'GENERATED' } }],
         };
       } else {
         parameters.width = 1920;
         parameters.height = 1080;
       }
-
-      body = {
-        model: model === 'kling-video-o-3' ? 'kling-video-o-3' : "kling-3.0",
-        public: false,
-        parameters,
+      body = { model: apiModel, public: false, parameters };
+    } else if (family === 'seedance') {
+      // Seedance tops out at 720p — no 1080p option exists. Aspect
+      // ratios and motion_has_audio follow the start frame when one is
+      // provided (the spec auto-matches source image dimensions).
+      const parameters: Record<string, unknown> = {
+        prompt: String(prompt || 'Animate this image'),
+        duration: Number(duration) || 8,
+        mode: 'RESOLUTION_720',
+        motion_has_audio: true,
       };
+      if (imageId) {
+        parameters.guidances = {
+          start_frame: [{ image: { id: imageId, type: 'GENERATED' } }],
+        };
+      } else {
+        parameters.width = 1280;
+        parameters.height = 720;
+      }
+      body = { model: apiModel, public: false, parameters };
+    } else if (family === 'veo') {
+      // Veo uses a flat payload: imageId / imageType / isPublic live
+      // at the top level, not nested under `parameters.guidances`.
+      // Duration must be 4, 6, or 8 per the spec.
+      const rawDur = Number(duration) || 8;
+      const safeDur = rawDur <= 4 ? 4 : rawDur <= 6 ? 6 : 8;
+      const payload: Record<string, unknown> = {
+        model: apiModel,
+        prompt: String(prompt || 'Animate this image'),
+        duration: safeDur,
+        resolution: 'RESOLUTION_1080',
+        isPublic: false,
+      };
+      if (imageId) {
+        payload.imageId = imageId;
+        payload.imageType = 'GENERATED';
+      } else {
+        payload.width = 1920;
+        payload.height = 1080;
+      }
+      body = payload;
     } else {
       body = {
         imageId: imageId,
         motionStrength: 5,
-        isPublic: false
+        isPublic: false,
       };
     }
 
