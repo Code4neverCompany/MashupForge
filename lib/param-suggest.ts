@@ -917,7 +917,44 @@ export async function suggestParametersAI(
     fallback.modelIds.map(async modelId => {
       const spec = modelParams[modelId];
       const fbEntry = fallback.perModel[modelId];
-      if (!spec || !fbEntry) return null;
+      // Every model in `modelIds` must end up in `perModel` so the UI can
+      // render a panel for it. If we lack a spec or a rules-derived entry
+      // (e.g. the user added a model the spec map doesn't know about),
+      // synthesise a minimal rules-only fallback so the card still shows
+      // a row for this model instead of silently dropping it.
+      if (!spec || !fbEntry) {
+        const cfg = input.availableModels.find(m => m.id === modelId);
+        const apiName = spec?.api_name ?? cfg?.apiModelId ?? modelId;
+        if (spec?.type === 'video') {
+          const video: PerModelVideoSuggestion = {
+            type: 'video',
+            modelId,
+            apiName,
+            aspectRatio: '16:9',
+            width: spec.width,
+            height: spec.height,
+            duration: spec.duration,
+            mode: /1080/.test(spec.mode) ? 'RESOLUTION_1080' : 'RESOLUTION_720',
+            motionHasAudio: spec.motion_has_audio,
+            reason: 'Default parameters — no model-specific data available.',
+            source: 'rules',
+          };
+          return [modelId, video] as const;
+        }
+        const image: PerModelImageSuggestion = {
+          type: 'image',
+          modelId,
+          apiName,
+          aspectRatio: '1:1',
+          width: spec?.width ?? 1024,
+          height: spec?.height ?? 1024,
+          imageSize: '1K',
+          promptEnhance: spec?.type === 'image' ? spec.prompt_enhance : 'ON',
+          reason: 'Default parameters — no model-specific data available.',
+          source: 'rules',
+        };
+        return [modelId, image] as const;
+      }
 
       const apiDocSlice = LEONARDO_API_DOCS_BY_MODEL[modelId];
       if (!apiDocSlice) return [modelId, fbEntry] as const;

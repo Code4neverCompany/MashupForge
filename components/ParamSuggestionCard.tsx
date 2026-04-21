@@ -179,7 +179,27 @@ export function ParamSuggestionCard({
       <div className="space-y-2">
         {modelIds.map(id => {
           const sug = perModel[id];
-          if (!sug) return null;
+          if (!sug) {
+            return (
+              <div
+                key={id}
+                className="border border-zinc-800/80 rounded-lg p-3 bg-zinc-950/40 space-y-2"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-medium text-zinc-400">
+                    {formatModel(id)}{' '}
+                    <span className="text-[10px] text-zinc-600">(no suggestion)</span>
+                  </div>
+                  <span className="text-[9px] uppercase px-1.5 py-0.5 rounded border border-zinc-700 text-zinc-500 bg-zinc-800/40">
+                    rules
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-500 italic">
+                  No parameters available for this model. Generate anyway with defaults.
+                </p>
+              </div>
+            );
+          }
           return (
             <div
               key={id}
