@@ -115,12 +115,96 @@ export function validateQuery(query: unknown): string | null {
   return trimmed;
 }
 
+export type WebSearchProvider = 'brave' | 'ddg';
+
+export interface WebSearchOptions {
+  /**
+   * Preferred provider. `'brave'` uses Brave Search API when
+   * `braveApiKey` is supplied; on any failure (missing key, non-2xx,
+   * network error, empty result set) it transparently falls back to
+   * DDG. `'ddg'` (or omitted) uses DDG directly.
+   */
+  provider?: WebSearchProvider;
+  /** Brave Search subscription token. Required for `provider: 'brave'`. */
+  braveApiKey?: string;
+}
+
+const BRAVE_ENDPOINT = 'https://api.search.brave.com/res/v1/web/search';
+
+interface BraveResultItem {
+  title?: unknown;
+  url?: unknown;
+  description?: unknown;
+}
+
 /**
- * Fetch search results from DDG. Returns [] on any failure (network error,
- * non-2xx, parse failure, invalid input). Never throws — callers rely on
- * this for optional enrichment and shouldn't need to wrap in try/catch.
+ * Map the Brave Search JSON payload to our uniform result shape. Pure —
+ * exported for unit tests. Skips entries missing a title or http(s) URL.
  */
-export async function webSearch(
+export function parseBraveJson(payload: unknown, count: number): WebSearchResult[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const web = (payload as Record<string, unknown>).web;
+  if (!web || typeof web !== 'object') return [];
+  const items = (web as Record<string, unknown>).results;
+  if (!Array.isArray(items)) return [];
+
+  const out: WebSearchResult[] = [];
+  for (const raw of items as BraveResultItem[]) {
+    if (out.length >= count) break;
+    const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+    const url = typeof raw.url === 'string' ? raw.url.trim() : '';
+    const description = typeof raw.description === 'string' ? raw.description : '';
+    if (!title || !/^https?:\/\//i.test(url)) continue;
+    out.push({
+      title: stripTags(title),
+      url,
+      snippet: stripTags(description),
+    });
+  }
+  return out;
+}
+
+/**
+ * Brave Search API client. Returns [] on any failure (missing key,
+ * non-2xx, network, parse). Never throws.
+ */
+export async function webSearchBrave(
+  query: string,
+  count: number = DEFAULT_COUNT,
+  apiKey: string | undefined,
+  signal?: AbortSignal,
+): Promise<WebSearchResult[]> {
+  const q = validateQuery(query);
+  if (!q) return [];
+  if (typeof apiKey !== 'string' || apiKey.trim().length === 0) return [];
+
+  const n = clampCount(count);
+
+  try {
+    const url = `${BRAVE_ENDPOINT}?${new URLSearchParams({ q, count: String(n) }).toString()}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-Subscription-Token': apiKey.trim(),
+        Accept: 'application/json',
+        'Accept-Encoding': 'gzip',
+      },
+      signal: signal ?? AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return [];
+    const json: unknown = await res.json();
+    return parseBraveJson(json, n);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fetch DDG HTML and parse. Returns [] on any failure. Never throws.
+ * Exported for callers that want to force the DDG path (e.g. the route
+ * that tracks which provider actually served the response).
+ */
+export async function webSearchDdg(
   query: string,
   count: number = DEFAULT_COUNT,
   signal?: AbortSignal,
@@ -151,9 +235,32 @@ export async function webSearch(
   }
 }
 
+/**
+ * Provider-agnostic entry point. If caller requests Brave AND supplies a
+ * key, try Brave first — on empty result (failure or genuinely 0 hits)
+ * we fall back to DDG so enrichment never silently drops to nothing just
+ * because Brave's quota was exhausted. Otherwise use DDG directly.
+ *
+ * Returns [] only when both providers yield nothing. Never throws.
+ */
+export async function webSearch(
+  query: string,
+  count: number = DEFAULT_COUNT,
+  signal?: AbortSignal,
+  options?: WebSearchOptions,
+): Promise<WebSearchResult[]> {
+  if (options?.provider === 'brave' && options.braveApiKey) {
+    const brave = await webSearchBrave(query, count, options.braveApiKey, signal);
+    if (brave.length > 0) return brave;
+    return webSearchDdg(query, count, signal);
+  }
+  return webSearchDdg(query, count, signal);
+}
+
 export const __test__ = {
   MAX_QUERY_LEN,
   DEFAULT_COUNT,
   MIN_COUNT,
   MAX_COUNT,
+  BRAVE_ENDPOINT,
 };

@@ -38,6 +38,7 @@ export const DESKTOP_CONFIG_KEYS: readonly DesktopConfigFieldMeta[] = [
   { key: 'ANTHROPIC_API_KEY',      label: 'Anthropic API Key',      hint: 'From console.anthropic.com — used when provider = anthropic (Claude).' },
   { key: 'OPENAI_API_KEY',         label: 'OpenAI API Key',         hint: 'From platform.openai.com — used when provider = openai (GPT).' },
   { key: 'GOOGLE_API_KEY',         label: 'Google API Key',         hint: 'From aistudio.google.com — used when provider = google (Gemini).' },
+  { key: 'BRAVE_API_KEY',          label: 'Brave Search API Key',   hint: 'Free tier: 2000 queries/month at brave.com/api. Leave empty for DuckDuckGo fallback.', kind: 'secret' },
   { key: 'INSTAGRAM_ACCOUNT_ID',   label: 'Instagram Account ID',   hint: 'Business account ID from Meta for Developers' },
   { key: 'INSTAGRAM_ACCESS_TOKEN', label: 'Instagram Access Token', hint: 'Long-lived Facebook Page Token (starts with EAA)' },
   { key: 'TWITTER_APP_KEY',        label: 'Twitter App Key',        hint: 'OAuth 1.0a consumer key from developer.x.com' },

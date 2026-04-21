@@ -125,7 +125,13 @@ export async function POST(req: Request) {
   }
   if (mode === 'idea') {
     try {
-      const results = await webSearch(TRENDING_SEARCH_QUERY, TRENDING_RESULT_COUNT);
+      const braveKey = (process.env.BRAVE_API_KEY ?? '').trim();
+      const results = await webSearch(
+        TRENDING_SEARCH_QUERY,
+        TRENDING_RESULT_COUNT,
+        undefined,
+        braveKey ? { provider: 'brave', braveApiKey: braveKey } : undefined,
+      );
       const trending = formatTrendingContext(results);
       if (trending) enrichBlocks.push(trending);
     } catch {

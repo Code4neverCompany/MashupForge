@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getErrorMessage } from '@/lib/errors';
-import { webSearch, validateQuery, clampCount } from '@/lib/web-search';
+import {
+  validateQuery,
+  clampCount,
+  webSearchBrave,
+  webSearchDdg,
+  type WebSearchProvider,
+  type WebSearchResult,
+} from '@/lib/web-search';
 
 export const runtime = 'nodejs';
 
@@ -84,9 +91,26 @@ export async function POST(req: Request) {
 
   const count = clampCount(typeof body.count === 'number' ? body.count : undefined);
 
+  // Prefer Brave when configured; fall back to DDG silently on empty
+  // result (key invalid, quota exhausted, 5xx). We surface which provider
+  // actually served the response so the caller / UI can reason about
+  // result quality.
+  const braveKey = (process.env.BRAVE_API_KEY ?? '').trim();
   try {
-    const results = await webSearch(query, count);
-    return NextResponse.json({ results });
+    let results: WebSearchResult[] = [];
+    let provider: WebSearchProvider = 'ddg';
+    if (braveKey) {
+      const brave = await webSearchBrave(query, count, braveKey);
+      if (brave.length > 0) {
+        results = brave;
+        provider = 'brave';
+      }
+    }
+    if (results.length === 0) {
+      results = await webSearchDdg(query, count);
+      provider = 'ddg';
+    }
+    return NextResponse.json({ results, provider });
   } catch (e: unknown) {
     return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
