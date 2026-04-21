@@ -87,13 +87,13 @@ export function Step3Pipeline({ universes, genres, progress, setProgress }: Step
     return <ErrorView progress={progress} onRetry={() => {
       const found = ideas.find((i) => i.title === pickedTitle);
       if (found) runSimulation(found);
-    }} />;
+    }} onSkip={() => setProgress({ kind: 'idle' })} />;
   }
 
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="text-xl font-bold text-white">Make your first post</h3>
+        <h3 id="onboarding-title" className="text-xl font-bold text-white">Make your first post</h3>
         <p className="text-sm text-zinc-400 mt-1">
           Pick or brainstorm an idea. We&rsquo;ll generate the image and caption right now.
         </p>
@@ -151,7 +151,7 @@ function RunningView({ progress, pickedTitle }: { progress: PipelineOnceProgress
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="text-xl font-bold text-white">Generating your first post</h3>
+        <h3 id="onboarding-title" className="text-xl font-bold text-white">Generating your first post</h3>
         <p className="text-sm text-zinc-400 mt-1">
           The pipeline is taking it from here.
         </p>
@@ -167,18 +167,18 @@ function RunningView({ progress, pickedTitle }: { progress: PipelineOnceProgress
   );
 }
 
-function ErrorView({ progress, onRetry }: { progress: PipelineOnceProgress & { kind: 'error' }; onRetry: () => void }) {
+function ErrorView({ progress, onRetry, onSkip }: { progress: PipelineOnceProgress & { kind: 'error' }; onRetry: () => void; onSkip: () => void }) {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-xl font-bold text-red-300">Something failed</h3>
+        <h3 id="onboarding-title" className="text-xl font-bold text-red-300">Something failed</h3>
         <p className="text-sm text-zinc-400 mt-1">{progress.message}</p>
       </div>
       <div className="flex gap-2">
         <button onClick={onRetry} className="px-3 py-1.5 text-xs bg-[#c5a062] text-zinc-950 font-medium rounded-lg">
           Retry
         </button>
-        <button className="px-3 py-1.5 text-xs bg-zinc-800 text-zinc-200 rounded-lg">Skip and continue</button>
+        <button onClick={onSkip} className="px-3 py-1.5 text-xs bg-zinc-800 text-zinc-200 rounded-lg">Skip and continue</button>
       </div>
     </div>
   );

@@ -24,7 +24,7 @@ export function Step2Niche({ universes, genres, onChangeUniverses, onChangeGenre
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-xl font-bold text-white">What do you create?</h3>
+        <h3 id="onboarding-title" className="text-xl font-bold text-white">What do you create?</h3>
         <p className="text-sm text-zinc-400 mt-1">
           Pick 1 or 2 universes and a few genres. The agent uses these to brainstorm crossovers.
         </p>

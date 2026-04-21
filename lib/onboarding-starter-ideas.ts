@@ -18,7 +18,7 @@ export const STARTER_IDEAS: readonly StarterIdea[] = [
   { title: 'Marvel meets Cyberpunk', universes: ['Marvel'], genres: ['Cyberpunk'],
     concept: 'Iron Man patrolling Night City rooftops at 3am, neon rain on chrome armor.' },
   { title: 'Star Wars Noir', universes: ['Star Wars'], genres: ['Noir'],
-    concept: 'A Mandalerian bounty hunter in a smoke-filled Coruscant cantina, single light source, cinematic.' },
+    concept: 'A Mandalorian bounty hunter in a smoke-filled Coruscant cantina, single light source, cinematic.' },
   { title: 'LOTR x Studio Ghibli', universes: ['LOTR', 'Studio Ghibli'], genres: ['Fantasy'],
     concept: 'Hobbits picnicking in a Ghibli-style meadow with floating spirits in the background.' },
   { title: 'Warhammer 40k vs Dune', universes: ['Warhammer 40k', 'Dune'], genres: ['Sci-Fi'],
