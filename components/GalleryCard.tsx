@@ -11,6 +11,8 @@
 // No visual regression: the JSX is a verbatim move; only state that
 // used to live in MainContent's local scope is now arrived at via props.
 
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import {
   Bookmark,
@@ -107,6 +109,47 @@ export function GalleryCard({
   generatePostContent,
   autoTagImage,
 }: GalleryCardProps) {
+  // V060-COLL-001: click-driven + portaled "Add to Collection" menu.
+  // The previous hover-driven dropdown was clipped by sibling cards in
+  // the grid because `z-index` does not cross stacking contexts. Render
+  // through `createPortal(..., document.body)` with `position: fixed`,
+  // anchored to the folder button's rect and re-computed on scroll/
+  // resize (same pattern as the Post Ready kebab).
+  const [collectionOpen, setCollectionOpen] = useState(false);
+  const collectionBtnRef = useRef<HTMLButtonElement>(null);
+  const collectionMenuRef = useRef<HTMLDivElement>(null);
+  const COLLECTION_MENU_WIDTH = 192;
+  const [collectionMenuPos, setCollectionMenuPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!collectionOpen) {
+      setCollectionMenuPos(null);
+      return;
+    }
+    const recompute = () => {
+      const rect = collectionBtnRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setCollectionMenuPos({ top: rect.bottom + 8, left: rect.right - COLLECTION_MENU_WIDTH });
+    };
+    recompute();
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (collectionBtnRef.current?.contains(target)) return;
+      if (collectionMenuRef.current?.contains(target)) return;
+      setCollectionOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('scroll', recompute, true);
+    window.addEventListener('resize', recompute);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('scroll', recompute, true);
+      window.removeEventListener('resize', recompute);
+    };
+  }, [collectionOpen]);
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -288,52 +331,77 @@ export function GalleryCard({
             <BookmarkCheck className="w-4 h-4" />
           </button>
           {view === 'gallery' && (
-            <div className="relative group/col">
+            <div className="relative">
               <button
-                onClick={(e) => e.stopPropagation()}
+                ref={collectionBtnRef}
+                onClick={(e) => { e.stopPropagation(); setCollectionOpen((v) => !v); }}
+                aria-haspopup="menu"
+                aria-expanded={collectionOpen}
                 className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
                 title="Add to Collection"
               >
                 <FolderPlus className="w-4 h-4" />
               </button>
-              <div className="absolute right-0 top-full mt-2 w-48 bg-zinc-900 border border-zinc-800/60 rounded-xl shadow-2xl opacity-0 invisible group-hover/col:opacity-100 group-hover/col:visible transition-all z-50 p-2">
-                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2 py-1 mb-1">Add to Collection</p>
-                {collections.map((col) => (
-                  <button
-                    key={col.id}
-                    onClick={(e) => { e.stopPropagation(); addImageToCollection(img.id, col.id); }}
-                    onDragOver={(e) => { e.preventDefault(); setDragOverCollection(col.id); }}
-                    onDragLeave={() => setDragOverCollection(null)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const droppedImageId = e.dataTransfer.getData('imageId');
-                      if (droppedImageId) addImageToCollection(droppedImageId, col.id);
-                      setDragOverCollection(null);
-                    }}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
-                      dragOverCollection === col.id ? 'bg-emerald-500 text-white scale-105' :
-                      img.collectionId === col.id ? 'bg-emerald-500/20 text-emerald-400' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
-                    }`}
-                  >
-                    {col.name}
-                  </button>
-                ))}
-                {img.collectionId && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); removeImageFromCollection(img.id); }}
-                    className="w-full text-left px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10 transition-colors mt-1 border-t border-zinc-800 pt-2"
-                  >
-                    Remove from Collection
-                  </button>
-                )}
-                <button
-                  onClick={(e) => { e.stopPropagation(); setShowCollectionModal(true); }}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-xs ${uiStatus.success.text} hover:bg-emerald-500/10 transition-colors mt-1 border-t border-zinc-800 pt-2 flex items-center gap-2`}
+              {collectionOpen && collectionMenuPos && typeof document !== 'undefined' && createPortal(
+                <div
+                  ref={collectionMenuRef}
+                  role="menu"
+                  className="fixed z-[9999] w-48 bg-zinc-900 border border-zinc-800/60 rounded-xl shadow-2xl p-2"
+                  style={{ top: collectionMenuPos.top, left: collectionMenuPos.left }}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <Plus className="w-3 h-3" />
-                  New Collection
-                </button>
-              </div>
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2 py-1 mb-1">Add to Collection</p>
+                  {collections.map((col) => (
+                    <button
+                      key={col.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        addImageToCollection(img.id, col.id);
+                        setCollectionOpen(false);
+                      }}
+                      onDragOver={(e) => { e.preventDefault(); setDragOverCollection(col.id); }}
+                      onDragLeave={() => setDragOverCollection(null)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const droppedImageId = e.dataTransfer.getData('imageId');
+                        if (droppedImageId) addImageToCollection(droppedImageId, col.id);
+                        setDragOverCollection(null);
+                        setCollectionOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
+                        dragOverCollection === col.id ? 'bg-emerald-500 text-white scale-105' :
+                        img.collectionId === col.id ? 'bg-emerald-500/20 text-emerald-400' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                      }`}
+                    >
+                      {col.name}
+                    </button>
+                  ))}
+                  {img.collectionId && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeImageFromCollection(img.id);
+                        setCollectionOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10 transition-colors mt-1 border-t border-zinc-800 pt-2"
+                    >
+                      Remove from Collection
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowCollectionModal(true);
+                      setCollectionOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs ${uiStatus.success.text} hover:bg-emerald-500/10 transition-colors mt-1 border-t border-zinc-800 pt-2 flex items-center gap-2`}
+                  >
+                    <Plus className="w-3 h-3" />
+                    New Collection
+                  </button>
+                </div>,
+                document.body,
+              )}
             </div>
           )}
           {view !== 'gallery' && (
