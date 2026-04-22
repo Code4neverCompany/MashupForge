@@ -170,6 +170,52 @@ describe('suggestParameters', () => {
     expect(s.perModel['nano-banana']).toBeUndefined();
   });
 
+  it('force-includes user-selected models even when they score low', () => {
+    // prompt screams "anime" → nano-banana-2 is the top pick; gpt-image-1.5
+    // scores zero on this prompt. Without includedModelIds it'd be dropped.
+    const s = suggestParameters({
+      prompt: 'anime scene cel shaded',
+      availableModels: models,
+      modelGuides: guides,
+      availableStyles: styles,
+      savedImages: [],
+      includedModelIds: ['gpt-image-1.5'],
+    });
+    expect(s.modelIds).toContain('gpt-image-1.5');
+    expect(s.perModel['gpt-image-1.5']).toBeDefined();
+  });
+
+  it('ignores excluded ids passed in as forced includes', () => {
+    // nano-banana is in excludedModelIds by default; forcing it shouldn't
+    // bypass the exclusion contract.
+    const s = suggestParameters({
+      prompt: 'anime scene',
+      availableModels: models,
+      modelGuides: guides,
+      availableStyles: styles,
+      savedImages: [],
+      includedModelIds: ['nano-banana'],
+    });
+    expect(s.modelIds).not.toContain('nano-banana');
+  });
+
+  it('keeps both top-ranked and forced models when topN budget covers them', () => {
+    const s = suggestParameters({
+      prompt: 'anime scene',
+      availableModels: models,
+      modelGuides: guides,
+      availableStyles: styles,
+      savedImages: [],
+      topN: 2,
+      includedModelIds: ['gpt-image-1.5'],
+    });
+    // Expect at least the forced model + 1 top-scored model.
+    expect(s.modelIds).toContain('gpt-image-1.5');
+    expect(s.modelIds.length).toBeGreaterThanOrEqual(2);
+    // All ids should be unique.
+    expect(new Set(s.modelIds).size).toBe(s.modelIds.length);
+  });
+
   it('honors a custom topN', () => {
     const s = suggestParameters({
       prompt: 'photorealistic mountains',

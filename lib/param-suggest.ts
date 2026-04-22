@@ -183,6 +183,14 @@ export interface SuggestParametersInput {
   topN?: number;
   /** Models to exclude from ranking. Defaults to nano-banana (pipeline skips it). */
   excludedModelIds?: readonly string[];
+  /**
+   * Models the user has already selected. These are force-included in
+   * the output regardless of ranking score, so a manually-selected
+   * low-rank model (e.g. GPT Image-1.5) still gets a per-model panel.
+   * Forced inclusions count against topN up to its budget, and any
+   * overflow beyond topN is still included.
+   */
+  includedModelIds?: readonly string[];
   /** Per-model API parameter spec. Defaults to LEONARDO_MODEL_PARAMS. */
   modelParams?: Record<string, LeonardoModelSpec>;
 }
@@ -468,6 +476,7 @@ export function suggestParameters(input: SuggestParametersInput): ParamSuggestio
     savedImages,
     topN = 2,
     excludedModelIds = ['nano-banana'],
+    includedModelIds,
     modelParams = LEONARDO_MODEL_PARAMS,
   } = input;
 
@@ -509,12 +518,30 @@ export function suggestParameters(input: SuggestParametersInput): ParamSuggestio
   const ranked = eligible
     .map(m => ({ id: m.id, score: modelScore.get(m.id) ?? 0 }))
     .sort((a, b) => b.score - a.score);
-  const wantedCount = Math.max(1, Math.min(topN, ranked.length));
-  const modelIds = ranked.slice(0, wantedCount).map(m => m.id);
 
+  // Force-include any model the caller already selected, even if it
+  // ranked outside topN. `excludedModelIds` (e.g. the pipeline-skipped
+  // nano-banana) still wins — forcing a model the engine explicitly
+  // excludes would contradict the exclusion contract.
+  const forced = new Set(
+    (includedModelIds ?? []).filter(id => !excluded.has(id) && modelScore.has(id)),
+  );
+  const wantedCount = Math.max(1, Math.min(topN, ranked.length));
+  const topSlots = Math.max(0, wantedCount - forced.size);
+  const topRanked = ranked
+    .filter(m => !forced.has(m.id))
+    .slice(0, topSlots)
+    .map(m => m.id);
+  // Preserve rank order for forced models so UI panels stay ordered.
+  const forcedOrdered = ranked.filter(m => forced.has(m.id)).map(m => m.id);
+  const modelIds = Array.from(new Set([...forcedOrdered, ...topRanked]));
+
+  const forcedCount = forcedOrdered.length;
+  const rankedCount = modelIds.length - forcedCount;
+  const forcedReason = forcedCount > 0 ? ` + ${forcedCount} user-selected` : '';
   const modelsReason = scoredWinners.length > 0
-    ? `top ${modelIds.length} by prompt-guide fit + ${scoredWinners.length} prior winner${scoredWinners.length === 1 ? '' : 's'}`
-    : `top ${modelIds.length} by prompt-guide keyword fit`;
+    ? `top ${rankedCount} by prompt-guide fit + ${scoredWinners.length} prior winner${scoredWinners.length === 1 ? '' : 's'}${forcedReason}`
+    : `top ${rankedCount} by prompt-guide keyword fit${forcedReason}`;
 
   // ── Negative prompt (from closest prior winner that had one) ─────────────
   let carriedNegativePrompt: string | undefined;
