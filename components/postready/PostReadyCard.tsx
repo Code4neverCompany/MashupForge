@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { AspectPreview } from './AspectPreview';
+import { CountdownBadge } from './CountdownBadge';
 import { InlineScheduleCalendar } from './InlineScheduleCalendar';
 import { KebabMenu, type KebabMenuItem } from '../KebabMenu';
 import {
@@ -172,7 +173,7 @@ export function PostReadyCard({
       className={`bg-zinc-900/80 backdrop-blur-sm border-2 ${v.border} rounded-2xl overflow-visible hover:border-opacity-80 transition-all duration-300`}
     >
       {/* Status pill row — top of card */}
-      <div className="px-3 pt-3 pb-2 flex items-center gap-2">
+      <div className="px-3 pt-3 pb-2 flex items-center gap-2 flex-wrap">
         <span
           className={`inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold rounded-full border ${v.pillBg} ${v.pillText}`}
           aria-label={`Status: ${label}`}
@@ -182,6 +183,7 @@ export function PostReadyCard({
           {kind === 'failed' && <AlertCircle className="w-3 h-3" />}
           {label}
         </span>
+        {kind === 'scheduled' && <CountdownBadge scheduledPost={scheduledPost} />}
       </div>
 
       <div className="flex flex-col md:flex-row">

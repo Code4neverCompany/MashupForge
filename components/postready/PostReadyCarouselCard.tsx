@@ -22,6 +22,7 @@ import {
   Send,
   X,
 } from 'lucide-react';
+import { CountdownBadge } from './CountdownBadge';
 import { InlineScheduleCalendar } from './InlineScheduleCalendar';
 import { KebabMenu, type KebabMenuItem } from '../KebabMenu';
 import {
@@ -161,6 +162,7 @@ export function PostReadyCarouselCard({
           {kind === 'failed' && <X className="w-3 h-3" />}
           {label}
         </span>
+        {kind === 'scheduled' && <CountdownBadge scheduledPost={scheduledPost} />}
         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#00e6ff]/15 border border-[#00e6ff]/30 text-[10px] font-medium text-[#00e6ff] rounded-full">
           <LayoutGrid className="w-3 h-3" /> Carousel · {images.length}
         </span>
