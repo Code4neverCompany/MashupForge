@@ -276,9 +276,6 @@ export function GalleryCard({
           </>
         )}
 
-        {/* Hover glow overlay — warm-gold from below, cool-blue at top edge */}
-        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-[6] bg-gradient-to-t from-[#c5a062]/12 via-transparent to-[#00e6ff]/6" />
-
         {/* DESIGN-002 §3: permanent model chip (bottom-left).
             Replaces the bottom-left "Approved" pill — the inset
             emerald ring already conveys approved state. */}
@@ -291,24 +288,13 @@ export function GalleryCard({
           </span>
         )}
 
-        {/* Top Actions Overlay — compact icon row.
+        {/* Top Actions Overlay — compact icon row (3 primary + kebab, DESIGN-002 §3.7).
             BUG-CRIT-010: z-30 keeps the row (and its KebabMenu dropdown,
             which opens downward into the prompt area) painted above the
-            bottom prompt overlay at z-[20] (line ~444). Without the
-            bump, the overlay's later DOM order beat the row at the same
-            z-20, so kebab items rendered behind the prompt and the
-            Delete button was unclickable. */}
+            bottom prompt overlay at z-[20]. Without the bump, the overlay's
+            later DOM order beat the row at the same z-20, so kebab items
+            rendered behind the prompt and the Delete button was unclickable. */}
         <div className="absolute top-0 left-0 right-0 p-2 flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-30">
-          {img.imageId && !img.isVideo && view !== 'gallery' && (
-            <button
-              onClick={(e) => { e.stopPropagation(); handleAnimate(img); }}
-              disabled={img.status === 'animating'}
-              className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-indigo-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
-              title="Animate Image"
-            >
-              {img.status === 'animating' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Video className="w-4 h-4" />}
-            </button>
-          )}
           {view === 'studio' && !img.isVideo && (
             <button
               onClick={(e) => { e.stopPropagation(); rerollImage(img.id, img.prompt); }}
@@ -418,100 +404,129 @@ export function GalleryCard({
               {isSaved ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
             </button>
           )}
-          <button
-            disabled={preparingPostId === img.id}
-            onClick={async (e) => {
-              e.stopPropagation();
-              if (preparingPostId) return;
-              setPreparingPostId(img.id);
-              try {
-                if (!img.approved) toggleApproveImage(img.id);
-                if (!img.postCaption) await generatePostContent(img);
-                await saveImage({ ...img, isPostReady: true });
-                setView('post-ready');
-              } finally {
-                setPreparingPostId(null);
-              }
-            }}
-            className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 disabled:opacity-60 disabled:hover:bg-black/50 text-white rounded-lg backdrop-blur-md transition-colors"
-            title={preparingPostId === img.id ? 'Generating caption…' : 'Prepare for Post'}
-          >
-            {preparingPostId === img.id ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
-          </button>
-          {view !== 'gallery' && (
+          {view === 'gallery' && (
             <button
-              onClick={(e) => { e.stopPropagation(); deleteImage(img.id, false); }}
-              className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-red-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
-              title="Delete Image"
+              disabled={preparingPostId === img.id}
+              onClick={async (e) => {
+                e.stopPropagation();
+                if (preparingPostId) return;
+                setPreparingPostId(img.id);
+                try {
+                  if (!img.approved) toggleApproveImage(img.id);
+                  if (!img.postCaption) await generatePostContent(img);
+                  await saveImage({ ...img, isPostReady: true });
+                  setView('post-ready');
+                } finally {
+                  setPreparingPostId(null);
+                }
+              }}
+              className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 disabled:opacity-60 disabled:hover:bg-black/50 text-white rounded-lg backdrop-blur-md transition-colors"
+              title={preparingPostId === img.id ? 'Generating caption…' : 'Prepare for Post'}
             >
-              <Trash2 className="w-4 h-4" />
+              {preparingPostId === img.id ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
             </button>
           )}
-          {view === 'gallery' && (
-            <KebabMenu
-              ariaLabel={`More actions for ${img.prompt.slice(0, 60)}`}
-              items={(() => {
-                const isTagging = taggingId === img.id;
-                const hasTags = !!(img.tags && img.tags.length > 0);
-                const out: (KebabMenuItem | null)[] = [
-                  img.imageId && !img.isVideo
-                    ? {
+          <KebabMenu
+            ariaLabel={`More actions for ${img.prompt.slice(0, 60)}`}
+            items={(() => {
+              const isTagging = taggingId === img.id;
+              const hasTags = !!(img.tags && img.tags.length > 0);
+              const preparing = preparingPostId === img.id;
+              const downloadItem: KebabMenuItem = {
+                kind: 'item',
+                id: 'download',
+                label: 'Download',
+                icon: Download,
+                onSelect: () => {
+                  const href = img.url || `data:image/jpeg;base64,${img.base64}`;
+                  const a = document.createElement('a');
+                  a.href = href;
+                  a.download = `mashup-${img.id}.jpg`;
+                  if (img.url) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                },
+              };
+              const animateItem: KebabMenuItem | null =
+                img.imageId && !img.isVideo
+                  ? {
+                      kind: 'item',
+                      id: 'animate',
+                      label: img.status === 'animating' ? 'Animating…' : 'Animate',
+                      icon: img.status === 'animating' ? Loader2 : Video,
+                      disabled: img.status === 'animating',
+                      onSelect: () => handleAnimate(img),
+                    }
+                  : null;
+              const items: (KebabMenuItem | null)[] =
+                view === 'gallery'
+                  ? [
+                      animateItem,
+                      {
                         kind: 'item',
-                        id: 'animate',
-                        label: img.status === 'animating' ? 'Animating…' : 'Animate',
-                        icon: img.status === 'animating' ? Loader2 : Video,
-                        disabled: img.status === 'animating',
-                        onSelect: () => handleAnimate(img),
-                      }
-                    : null,
-                  {
-                    kind: 'item',
-                    id: 'auto-tag',
-                    label: isTagging
-                      ? 'Tagging…'
-                      : hasTags ? 'Re-generate tags' : 'Auto-tag',
-                    icon: isTagging ? Loader2 : Tag,
-                    disabled: isTagging,
-                    onSelect: () => {
-                      if (taggingId) return;
-                      setTaggingId(img.id);
-                      autoTagImage(img.id, img).finally(() => setTaggingId(null));
-                    },
-                  },
-                  {
-                    kind: 'item',
-                    id: 'download',
-                    label: 'Download',
-                    icon: Download,
-                    onSelect: () => {
-                      const href = img.url || `data:image/jpeg;base64,${img.base64}`;
-                      const a = document.createElement('a');
-                      a.href = href;
-                      a.download = `mashup-${img.id}.jpg`;
-                      if (img.url) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                    },
-                  },
-                  { kind: 'separator' },
-                  {
-                    kind: 'item',
-                    id: 'delete',
-                    label: 'Delete',
-                    icon: Trash2,
-                    destructive: true,
-                    onSelect: () => deleteImage(img.id, true),
-                  },
-                ];
-                return out.filter((x): x is KebabMenuItem => x !== null);
-              })()}
-            />
-          )}
+                        id: 'auto-tag',
+                        label: isTagging
+                          ? 'Tagging…'
+                          : hasTags ? 'Re-generate tags' : 'Auto-tag',
+                        icon: isTagging ? Loader2 : Tag,
+                        disabled: isTagging,
+                        onSelect: () => {
+                          if (taggingId) return;
+                          setTaggingId(img.id);
+                          autoTagImage(img.id, img).finally(() => setTaggingId(null));
+                        },
+                      },
+                      downloadItem,
+                      { kind: 'separator' },
+                      {
+                        kind: 'item',
+                        id: 'delete',
+                        label: 'Delete',
+                        icon: Trash2,
+                        destructive: true,
+                        onSelect: () => deleteImage(img.id, true),
+                      },
+                    ]
+                  : [
+                      animateItem,
+                      {
+                        kind: 'item',
+                        id: 'save-for-post',
+                        label: preparing ? 'Generating caption…' : 'Prepare for Post',
+                        icon: preparing ? Loader2 : Save,
+                        disabled: preparing,
+                        onSelect: async () => {
+                          if (preparingPostId) return;
+                          setPreparingPostId(img.id);
+                          try {
+                            if (!img.approved) toggleApproveImage(img.id);
+                            if (!img.postCaption) await generatePostContent(img);
+                            await saveImage({ ...img, isPostReady: true });
+                            setView('post-ready');
+                          } finally {
+                            setPreparingPostId(null);
+                          }
+                        },
+                      },
+                      downloadItem,
+                      { kind: 'separator' },
+                      {
+                        kind: 'item',
+                        id: 'delete',
+                        label: 'Delete',
+                        icon: Trash2,
+                        destructive: true,
+                        onSelect: () => deleteImage(img.id, false),
+                      },
+                    ];
+              return items.filter((x): x is KebabMenuItem => x !== null);
+            })()}
+          />
         </div>
 
         {/* DESIGN-002 §3.5/§3.6: slimmed bottom hover panel. */}
