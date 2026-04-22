@@ -182,4 +182,29 @@ describe('computeWeekFillStatus', () => {
     expect(s.days).toHaveLength(7);
     expect(s.filled).toBe(false);
   });
+
+  // BUG-PIPELINE-001 regression: start-of-window must remain tomorrow at
+  // any hour of the day. The original bug fired specifically when the
+  // pipeline ran late in the evening (>23:00) — at that hour, the older
+  // "start from today" code summed `targetPerDay` slots that the
+  // scheduler (which always picks from tomorrow) could never fill, so the
+  // continuous-mode loop never converged. Pinning `NOW` at 23:30 here
+  // proves the helper agrees with `findBestSlots` regardless of clock.
+  it('BUG-PIPELINE-001: window starts from tomorrow even when called at 23:30', () => {
+    const lateNight = new Date(2026, 3, 20, 23, 30, 0); // Mon 23:30 local
+    const s = computeWeekFillStatus([], 7, 2, lateNight);
+    expect(s.days[0].date).toBe('2026-04-21');
+    expect(s.days[0].dayLabel).toBe('Tue');
+    expect(s.days[6].date).toBe('2026-04-27');
+    // A post placed in today's last hour must NOT count toward the
+    // window — the scheduler can't put new posts there anyway.
+    const todaysLatePost = computeWeekFillStatus(
+      [post('2026-04-20', '23:45', 'scheduled')],
+      7,
+      2,
+      lateNight,
+    );
+    expect(todaysLatePost.scheduledTotal).toBe(0);
+    expect(todaysLatePost.days.find(d => d.date === '2026-04-20')).toBeUndefined();
+  });
 });
