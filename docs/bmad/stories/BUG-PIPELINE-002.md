@@ -1,11 +1,11 @@
-# BUG-PIPELINE-002 — No Auto-Start of Continuous Mode on App Load
+# BUG-PIPELINE-002 — No Auto-Start of Continuous Mode on App Load (RESOLVED)
 
 **ID:** BUG-PIPELINE-002  
 **Severity:** HIGH (P0)  
 **Filed by:** QA Agent  
 **Date:** 2026-04-22  
 **Source:** `docs/PIPELINE-DAEMON-ANALYSIS.md` Bug 2  
-**Status:** Open
+**Status:** Resolved
 
 ---
 

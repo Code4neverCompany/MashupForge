@@ -1,6 +1,6 @@
 # FEAT-002 — Settings: integrate auto-update + reorganize layout (DESIGN PROPOSAL)
 
-**Status:** PROPOSAL — awaiting Hermes sign-off before execution.
+**Status:** Done — implemented in prior refactor batch (see FEAT-002-AUDIT.md)
 **Why proposal-not-PR:** This task is classified `complex` and three of its four ACs are either already-met-but-not-obvious or underspecified in ways that make speculative execution risky. Wrong choices here would either break web mode or impose a section structure you'd reject. Let's pick before I touch the panel.
 **Drafted:** 2026-04-18 (developer subagent)
 
