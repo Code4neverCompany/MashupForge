@@ -209,7 +209,12 @@ export function GalleryCard({
           </div>
         )}
         {view === 'gallery' && !img.isVideo && img.imageId && (
-          <div className="absolute top-4 left-4 z-30">
+          // V080-DEV-001: z-40 keeps the checkbox above the top action
+          // overlay (also z-30, but rendered later in DOM so it would
+          // otherwise win the hit test on equal z) — prior to the bump
+          // the invisible action overlay's empty left area ate every
+          // click on the checkbox, making batch selection unusable.
+          <div className="absolute top-4 left-4 z-40">
             <input
               type="checkbox"
               checked={selectedForBatch.has(img.id)}
