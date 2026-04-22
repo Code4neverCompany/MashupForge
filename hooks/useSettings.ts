@@ -38,6 +38,25 @@ export type SettingsSaveState =
   | { kind: 'saved'; at: number }
   | { kind: 'error'; message: string };
 
+// ─── Storage contract (PROP-010 / FIX-102 — closed 2026-04-22) ─────────────
+//
+// IDB (`mashup_settings`) is the single canonical store for UserSettings.
+// localStorage is NOT a parallel store — it is a one-way crash-recovery
+// buffer for the 300ms debounce window:
+//
+//   1. Persist  → IDB only (debounced 300ms, line 101).
+//   2. Unload   → beforeunload sync-writes localStorage as a safety net
+//                 in case the tab closes before the debounce fires (line 123).
+//   3. Load     → if localStorage has a value (= a previous unload happened
+//                 mid-debounce, OR a legacy pre-PROP-010 install), migrate
+//                 it into IDB and DELETE the localStorage entry. Then the
+//                 store is back to canonical-IDB-only until the next unload.
+//
+// Do NOT make localStorage a continuous mirror. Earlier iterations did this
+// and it doubled write churn (commit e8398d6 reverted it) plus created a
+// real drift risk: if IDB-write succeeds but localStorage-write fails on
+// quota, the next load reads stale localStorage and overwrites IDB.
+// ──────────────────────────────────────────────────────────────────────────
 export function useSettings() {
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false);
