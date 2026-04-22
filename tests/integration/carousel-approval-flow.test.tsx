@@ -145,6 +145,86 @@ describe('carousel approval — ApprovalQueue grouping', () => {
     expect(screen.getAllByRole('button', { name: /reject carousel/i })).toHaveLength(1);
   });
 
+  // V080-DEV-003: previously a 2-image carousel locked both per-image
+  // reject buttons (the old 2-image floor). Lifting the floor to 1
+  // means: a 2-image carousel exposes a clickable per-image Reject;
+  // clicking it fires onRejectPost(postId) for that one image, the
+  // parent removes the rejected post from the queue, and on the next
+  // render groupApprovalPosts collapses the surviving 1-sibling group
+  // into a single-card item. This test pins both halves of that flow
+  // (clickable reject in the expanded review panel, and the post-
+  // reject collapse) so a future regression of the floor or the
+  // collapse rule fails loudly.
+  it('V080-DEV-003: 2-image carousel allows per-image reject and collapses survivor to a single card', () => {
+    const posts = [
+      mkPost('p1', { carouselGroupId: 'g1' }),
+      mkPost('p2', { carouselGroupId: 'g1' }),
+    ];
+    const imagesById = new Map<string, GeneratedImage>([
+      ['img-p1', mkImage('img-p1')],
+      ['img-p2', mkImage('img-p2')],
+    ]);
+    const onApprovePost = vi.fn();
+    const onRejectPost = vi.fn();
+
+    const { container } = render(
+      <CarouselApprovalCard
+        groupId="g1"
+        posts={posts}
+        imagesById={imagesById}
+        selected={false}
+        onToggleSelect={() => {}}
+        onApprovePost={onApprovePost}
+        onRejectPost={onRejectPost}
+      />,
+    );
+
+    // Expand the review panel — per-image Reject buttons live here.
+    fireEvent.click(screen.getByRole('button', { name: /^Review/i }));
+
+    // Per-image reject buttons must be enabled (NOT disabled by the
+    // old 2-image floor). We have 2 images so 2 per-image rejects.
+    const rejectButtons = within(container).getAllByRole('button', { name: /^Reject$/i });
+    expect(rejectButtons).toHaveLength(2);
+    for (const btn of rejectButtons) {
+      expect(btn).not.toBeDisabled();
+    }
+
+    // Clicking the first per-image reject must fan out to onRejectPost
+    // exactly once for that postId — not a whole-carousel fan-out.
+    fireEvent.click(rejectButtons[0]!);
+    expect(onRejectPost).toHaveBeenCalledTimes(1);
+    expect(onRejectPost).toHaveBeenCalledWith('p1');
+    expect(onApprovePost).not.toHaveBeenCalled();
+  });
+
+  it('V080-DEV-003: after a 2→1 reject, ApprovalQueue collapses the survivor to a single-image card (no carousel header)', () => {
+    // Simulates the post-reject queue state: only 1 sibling left in
+    // pending_approval. groupApprovalPosts must drop this from the
+    // carousel branch and render it as a normal single card.
+    const posts = [mkPost('p2', { carouselGroupId: 'g1' })];
+    const images: GeneratedImage[] = posts.map((p) => mkImage(p.imageId));
+
+    render(
+      <ApprovalQueue
+        posts={posts}
+        images={images}
+        ideas={[]}
+        onApprove={() => {}}
+        onReject={() => {}}
+        onBulkApprove={() => {}}
+        onBulkReject={() => {}}
+        onUpdateCaption={() => {}}
+      />,
+    );
+
+    // No "Carousel · N images" header — the lone post is a single card.
+    expect(screen.queryAllByText(/Carousel · \d+ images/i)).toHaveLength(0);
+    // And no whole-carousel reject control either — singles use the
+    // standard per-post reject affordance.
+    expect(screen.queryAllByRole('button', { name: /reject carousel/i })).toHaveLength(0);
+  });
+
   it('passes the full sibling postIds array to onUpdateCaption from a carousel card', () => {
     const posts = [
       mkPost('c1', { carouselGroupId: 'g1', caption: 'old' }),

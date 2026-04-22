@@ -1,13 +1,17 @@
-// V040-DES-003 / V040-HOTFIX-002: transient amber notice shown on a
-// carousel approval card when the user is at (or about to cross) the
-// 2-image minimum. Presentational only; the parent card decides when
-// to make it visible based on the per-image local status map.
+// V040-DES-003 / V040-HOTFIX-002 / V080-DEV-003: transient amber
+// notice shown on a carousel approval card when the user is at the
+// per-image reject floor. The floor is 1 image (you can't drop the
+// carousel to zero — for that, use "Reject carousel"). A 2-image
+// carousel CAN now have one image rejected; the survivor auto-
+// collapses to a single-image post via groupApprovalPosts.
+// Presentational only; the parent card decides when to make it
+// visible based on the per-image local status map.
 
 import { AlertTriangle } from 'lucide-react';
 
 export function DegradeNotice({
   visible,
-  message = 'Carousel needs at least 2 images — reject disabled',
+  message = 'Cannot reject the last image — use "Reject carousel" to remove the whole post',
 }: {
   visible: boolean;
   message?: string;
