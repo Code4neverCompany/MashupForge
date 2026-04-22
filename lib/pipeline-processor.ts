@@ -99,6 +99,42 @@ function checkSkip(isSkipRequested: () => boolean): void {
 }
 
 /**
+ * Run an async producer over `items` with at most `limit` calls in flight.
+ * Order-preserving: results[i] corresponds to items[i]. Each slot reports
+ * via PromiseSettledResult so a single failure doesn't abort the rest —
+ * matches the per-image fallback semantics the sequential caption loop
+ * already had (catch + use prompt as fallback).
+ *
+ * Used by per-model captioning (PROP-017 / OPT-001) to fan 3–6 pi.dev
+ * caption calls into a bounded pool instead of awaiting them in series.
+ */
+async function runWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, idx: number) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let next = 0;
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      try {
+        results[i] = { status: 'fulfilled', value: await fn(items[i], i) };
+      } catch (reason) {
+        results[i] = { status: 'rejected', reason };
+      }
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+/** pi.dev concurrency cap for parallel per-model captioning (PROP-017). */
+const CAPTION_PARALLEL_LIMIT = 3;
+
+/**
  * Process a single idea through the full pipeline:
  * trending → expand → generate → caption → schedule → (auto-post).
  *
@@ -407,38 +443,97 @@ export async function processIdea(
       'success',
       `${readyImages.length} image${readyImages.length === 1 ? '' : 's'} ready`,
     );
-    for (let imgIdx = 0; imgIdx < readyImages.length; imgIdx++) {
+
+    // Persist all images upfront so they're visible during captioning.
+    for (const img of readyImages) savePipelineImage(img);
+
+    // PROP-017 / OPT-001 — caption phase. Single-model stays sequential
+    // (preserves prior behavior + checkpoint label). Multi-model fans out
+    // through a concurrency-bounded pool so 3–6 sequential pi.dev calls
+    // collapse to ⌈N/3⌉ batches. Per-image errors fall back to the prompt
+    // exactly like the sequential path did (allSettled semantics).
+    const labelOf = (img: GeneratedImage, idx: number) =>
+      img.modelInfo?.modelName ?? `model-${idx + 1}`;
+    const captionedImages: GeneratedImage[] = [...readyImages];
+
+    if (autoCaption && readyImages.length > 1) {
+      writeCheckpoint(`Captioning ${readyImages.length} models in parallel`);
+      setPipelineProgress({
+        current: index + 1,
+        total,
+        currentStep: `Captioning ${readyImages.length} models in parallel`,
+        currentIdea: idea.concept,
+        currentIdeaId: idea.id,
+      });
       checkSkip(isSkipRequested);
-      const img = readyImages[imgIdx];
-      const modelLabel = img.modelInfo?.modelName ?? `model-${imgIdx + 1}`;
-
-      savePipelineImage(img);
-      writeCheckpoint(`Captioning ${modelLabel}`);
-
-      let captionedImg = img;
-      if (autoCaption) {
-        setPipelineProgress({
-          current: index + 1,
-          total,
-          currentStep: `Captioning ${modelLabel}`,
-          currentIdea: idea.concept,
-          currentIdeaId: idea.id,
-        });
-        try {
-          const withCaption = await generatePostContent(img);
-          if (withCaption) {
-            captionedImg = withCaption;
-            savePipelineImage(withCaption);
-            addLog('caption', idea.id, 'success', `[${modelLabel}] Caption generated`);
-          } else {
-            captionedImg = { ...img, postCaption: expandedPrompt };
-            addLog('caption', idea.id, 'error', `[${modelLabel}] Caption returned empty — using prompt as fallback`);
-          }
-        } catch {
-          captionedImg = { ...img, postCaption: expandedPrompt };
+      const t0 = Date.now();
+      const settled = await runWithConcurrency(
+        readyImages,
+        CAPTION_PARALLEL_LIMIT,
+        (img) => generatePostContent(img),
+      );
+      const elapsedMs = Date.now() - t0;
+      let okCount = 0;
+      for (let i = 0; i < settled.length; i++) {
+        const img = readyImages[i];
+        const modelLabel = labelOf(img, i);
+        const r = settled[i];
+        if (r.status === 'fulfilled' && r.value) {
+          captionedImages[i] = r.value;
+          savePipelineImage(r.value);
+          addLog('caption', idea.id, 'success', `[${modelLabel}] Caption generated`);
+          okCount++;
+        } else if (r.status === 'fulfilled') {
+          captionedImages[i] = { ...img, postCaption: expandedPrompt };
+          addLog('caption', idea.id, 'error', `[${modelLabel}] Caption returned empty — using prompt as fallback`);
+        } else {
+          captionedImages[i] = { ...img, postCaption: expandedPrompt };
           addLog('caption', idea.id, 'error', `[${modelLabel}] Caption failed — using prompt as fallback`);
         }
       }
+      addLog(
+        'caption',
+        idea.id,
+        'success',
+        `[parallel] ${okCount}/${readyImages.length} captioned in ${elapsedMs}ms (limit=${CAPTION_PARALLEL_LIMIT})`,
+      );
+    } else if (autoCaption) {
+      // Single image — keep the sequential path verbatim for parity with
+      // the prior behavior (per-model checkpoint label + per-call progress).
+      const img = readyImages[0];
+      const modelLabel = labelOf(img, 0);
+      writeCheckpoint(`Captioning ${modelLabel}`);
+      setPipelineProgress({
+        current: index + 1,
+        total,
+        currentStep: `Captioning ${modelLabel}`,
+        currentIdea: idea.concept,
+        currentIdeaId: idea.id,
+      });
+      const t0 = Date.now();
+      try {
+        const withCaption = await generatePostContent(img);
+        if (withCaption) {
+          captionedImages[0] = withCaption;
+          savePipelineImage(withCaption);
+          addLog('caption', idea.id, 'success', `[${modelLabel}] Caption generated in ${Date.now() - t0}ms`);
+        } else {
+          captionedImages[0] = { ...img, postCaption: expandedPrompt };
+          addLog('caption', idea.id, 'error', `[${modelLabel}] Caption returned empty — using prompt as fallback`);
+        }
+      } catch {
+        captionedImages[0] = { ...img, postCaption: expandedPrompt };
+        addLog('caption', idea.id, 'error', `[${modelLabel}] Caption failed — using prompt as fallback`);
+      }
+    }
+
+    // Scheduling phase — sequential, one ScheduledPost per (now captioned)
+    // image. Order-preserving (captionedImages[i] ↔ readyImages[i]).
+    for (let imgIdx = 0; imgIdx < captionedImages.length; imgIdx++) {
+      checkSkip(isSkipRequested);
+      const img = readyImages[imgIdx];
+      const captionedImg = captionedImages[imgIdx];
+      const modelLabel = labelOf(img, imgIdx);
 
       if (autoSchedule) {
         setPipelineProgress({

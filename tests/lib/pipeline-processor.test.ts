@@ -557,6 +557,123 @@ describe('withPipelineRunning', () => {
     expect(setRunning).toHaveBeenNthCalledWith(2, false);
   });
 
+});
+
+// ─── PROP-017 / OPT-001 — parallel per-model captioning ─────────────────────
+
+describe('processIdea — parallel per-model captioning (PROP-017)', () => {
+  function makeImages(n: number): GeneratedImage[] {
+    return Array.from({ length: n }, (_, i) =>
+      makeImage({
+        id: `img-m${i + 1}`,
+        modelInfo: { provider: 'leonardo', modelId: `m${i + 1}`, modelName: `Model${i + 1}` },
+      }),
+    );
+  }
+
+  it('runs N>1 caption calls with bounded concurrency (max 3 in flight)', async () => {
+    const images = makeImages(6);
+    let inFlight = 0;
+    let peak = 0;
+    const generatePostContent = vi.fn(async (img: GeneratedImage) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 20));
+      inFlight--;
+      return { ...img, postCaption: `cap-${img.id}` };
+    });
+    const deps = makeDeps({
+      waitForImages: vi.fn().mockResolvedValue(images),
+      generatePostContent,
+    });
+
+    await processIdea(makeIdea(), 0, 1, makeEngagement(), [], makeSettings(), deps);
+
+    expect(generatePostContent).toHaveBeenCalledTimes(6);
+    // Concurrency cap is 3 — peak in-flight must never exceed it
+    expect(peak).toBeLessThanOrEqual(3);
+    expect(peak).toBeGreaterThanOrEqual(2); // proves we actually parallelized
+  });
+
+  it('parallel wall-clock is much less than the sequential sum', async () => {
+    const images = makeImages(6);
+    const PER_CALL_MS = 40;
+    const deps = makeDeps({
+      waitForImages: vi.fn().mockResolvedValue(images),
+      generatePostContent: vi.fn(async (img: GeneratedImage) => {
+        await new Promise((r) => setTimeout(r, PER_CALL_MS));
+        return { ...img, postCaption: 'ok' };
+      }),
+    });
+
+    const t0 = Date.now();
+    await processIdea(makeIdea(), 0, 1, makeEngagement(), [], makeSettings(), deps);
+    const elapsed = Date.now() - t0;
+
+    // Sequential would be 6 × 40 = 240ms. With pool=3 we expect ~2 batches ≈ 80–120ms.
+    // Allow generous slack for CI variance — anything under sequential proves it.
+    expect(elapsed).toBeLessThan(PER_CALL_MS * images.length); // < 240ms
+  });
+
+  it('a single caption rejection does not abort sibling captions (allSettled)', async () => {
+    const images = makeImages(4);
+    const deps = makeDeps({
+      waitForImages: vi.fn().mockResolvedValue(images),
+      generatePostContent: vi.fn(async (img: GeneratedImage) => {
+        if (img.id === 'img-m2') throw new Error('pi.dev 503');
+        return { ...img, postCaption: `cap-${img.id}` };
+      }),
+    });
+
+    await processIdea(makeIdea(), 0, 1, makeEngagement(), [], makeSettings(), deps);
+
+    // All 4 attempted, all 4 scheduled (one with prompt fallback)
+    expect(deps.generatePostContent).toHaveBeenCalledTimes(4);
+    const errLogs = (deps.addLog as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => c[0] === 'caption' && c[2] === 'error' && /img-m2|Model2/i.test(c[3]),
+    );
+    expect(errLogs.length).toBeGreaterThanOrEqual(1);
+    // 4 schedule calls — failure path still produces a ScheduledPost
+    const scheduleCalls = (deps.updateSettings as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => typeof c[0] === 'function',
+    );
+    expect(scheduleCalls.length).toBe(4);
+  });
+
+  it('single-image path stays sequential (no concurrency-pool checkpoint label)', async () => {
+    const images = makeImages(1);
+    const deps = makeDeps({
+      waitForImages: vi.fn().mockResolvedValue(images),
+    });
+
+    await processIdea(makeIdea(), 0, 1, makeEngagement(), [], makeSettings(), deps);
+
+    const ckpts = (deps.writeCheckpoint as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(ckpts.some((s: string) => s.includes('parallel'))).toBe(false);
+    expect(ckpts.some((s: string) => s.includes('Captioning Model1'))).toBe(true);
+  });
+
+  it('autoCaption=false skips caption phase entirely (no generatePostContent calls)', async () => {
+    const images = makeImages(4);
+    const deps = makeDeps({
+      waitForImages: vi.fn().mockResolvedValue(images),
+    });
+
+    await processIdea(
+      makeIdea(),
+      0, 1, makeEngagement(), [], makeSettings({ pipelineAutoCaption: false }), deps,
+    );
+
+    expect(deps.generatePostContent).not.toHaveBeenCalled();
+    // Still scheduled all 4
+    const scheduleCalls = (deps.updateSettings as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => typeof c[0] === 'function',
+    );
+    expect(scheduleCalls.length).toBe(4);
+  });
+});
+
+describe('PROP-017 follow-up — withPipelineRunning unaffected', () => {
   it('setRunning(false) is called before the error propagates to the caller', async () => {
     const order: string[] = [];
     const setRunning = vi.fn((v: boolean) => order.push(`running=${v}`));
