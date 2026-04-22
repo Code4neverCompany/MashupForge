@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { applyResumeCheckpoint } from '@/lib/resume-checkpoint';
 import { usePipelineDaemon, type PipelineResumeHint } from './usePipelineDaemon';
 import { useIdeaProcessor } from './useIdeaProcessor';
@@ -68,11 +68,31 @@ export function usePipeline(deps: UsePipelineDeps) {
     setPipelineProgress: daemon.setPipelineProgress,
   });
 
+  // Tracks whether the user has explicitly stopped the pipeline this
+  // session. Used by the auto-start effect below so a user-initiated
+  // stop is honored — even when `pipelineEnabled + pipelineContinuous`
+  // are both still true (those are persisted preferences, not session
+  // state). Reset on every fresh mount so the next app launch will
+  // auto-start again per the persisted settings.
+  const userStoppedRef = useRef(false);
+  // One-shot guard so the auto-start fires at most once per mount.
+  // Without this, the effect would re-fire whenever `pipelineRunning`
+  // flips back to false (e.g. after the run loop's natural exit) and
+  // start a fresh run the user didn't ask for.
+  const autoStartFiredRef = useRef(false);
+
   const startPipeline = useCallback(
-    (resumeHint?: PipelineResumeHint) =>
-      daemon.runOuterLoop(processor.processIdea, resumeHint),
+    (resumeHint?: PipelineResumeHint) => {
+      userStoppedRef.current = false;
+      return daemon.runOuterLoop(processor.processIdea, resumeHint);
+    },
     [daemon, processor.processIdea],
   );
+
+  const stopPipeline = useCallback(() => {
+    userStoppedRef.current = true;
+    daemon.stopPipeline();
+  }, [daemon]);
 
   /**
    * Skip + cleanup. Aborts the current idea via the daemon, then
@@ -111,6 +131,41 @@ export function usePipeline(deps: UsePipelineDeps) {
     });
   }, [daemon, updateIdeaStatus, startPipeline, savedImages]);
 
+  // Auto-start in continuous mode after mount. When the user has
+  // persisted `pipelineEnabled + pipelineContinuous` and closes/reopens
+  // the app, the daemon would otherwise sit idle until they manually
+  // clicked "Start Pipeline" — making the configured "every X minutes"
+  // cadence meaningless across restarts. Fires at most once per mount,
+  // honors a session-scoped userStoppedRef, and waits for the resume-
+  // checkpoint hydration effect (which sets `pendingResume` async on
+  // mount) so a recoverable crash isn't trampled by a fresh auto-start.
+  useEffect(() => {
+    if (autoStartFiredRef.current) return;
+    if (!daemon.pipelineEnabled || !daemon.pipelineContinuous) return;
+    if (daemon.pipelineRunning) return;
+    if (userStoppedRef.current) return;
+    if (daemon.pendingResume) return;
+    // Short delay lets settings hydration / pendingResume async load
+    // settle before we kick off a run; keeps the effect from racing
+    // those mount-time effects in usePipelineDaemon.
+    const timer = setTimeout(() => {
+      if (autoStartFiredRef.current) return;
+      if (!daemon.pipelineEnabled || !daemon.pipelineContinuous) return;
+      if (daemon.pipelineRunning) return;
+      if (userStoppedRef.current) return;
+      if (daemon.pendingResume) return;
+      autoStartFiredRef.current = true;
+      void startPipeline();
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [
+    daemon.pipelineEnabled,
+    daemon.pipelineContinuous,
+    daemon.pipelineRunning,
+    daemon.pendingResume,
+    startPipeline,
+  ]);
+
   return {
     pipelineEnabled: daemon.pipelineEnabled,
     pipelineRunning: daemon.pipelineRunning,
@@ -121,7 +176,7 @@ export function usePipeline(deps: UsePipelineDeps) {
     setPipelineDelay: daemon.setPipelineDelay,
     togglePipeline: daemon.togglePipeline,
     startPipeline,
-    stopPipeline: daemon.stopPipeline,
+    stopPipeline,
     skipCurrentIdea,
     pipelineContinuous: daemon.pipelineContinuous,
     toggleContinuous: daemon.toggleContinuous,

@@ -31,10 +31,7 @@ import {
   loadPipelineLog,
   clearPipelineLog as clearPipelineLogStore,
 } from '@/lib/pipeline-log-store';
-import {
-  countFutureScheduledPosts,
-  IdeaTimeoutError,
-} from '@/lib/pipeline-daemon-utils';
+import { IdeaTimeoutError } from '@/lib/pipeline-daemon-utils';
 import { computeWeekFillStatus, type WeekFillStatus } from '@/lib/weekly-fill';
 
 const PIPELINE_STORAGE_KEY = 'mashup_pipeline_state';
@@ -655,10 +652,13 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
             const horizonDays = Math.max(settingsTargetDays, 14);
             // Per-day capped fill so over-scheduled days can't mask empty
             // ones. `filled` is only true when EVERY day in the horizon
-            // has at least `targetPerDay` scheduled posts; the raw
-            // countFutureScheduledPosts total is kept for the log line.
+            // has at least `targetPerDay` scheduled posts. Use
+            // `fill.scheduledTotal` (per-day-capped) for the log line so
+            // the displayed numerator can never exceed the denominator
+            // (`fill.targetTotal`); the raw `countFutureScheduledPosts`
+            // returned values like "29/28" when one day was over-scheduled.
             const fill = computeWeekFillStatus(allPosts, horizonDays, targetPerDay);
-            const futurePosts = countFutureScheduledPosts(allPosts, horizonDays);
+            const futurePosts = fill.scheduledTotal;
             const targetTotal = fill.targetTotal;
             const emptyDays = fill.days.filter((d) => d.scheduledCount < d.target);
 

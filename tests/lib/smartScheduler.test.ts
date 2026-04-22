@@ -76,7 +76,11 @@ describe('findBestSlots', () => {
   });
 
   it('starts the search from tomorrow, never today', () => {
-    const todayStr = new Date('2026-04-15T10:00:00Z').toISOString().split('T')[0];
+    // findBestSlots emits LOCAL date strings — derive `todayStr` the same
+    // way to avoid a UTC/local mismatch on hosts that span a date line
+    // relative to the pinned 10:00 UTC anchor.
+    const today = new Date('2026-04-15T10:00:00Z');
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const slots = findBestSlots([], 10, makeEngagement());
     for (const s of slots) {
       expect(s.date).not.toBe(todayStr);

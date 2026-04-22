@@ -47,14 +47,14 @@ export function pickFillWeekSlot(opts: PickFillWeekSlotOptions): FillWeekSlotRes
   const horizonDays = week1.filled ? 14 : 7;
   const slot = findBestSlot(posts, engagement, { platforms, caps, horizonDays });
 
-  // Week classification compares against the same midnight-anchored
-  // "today" used in computeWeekFillStatus, so a slot whose date is
-  // [today, today+6] is week 1 regardless of how many of those days
-  // are already past in the running clock.
+  // Week classification: both `findBestSlots` and `computeWeekFillStatus`
+  // anchor on TOMORROW (today is excluded — we never schedule into it),
+  // so week 1 = [tomorrow, tomorrow+7) = [today+1, today+8). Anything at
+  // today+8 or later is week 2.
   const today = new Date(now ?? new Date());
   today.setHours(0, 0, 0, 0);
   const week2Start = new Date(today);
-  week2Start.setDate(today.getDate() + 7);
+  week2Start.setDate(today.getDate() + 8);
   const slotDate = new Date(`${slot.date}T00:00:00`);
   const week: 1 | 2 = slotDate.getTime() >= week2Start.getTime() ? 2 : 1;
 

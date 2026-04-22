@@ -14,6 +14,7 @@
 // `now` so tests can pin it.
 
 import type { ScheduledPost } from '../types/mashup';
+import { formatLocalDate } from './local-date';
 
 export interface DayFill {
   /** YYYY-MM-DD in the caller's local timezone. */
@@ -47,24 +48,19 @@ export interface WeekFillStatus {
   filled: boolean;
   /** Percentage 0..100, rounded to the nearest int for UI use. */
   percent: number;
-  /** Ordered from today forward (days.length === targetDays). */
+  /** Ordered from tomorrow forward (days.length === targetDays). */
   days: DayFill[];
 }
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
-function formatDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 /**
  * Build a per-day breakdown of how many non-terminal (`pending_approval`
  * or `scheduled`) posts live in each of the next `targetDays` days,
- * starting from `now`'s calendar day. Posts in the past (even same day)
- * count if their datetime is >= now.
+ * starting from TOMORROW's calendar day (today is excluded — it matches
+ * `findBestSlots` in smartScheduler.ts which also schedules from tomorrow,
+ * so the daemon's "filled?" check and the scheduler's slot-pick agree on
+ * which days count). Posts in the past are filtered out.
  *
  * Terminal statuses (`posted`, `failed`) are excluded — they don't
  * contribute to "still to be published" capacity planning.
@@ -78,6 +74,8 @@ export function computeWeekFillStatus(
   const days: DayFill[] = [];
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
 
   const counts = new Map<string, number>();
   if (posts && posts.length > 0) {
@@ -93,9 +91,9 @@ export function computeWeekFillStatus(
   }
 
   for (let i = 0; i < targetDays; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    const dateStr = formatDate(d);
+    const d = new Date(tomorrow);
+    d.setDate(tomorrow.getDate() + i);
+    const dateStr = formatLocalDate(d);
     const scheduledCount = counts.get(dateStr) ?? 0;
     days.push({
       date: dateStr,

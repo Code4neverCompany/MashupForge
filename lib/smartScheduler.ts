@@ -6,6 +6,8 @@
  * Engagement data is cached in localStorage with a 24h TTL.
  */
 
+import { formatLocalDate } from './local-date';
+
 interface IgMediaPost {
   timestamp?: string;
   like_count?: number;
@@ -373,7 +375,9 @@ export function findBestSlots(
   for (let dayOffset = 0; dayOffset < horizonDays; dayOffset++) {
     const checkDate = new Date(startDate);
     checkDate.setDate(checkDate.getDate() + dayOffset);
-    const dateStr = checkDate.toISOString().split('T')[0];
+    // Local date — must match weekly-fill.ts so daemon's "filled?" check
+    // and slot-pick agree on day boundaries for non-UTC timezones.
+    const dateStr = formatLocalDate(checkDate);
 
     // Skip whole day if any target platform is at cap.
     if (dayWouldExceedCap(dateStr)) continue;
@@ -422,5 +426,5 @@ export function findBestSlot(
   // Absolute fallback
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  return { date: tomorrow.toISOString().split('T')[0], time: '19:00' };
+  return { date: formatLocalDate(tomorrow), time: '19:00' };
 }

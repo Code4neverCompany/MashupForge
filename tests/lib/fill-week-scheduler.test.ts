@@ -50,7 +50,7 @@ function post(date: string, time: string): ScheduledPost {
 }
 
 describe('pickFillWeekSlot — horizon switches with week-1 fill state', () => {
-  it('with empty schedule, picks a slot in week 1 (next 7 days)', () => {
+  it('with empty schedule, picks a slot in week 1 (tomorrow .. tomorrow+6)', () => {
     const result = pickFillWeekSlot({
       posts: [],
       engagement: flatEngagement(),
@@ -59,20 +59,22 @@ describe('pickFillWeekSlot — horizon switches with week-1 fill state', () => {
     });
     expect(result.week).toBe(1);
     const slotDate = new Date(`${result.date}T00:00:00`);
+    // Week 1 = [tomorrow, tomorrow+7) = [today+1, today+8).
     const today = new Date(NOW); today.setHours(0, 0, 0, 0);
-    const week2Start = new Date(today); week2Start.setDate(today.getDate() + 7);
+    const week2Start = new Date(today); week2Start.setDate(today.getDate() + 8);
     expect(slotDate.getTime()).toBeLessThan(week2Start.getTime());
   });
 
   it('once week 1 is fully booked, the slot lands in week 2', () => {
-    // Saturate every day in week 1 with 2 posts each (postsPerDay = 2)
-    // at engagement-best hours, so any further slot must spill into
+    // Saturate every day in week 1 (tomorrow .. tomorrow+6) with 2 posts
+    // each at engagement-best hours, so any further slot must spill into
     // week 2 once the horizon expands to 14.
     const posts: ScheduledPost[] = [];
     const today = new Date(NOW); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
     for (let i = 0; i < 7; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
+      const d = new Date(tomorrow);
+      d.setDate(tomorrow.getDate() + i);
       const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       posts.push(post(ds, '18:00'));
       posts.push(post(ds, '20:00'));
@@ -85,18 +87,19 @@ describe('pickFillWeekSlot — horizon switches with week-1 fill state', () => {
     });
     expect(result.week).toBe(2);
     const slotDate = new Date(`${result.date}T00:00:00`);
-    const week2Start = new Date(today); week2Start.setDate(today.getDate() + 7);
+    const week2Start = new Date(today); week2Start.setDate(today.getDate() + 8);
     expect(slotDate.getTime()).toBeGreaterThanOrEqual(week2Start.getTime());
   });
 
   it('with week 1 partially filled, the slot still lands in week 1', () => {
-    // Only 4 days of week 1 saturated → 3 days still have gaps. The
-    // 7-day horizon must keep selection inside week 1.
+    // Only 4 days of week 1 (tomorrow .. tomorrow+3) saturated → 3 days
+    // still have gaps. The 7-day horizon must keep selection inside week 1.
     const posts: ScheduledPost[] = [];
     const today = new Date(NOW); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
     for (let i = 0; i < 4; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
+      const d = new Date(tomorrow);
+      d.setDate(tomorrow.getDate() + i);
       const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       posts.push(post(ds, '18:00'));
       posts.push(post(ds, '20:00'));
