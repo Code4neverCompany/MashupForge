@@ -6,12 +6,19 @@ import { Plus, X, Drama } from 'lucide-react';
 const CURATED_UNIVERSES = [
   'Marvel', 'DC', 'Star Wars', 'Star Trek', 'Warhammer 40k', 'Dune',
   'LOTR', 'Game of Thrones', 'Anime', 'Studio Ghibli', 'Disney', 'Cyberpunk 2077',
+  'Harry Potter', 'Witcher', 'Mass Effect', 'Halo', 'Fallout', 'Bloodborne',
+  'Attack on Titan', 'One Piece', 'Naruto', 'Dragon Ball', 'Evangelion', 'Avatar',
+  'Stranger Things', 'The Matrix', 'Blade Runner', 'Akira',
 ];
 
 const CURATED_GENRES = [
   'Sci-Fi', 'Fantasy', 'Horror', 'Cyberpunk', 'Steampunk', 'Western',
   'Noir', 'Post-apocalyptic', 'Slice-of-life', 'Mythology',
+  'Dark Fantasy', 'High Fantasy', 'Space Opera', 'Dystopian', 'Gothic',
+  'Urban Fantasy', 'Mecha', 'Isekai', 'Cosmic Horror', 'Solarpunk',
 ];
+
+const MAX_SELECTIONS = 10;
 
 interface Step2Props {
   universes: string[];
@@ -26,7 +33,7 @@ export function Step2Niche({ universes, genres, onChangeUniverses, onChangeGenre
       <div>
         <h3 id="onboarding-title" className="text-xl font-bold text-white">What do you create?</h3>
         <p className="text-sm text-zinc-400 mt-1">
-          Pick 1 or 2 universes and a few genres. The agent uses these to brainstorm crossovers.
+          Pick the universes and genres you create in — up to {MAX_SELECTIONS} each. The agent uses these to brainstorm crossovers.
         </p>
       </div>
 
@@ -35,7 +42,7 @@ export function Step2Niche({ universes, genres, onChangeUniverses, onChangeGenre
         curated={CURATED_UNIVERSES}
         selected={universes}
         onChange={onChangeUniverses}
-        max={2}
+        max={MAX_SELECTIONS}
       />
 
       <ChipRow
@@ -43,7 +50,7 @@ export function Step2Niche({ universes, genres, onChangeUniverses, onChangeGenre
         curated={CURATED_GENRES}
         selected={genres}
         onChange={onChangeGenres}
-        max={2}
+        max={MAX_SELECTIONS}
       />
 
       <IdentityPreview universes={universes} genres={genres} />

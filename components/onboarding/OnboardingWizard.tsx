@@ -140,10 +140,10 @@ export function OnboardingWizard({ initialStep = 1, onComplete, onSkip }: Onboar
     >
       <div
         ref={dialogRef}
-        className="max-w-[640px] w-[calc(100vw-2rem)] min-h-[540px] bg-zinc-950/95 backdrop-blur-xl border border-[#c5a062]/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        className="max-w-[640px] w-[calc(100vw-2rem)] min-h-[540px] max-h-[calc(100vh-2rem)] bg-zinc-950/95 backdrop-blur-xl border border-[#c5a062]/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
       >
         {/* Header */}
-        <div className="px-6 py-4 flex items-center justify-between border-b border-zinc-900">
+        <div className="px-6 py-4 flex items-center justify-between border-b border-zinc-900 flex-shrink-0">
           <span className="text-sm font-bold tracking-wide text-[#c5a062]">MASHUPFORGE</span>
           <button
             type="button"
@@ -155,7 +155,7 @@ export function OnboardingWizard({ initialStep = 1, onComplete, onSkip }: Onboar
         </div>
 
         {/* Stepper */}
-        <div className="px-6 py-4 border-b border-zinc-900">
+        <div className="px-6 py-4 border-b border-zinc-900 flex-shrink-0">
           <StepStepper current={step} />
         </div>
 
@@ -191,7 +191,7 @@ export function OnboardingWizard({ initialStep = 1, onComplete, onSkip }: Onboar
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-zinc-900 flex items-center justify-between">
+        <div className="px-6 py-4 border-t border-zinc-900 flex items-center justify-between flex-shrink-0">
           <button
             type="button"
             onClick={handleBack}
