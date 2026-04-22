@@ -821,7 +821,7 @@ export interface MashupContextType {
   generateComparison: (prompt: string, modelIds: string[], options?: GenerateOptions, cachedEnhancements?: Record<string, import('../hooks/useComparison').CachedEnhancement>) => Promise<GeneratedImage[]>;
   autoTagImage: (id: string, providedImg?: GeneratedImage) => Promise<void>;
   setImageStatus: (id: string, status: 'generating' | 'animating' | 'ready') => void;
-  autoGenerateCollectionInfo: (sampleImages: GeneratedImage[] | string[]) => Promise<{ name: string; description: string } | undefined>;
+  autoGenerateCollectionInfo: (sampleImages: GeneratedImage[] | string[]) => Promise<{ name: string; description: string } | null>;
   comparisonResults: GeneratedImage[];
   pickComparisonWinner: (id: string) => Promise<void>;
   clearComparison: () => void;

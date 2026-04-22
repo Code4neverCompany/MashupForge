@@ -31,15 +31,18 @@ export function useCollections(settings: UserSettings) {
     loadCollections();
   }, []);
 
-  const autoGenerateCollectionInfo = async (sampleImages: GeneratedImage[] | string[]) => {
+  const autoGenerateCollectionInfo = async (
+    sampleImages: GeneratedImage[] | string[],
+  ): Promise<{ name: string; description: string } | null> => {
     try {
       let context = '';
       if (sampleImages.length > 0 && typeof sampleImages[0] === 'string') {
         context = (sampleImages as string[]).map((p, i) => `${i+1}. ${p}`).join('\n');
       } else {
-        context = (sampleImages as GeneratedImage[]).map((img, i) =>
-          `${i+1}. Prompt: ${img.prompt}, Model: ${img.modelInfo?.modelName || 'Unknown'}, Provider: ${img.modelInfo?.provider || 'Unknown'}`
-        ).join('\n');
+        context = (sampleImages as GeneratedImage[]).map((img, i) => {
+          const tags = img.postHashtags?.length ? ` | Tags: ${img.postHashtags.join(', ')}` : '';
+          return `${i+1}. Prompt: ${img.prompt}, Model: ${img.modelInfo?.modelName || 'Unknown'}, Provider: ${img.modelInfo?.provider || 'Unknown'}${tags}`;
+        }).join('\n');
       }
 
       const text = await streamAIToString(
@@ -55,12 +58,16 @@ Return a JSON object with "name" and "description" keys.`,
       );
       const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const data = JSON.parse(cleaned || '{}');
+      if (!data.name && !data.description) return null;
       return {
-        name: data.name || 'New Collection',
-        description: data.description || 'A collection of amazing mashups.'
+        name: data.name || '',
+        description: data.description || '',
       };
     } catch {
-      return { name: 'New Collection', description: 'A collection of amazing mashups.' };
+      // V080-DES-004 — return null so the Suggest button leaves fields
+      // empty on failure (no silent default). createCollection fallback
+      // still handles an empty name by assigning "Collection N".
+      return null;
     }
   };
 
