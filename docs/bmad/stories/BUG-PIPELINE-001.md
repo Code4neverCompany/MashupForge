@@ -5,10 +5,12 @@
 **Filed by:** QA Agent  
 **Date:** 2026-04-22  
 **Source:** `docs/PIPELINE-DAEMON-ANALYSIS.md` Bug 1  
-**Status:** Open
+**Status:** Resolved
 
 ---
 
+
+**Resolved:** 2026-04-22 — Bug fixed in commit `2fba6f7`. Regression test added in `03e1a2e` (late evening start-of-window invariant). 696/696 tests pass.
 ## Summary
 
 `findBestSlots` (smartScheduler.ts) intentionally starts candidates from **tomorrow**, but
