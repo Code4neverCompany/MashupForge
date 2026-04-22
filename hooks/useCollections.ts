@@ -46,7 +46,12 @@ export function useCollections(settings: UserSettings) {
         `Based on these sample images/prompt: "${context}"
 Generate a creative collection name (short, catchy) and a brief description (1-2 sentences).
 Return a JSON object with "name" and "description" keys.`,
-        { mode: 'collection-info' }
+        {
+          mode: 'collection-info',
+          systemPrompt: settings.agentPrompt,
+          niches: settings.agentNiches,
+          genres: settings.agentGenres,
+        }
       );
       const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const data = JSON.parse(cleaned || '{}');

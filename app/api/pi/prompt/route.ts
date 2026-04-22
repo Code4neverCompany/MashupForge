@@ -122,6 +122,26 @@ function sanitizeStringArray(raw: unknown): string[] {
 }
 
 /**
+ * V080-DES-003 — Build a "focus" system-prompt block from the user's
+ * configured niches/genres. Added to the composed system prompt on every
+ * mode (not just `idea`) so captions, enhances, tags etc. reflect the
+ * user's settings without each caller having to re-word the agentPrompt.
+ *
+ * Returns an empty string when both arrays are empty so the caller's
+ * `.filter(Boolean)` drops it cleanly.
+ */
+export function buildFocusBlock(niches: string[], genres: string[]): string {
+  if (niches.length === 0 && genres.length === 0) return '';
+  const nicheClause =
+    niches.length > 0 ? `The user creates content in: ${niches.join(', ')}.` : '';
+  const genreClause =
+    genres.length > 0 ? `Favor themes and styles like: ${genres.join(', ')}.` : '';
+  return ['Focus areas:', nicheClause, genreClause, 'Every output should visibly reflect these areas.']
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
  * Build the trending-context query from the user's active niches/genres.
  *
  * Picks 2 niches to diversify results — a single fixed query was returning
@@ -295,6 +315,13 @@ export async function POST(req: Request) {
   const preBlocks: string[] = [];
   const postBlocks: string[] = [];
 
+  // V080-DES-003 — compute focus block once per request so every mode
+  // benefits, not just `idea` (which also uses niches/genres below to
+  // build its trending-search query).
+  const focusNiches = sanitizeStringArray(niches);
+  const focusGenres = sanitizeStringArray(genres);
+  const focusBlock = buildFocusBlock(focusNiches, focusGenres);
+
   if (mode === 'idea' || mode === 'generate') {
     const memBlock = formatMemoryForPrompt(coerceMemory(memory));
     if (memBlock) preBlocks.push(memBlock);
@@ -303,8 +330,8 @@ export async function POST(req: Request) {
   if (mode === 'idea') {
     const braveKey = (process.env.BRAVE_API_KEY ?? '').trim();
     const searchOpts = braveKey ? { provider: 'brave' as const, braveApiKey: braveKey } : undefined;
-    const cleanedNiches = sanitizeStringArray(niches);
-    const cleanedGenres = sanitizeStringArray(genres);
+    const cleanedNiches = focusNiches;
+    const cleanedGenres = focusGenres;
 
     // Three queries instead of one: two niche-tailored shuffles (the
     // Fisher-Yates in buildTrendingQuery reseeds from Math.random on each
@@ -349,7 +376,7 @@ export async function POST(req: Request) {
   }
 
   const composedSystem =
-    [...preBlocks, directive, systemPrompt, ...postBlocks].filter(Boolean).join('\n\n') ||
+    [...preBlocks, directive, systemPrompt, focusBlock, ...postBlocks].filter(Boolean).join('\n\n') ||
     undefined;
 
   const encoder = new TextEncoder();

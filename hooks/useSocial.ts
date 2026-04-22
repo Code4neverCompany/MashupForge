@@ -22,7 +22,12 @@ The caption should be professional yet edgy, fitting a "Master Content Creator" 
 Include fitting emojis.
 Include a set of relevant hashtags, and MUST include #${channel}.
 Return ONLY a JSON object with exactly two keys: "caption" (string) and "hashtags" (array of strings).`,
-        { mode: 'caption' }
+        {
+          mode: 'caption',
+          systemPrompt: settings.agentPrompt,
+          niches: settings.agentNiches,
+          genres: settings.agentGenres,
+        }
       );
 
       const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
