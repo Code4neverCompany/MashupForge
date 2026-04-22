@@ -14,7 +14,9 @@
 
 import { useState } from 'react';
 import {
+  AlertCircle,
   Check,
+  CheckCircle2,
   Clock,
   Copy,
   Loader2,
@@ -142,6 +144,20 @@ export function PostReadyCard({
   const { kind, label } = derivePostReadyStatus(img, scheduledPost);
   const v = statusVisuals(kind);
 
+  // For failed cards, surface the failure reason as an always-visible
+  // banner. `status` is the transient per-card postStatus[id] string;
+  // when it starts with `Error:` it is the auto-poster's reason. No
+  // persistent `error` field exists on ScheduledPost yet (DESIGN-001 §5
+  // flagged that as a complex change requiring a separate proposal),
+  // so we fall back to the spec's generic message when the transient
+  // string is missing or stale.
+  const errorReason =
+    kind === 'failed'
+      ? status && status.startsWith('Error')
+        ? status.replace(/^Error:\s*/, '')
+        : 'Post failed — check platform credentials'
+      : null;
+
   const hashtags = img.postHashtags ?? [];
   const visibleTags = hashtagsExpanded ? hashtags : hashtags.slice(0, HASHTAG_PREVIEW);
   const hiddenCount = Math.max(0, hashtags.length - HASHTAG_PREVIEW);
@@ -162,8 +178,8 @@ export function PostReadyCard({
           aria-label={`Status: ${label}`}
         >
           {kind === 'scheduled' && <Clock className="w-3 h-3" />}
-          {kind === 'posted' && <Check className="w-3 h-3" />}
-          {kind === 'failed' && <X className="w-3 h-3" />}
+          {kind === 'posted' && <CheckCircle2 className="w-3 h-3" />}
+          {kind === 'failed' && <AlertCircle className="w-3 h-3" />}
           {label}
         </span>
       </div>
@@ -175,24 +191,38 @@ export function PostReadyCard({
           selectedPlatforms={selectedPlatforms}
           onClick={onPreviewClick}
           overlay={
-            onGroupingToggle ? (
-              <label
-                className="absolute top-2 right-2 z-10 flex items-center justify-center w-6 h-6 bg-black/60 backdrop-blur-sm rounded cursor-pointer hover:bg-black/80 transition-colors"
-                onClick={(e) => e.stopPropagation()}
-                title="Select for grouping"
-              >
-                <input
-                  type="checkbox"
-                  checked={!!groupingChecked}
-                  onChange={(e) => onGroupingToggle(e.target.checked)}
-                  className="w-4 h-4 accent-[#00e6ff] cursor-pointer"
-                />
-              </label>
-            ) : undefined
+            <>
+              {kind === 'posted' && (
+                <div className="absolute inset-0 bg-black/35 pointer-events-none" />
+              )}
+              {kind === 'failed' && (
+                <div className="absolute inset-0 bg-red-950/30 pointer-events-none" />
+              )}
+              {onGroupingToggle && (
+                <label
+                  className="absolute top-2 right-2 z-10 flex items-center justify-center w-6 h-6 bg-black/60 backdrop-blur-sm rounded cursor-pointer hover:bg-black/80 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                  title="Select for grouping"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!groupingChecked}
+                    onChange={(e) => onGroupingToggle(e.target.checked)}
+                    className="w-4 h-4 accent-[#00e6ff] cursor-pointer"
+                  />
+                </label>
+              )}
+            </>
           }
         />
 
         <div className="flex-1 p-3 space-y-3 min-w-0">
+          {errorReason && (
+            <div className="flex gap-2 px-3 py-2 bg-red-950/40 border-l-2 border-red-500 rounded-r">
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-red-200 leading-snug">{errorReason}</p>
+            </div>
+          )}
           {/* Caption — collapsed 2-line preview, click to edit */}
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
@@ -371,8 +401,9 @@ export function PostReadyCard({
             />
           </div>
 
-          {/* Inline transient status */}
-          {status && (
+          {/* Inline transient status — hidden when the failed-state
+              banner above is already showing the same Error string. */}
+          {status && kind !== 'failed' && (
             <p className={`text-[11px] ${status.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'}`}>
               {status}
             </p>
