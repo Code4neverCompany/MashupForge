@@ -991,8 +991,11 @@ export function MainContent() {
   };
 
   /**
-   * Generate captions for every visible uncaptioned image. Sequential —
-   * pi serializes prompts anyway, and we get cleaner progress reporting.
+   * Generate captions for every visible uncaptioned image.
+   *
+   * PROP-019/OPT-004: runs up to CONCURRENCY entries in parallel via a
+   * worker pool. Cap matches PROP-017's pipeline captioning pool and
+   * respects pi.dev rate limits.
    *
    * Carousel-aware: when the captioning view is grouped, each carousel
    * counts as ONE caption job — caption the anchor once, fan the result
@@ -1025,24 +1028,35 @@ export function MainContent() {
     }
 
     if (entries.length === 0) return;
+    const total = entries.length;
     setBatchCaptioning(true);
-    setBatchProgress({ done: 0, total: entries.length });
+    setBatchProgress({ done: 0, total });
     try {
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
-        const anchor = entry.kind === 'single' ? entry.img : entry.anchor;
-        setPreparingPostId(anchor.id);
-        try {
-          if (entry.kind === 'carousel') {
-            await fanCaptionToGroup(anchor, entry.rest);
-          } else {
-            await generatePostContent(anchor);
+      const CONCURRENCY = 3;
+      let cursor = 0;
+      let done = 0;
+      const runWorker = async () => {
+        while (true) {
+          const i = cursor++;
+          if (i >= total) return;
+          const entry = entries[i];
+          const anchor = entry.kind === 'single' ? entry.img : entry.anchor;
+          setPreparingPostId(anchor.id);
+          try {
+            if (entry.kind === 'carousel') {
+              await fanCaptionToGroup(anchor, entry.rest);
+            } else {
+              await generatePostContent(anchor);
+            }
+          } catch {
+            // individual batch failure — continue to next entry
           }
-        } catch {
-          // individual batch failure — continue to next entry
+          done++;
+          setBatchProgress({ done, total });
         }
-        setBatchProgress({ done: i + 1, total: entries.length });
-      }
+      };
+      const workerCount = Math.min(CONCURRENCY, total);
+      await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
     } finally {
       setPreparingPostId(null);
       setBatchCaptioning(false);
@@ -1588,6 +1602,7 @@ export function MainContent() {
         modelGuides: MODEL_PROMPT_GUIDES,
         availableStyles: LEONARDO_SHARED_STYLES,
         savedImages,
+        includedModelIds: comparisonModels,
       });
       setParamSuggestion(suggestion);
       if (suggestion.source === 'rules') {
