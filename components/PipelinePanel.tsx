@@ -289,7 +289,7 @@ export function PipelinePanel() {
 
       {/* Controls */}
       <div className="card p-4 sm:p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-zinc-300">Pipeline</span>
             <button
@@ -402,7 +402,7 @@ export function PipelinePanel() {
         {/* Stage toggles */}
         <div className="pt-2 border-t border-[#c5a062]/15 space-y-2">
           <p className="label-overline">Stages</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             {[
               { key: 'pipelineAutoTag' as const, label: 'Auto-tag images', value: autoTag },
               { key: 'pipelineAutoCaption' as const, label: 'Auto-caption', value: autoCaption },
@@ -517,7 +517,7 @@ export function PipelinePanel() {
             <p className="label-overline">Auto-Approve (per platform)</p>
             <span className="text-[10px] text-zinc-500">off = manual review</span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {(['instagram', 'pinterest', 'twitter', 'discord'] as PipelinePlatform[]).map((p) => {
               const isAuto = isPlatformAutoApproved(p, autoApprove);
               const colour =
@@ -561,7 +561,7 @@ export function PipelinePanel() {
             <p className="label-overline">Daily Caps (per platform)</p>
             <span className="text-[10px] text-zinc-500">empty = no cap</span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {(['instagram', 'pinterest', 'twitter', 'discord'] as PipelinePlatform[]).map((p) => {
               const value = dailyCaps[p];
               const colour =
