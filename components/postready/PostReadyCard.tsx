@@ -12,21 +12,20 @@
  * card; clicking a time confirms the schedule and closes the calendar.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useState } from 'react';
 import {
   Check,
   Clock,
   Copy,
   Loader2,
   MinusCircle,
-  MoreVertical,
   RefreshCw,
   Send,
   X,
 } from 'lucide-react';
 import { AspectPreview } from './AspectPreview';
 import { InlineScheduleCalendar } from './InlineScheduleCalendar';
+import { KebabMenu, type KebabMenuItem } from '../KebabMenu';
 import {
   derivePostReadyStatus,
   type PostReadyStatusKind,
@@ -139,45 +138,9 @@ export function PostReadyCard({
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [captionExpanded, setCaptionExpanded] = useState(false);
   const [hashtagsExpanded, setHashtagsExpanded] = useState(false);
-  const [kebabOpen, setKebabOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  // Portaled menu position. Recomputed on open and on scroll/resize so
-  // `position: fixed` stays anchored to the button rect — without the
-  // portal, a sibling card in the grid could clip the dropdown because
-  // `z-index` does not cross stacking contexts.
-  const MENU_WIDTH = 176;
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
 
   const { kind, label } = derivePostReadyStatus(img, scheduledPost);
   const v = statusVisuals(kind);
-
-  useEffect(() => {
-    if (!kebabOpen) {
-      setMenuPos(null);
-      return;
-    }
-    const recompute = () => {
-      const rect = buttonRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setMenuPos({ top: rect.bottom + 4, left: rect.right - MENU_WIDTH });
-    };
-    recompute();
-    const onDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (buttonRef.current?.contains(target)) return;
-      if (menuRef.current?.contains(target)) return;
-      setKebabOpen(false);
-    };
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('scroll', recompute, true);
-    window.addEventListener('resize', recompute);
-    return () => {
-      window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('scroll', recompute, true);
-      window.removeEventListener('resize', recompute);
-    };
-  }, [kebabOpen]);
 
   const hashtags = img.postHashtags ?? [];
   const visibleTags = hashtagsExpanded ? hashtags : hashtags.slice(0, HASHTAG_PREVIEW);
@@ -364,66 +327,48 @@ export function PostReadyCard({
             >
               <Clock className="w-3.5 h-3.5" /> Schedule
             </button>
-            <div className="relative">
-              <button
-                ref={buttonRef}
-                type="button"
-                aria-label="More actions"
-                aria-haspopup="menu"
-                aria-expanded={kebabOpen}
-                onClick={() => setKebabOpen((v) => !v)}
-                className="flex items-center justify-center w-8 h-8 rounded-full text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
-              >
-                <MoreVertical className="w-4 h-4" />
-              </button>
-              {kebabOpen && menuPos && typeof document !== 'undefined' && createPortal(
-                <div
-                  ref={menuRef}
-                  role="menu"
-                  className="fixed z-[9999] w-44 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl shadow-black/50 py-1"
-                  style={{ top: menuPos.top, left: menuPos.left }}
-                >
-                  <KebabItem
-                    icon={copyHighlighted ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    label="Copy caption + tags"
-                    disabled={!img.postCaption}
-                    onClick={() => {
-                      onCopy();
-                      setKebabOpen(false);
-                    }}
-                  />
-                  <KebabItem
-                    icon={isRegen ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                    label="Regenerate caption"
-                    disabled={isRegen}
-                    onClick={() => {
-                      onRegen();
-                      setKebabOpen(false);
-                    }}
-                  />
-                  {onCancelSchedule && kind === 'scheduled' && (
-                    <KebabItem
-                      icon={<X className="w-3.5 h-3.5" />}
-                      label="Cancel schedule"
-                      onClick={() => {
-                        onCancelSchedule();
-                        setKebabOpen(false);
-                      }}
-                    />
-                  )}
-                  <KebabItem
-                    icon={<MinusCircle className="w-3.5 h-3.5" />}
-                    label="Move out of Post Ready"
-                    danger
-                    onClick={() => {
-                      onUnready();
-                      setKebabOpen(false);
-                    }}
-                  />
-                </div>,
-                document.body,
-              )}
-            </div>
+            <KebabMenu
+              ariaLabel="More actions"
+              triggerClassName="flex items-center justify-center w-8 h-8 rounded-full text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:opacity-40"
+              items={(() => {
+                const out: KebabMenuItem[] = [
+                  {
+                    kind: 'item',
+                    id: 'copy',
+                    label: 'Copy caption + tags',
+                    icon: copyHighlighted ? Check : Copy,
+                    disabled: !img.postCaption,
+                    onSelect: onCopy,
+                  },
+                  {
+                    kind: 'item',
+                    id: 'regen',
+                    label: 'Regenerate caption',
+                    icon: isRegen ? Loader2 : RefreshCw,
+                    disabled: isRegen,
+                    onSelect: onRegen,
+                  },
+                ];
+                if (onCancelSchedule && kind === 'scheduled') {
+                  out.push({
+                    kind: 'item',
+                    id: 'cancel-schedule',
+                    label: 'Cancel schedule',
+                    icon: X,
+                    onSelect: onCancelSchedule,
+                  });
+                }
+                out.push({
+                  kind: 'item',
+                  id: 'unready',
+                  label: 'Move out of Post Ready',
+                  icon: MinusCircle,
+                  destructive: true,
+                  onSelect: onUnready,
+                });
+                return out;
+              })()}
+            />
           </div>
 
           {/* Inline transient status */}
@@ -450,29 +395,3 @@ export function PostReadyCard({
   );
 }
 
-export interface KebabItemProps {
-  icon: React.ReactNode;
-  label: string;
-  disabled?: boolean;
-  danger?: boolean;
-  onClick: () => void;
-}
-
-export function KebabItem({ icon, label, disabled, danger, onClick }: KebabItemProps) {
-  return (
-    <button
-      role="menuitem"
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-        danger
-          ? 'text-zinc-200 hover:bg-red-500/20 hover:text-red-200'
-          : 'text-zinc-200 hover:bg-zinc-800'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}

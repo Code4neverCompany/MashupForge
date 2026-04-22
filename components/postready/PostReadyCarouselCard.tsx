@@ -9,8 +9,7 @@
  *   - "Separate" / "Lock Group" lives in the kebab, not a primary button
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useState } from 'react';
 import {
   Check,
   Clock,
@@ -19,13 +18,12 @@ import {
   LayoutGrid,
   Loader2,
   MinusCircle,
-  MoreVertical,
   RefreshCw,
   Send,
   X,
 } from 'lucide-react';
 import { InlineScheduleCalendar } from './InlineScheduleCalendar';
-import { KebabItem } from './PostReadyCard';
+import { KebabMenu, type KebabMenuItem } from '../KebabMenu';
 import {
   derivePostReadyStatus,
   type PostReadyStatusKind,
@@ -132,38 +130,6 @@ export function PostReadyCarouselCard({
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [captionExpanded, setCaptionExpanded] = useState(false);
   const [hashtagsExpanded, setHashtagsExpanded] = useState(false);
-  const [kebabOpen, setKebabOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const MENU_WIDTH = 192;
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
-
-  useEffect(() => {
-    if (!kebabOpen) {
-      setMenuPos(null);
-      return;
-    }
-    const recompute = () => {
-      const rect = buttonRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setMenuPos({ top: rect.bottom + 4, left: rect.right - MENU_WIDTH });
-    };
-    recompute();
-    const onDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (buttonRef.current?.contains(target)) return;
-      if (menuRef.current?.contains(target)) return;
-      setKebabOpen(false);
-    };
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('scroll', recompute, true);
-    window.addEventListener('resize', recompute);
-    return () => {
-      window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('scroll', recompute, true);
-      window.removeEventListener('resize', recompute);
-    };
-  }, [kebabOpen]);
 
   const anchor = images[0];
   const { kind, label } = derivePostReadyStatus(anchor, scheduledPost);
@@ -345,85 +311,63 @@ export function PostReadyCarouselCard({
           >
             <Clock className="w-3.5 h-3.5" /> Schedule
           </button>
-          <div className="relative">
-            <button
-              ref={buttonRef}
-              type="button"
-              aria-label="More actions"
-              aria-haspopup="menu"
-              aria-expanded={kebabOpen}
-              onClick={() => setKebabOpen((v) => !v)}
-              className="flex items-center justify-center w-8 h-8 rounded-full text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
-            >
-              <MoreVertical className="w-4 h-4" />
-            </button>
-            {kebabOpen && menuPos && typeof document !== 'undefined' && createPortal(
-              <div
-                ref={menuRef}
-                role="menu"
-                className="fixed z-[9999] w-48 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl shadow-black/50 py-1"
-                style={{ top: menuPos.top, left: menuPos.left }}
-              >
-                <KebabItem
-                  icon={copyHighlighted ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  label="Copy caption + tags"
-                  disabled={!anchor.postCaption}
-                  onClick={() => {
-                    onCopy();
-                    setKebabOpen(false);
-                  }}
-                />
-                <KebabItem
-                  icon={isRegen ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                  label="Regenerate caption"
-                  disabled={isRegen}
-                  onClick={() => {
-                    onRegen();
-                    setKebabOpen(false);
-                  }}
-                />
-                {isExplicit ? (
-                  <KebabItem
-                    icon={<Columns className="w-3.5 h-3.5" />}
-                    label="Separate carousel"
-                    onClick={() => {
-                      onSeparate();
-                      setKebabOpen(false);
-                    }}
-                  />
-                ) : (
-                  <KebabItem
-                    icon={<LayoutGrid className="w-3.5 h-3.5" />}
-                    label="Lock as group"
-                    onClick={() => {
-                      onLockGroup();
-                      setKebabOpen(false);
-                    }}
-                  />
-                )}
-                {onCancelSchedule && kind === 'scheduled' && (
-                  <KebabItem
-                    icon={<X className="w-3.5 h-3.5" />}
-                    label="Cancel schedule"
-                    onClick={() => {
-                      onCancelSchedule();
-                      setKebabOpen(false);
-                    }}
-                  />
-                )}
-                <KebabItem
-                  icon={<MinusCircle className="w-3.5 h-3.5" />}
-                  label="Move all out of Post Ready"
-                  danger
-                  onClick={() => {
-                    onUnreadyAll();
-                    setKebabOpen(false);
-                  }}
-                />
-              </div>,
-              document.body,
-            )}
-          </div>
+          <KebabMenu
+            ariaLabel="More actions"
+            triggerClassName="flex items-center justify-center w-8 h-8 rounded-full text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:opacity-40"
+            items={(() => {
+              const out: KebabMenuItem[] = [
+                {
+                  kind: 'item',
+                  id: 'copy',
+                  label: 'Copy caption + tags',
+                  icon: copyHighlighted ? Check : Copy,
+                  disabled: !anchor.postCaption,
+                  onSelect: onCopy,
+                },
+                {
+                  kind: 'item',
+                  id: 'regen',
+                  label: 'Regenerate caption',
+                  icon: isRegen ? Loader2 : RefreshCw,
+                  disabled: isRegen,
+                  onSelect: onRegen,
+                },
+                isExplicit
+                  ? {
+                      kind: 'item',
+                      id: 'separate',
+                      label: 'Separate carousel',
+                      icon: Columns,
+                      onSelect: onSeparate,
+                    }
+                  : {
+                      kind: 'item',
+                      id: 'lock-group',
+                      label: 'Lock as group',
+                      icon: LayoutGrid,
+                      onSelect: onLockGroup,
+                    },
+              ];
+              if (onCancelSchedule && kind === 'scheduled') {
+                out.push({
+                  kind: 'item',
+                  id: 'cancel-schedule',
+                  label: 'Cancel schedule',
+                  icon: X,
+                  onSelect: onCancelSchedule,
+                });
+              }
+              out.push({
+                kind: 'item',
+                id: 'unready-all',
+                label: 'Move all out of Post Ready',
+                icon: MinusCircle,
+                destructive: true,
+                onSelect: onUnreadyAll,
+              });
+              return out;
+            })()}
+          />
         </div>
 
         {status && (
