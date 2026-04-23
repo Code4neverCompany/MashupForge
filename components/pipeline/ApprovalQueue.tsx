@@ -166,7 +166,7 @@ export function ApprovalQueue({
   }
 
   return (
-    <div className="bg-indigo-500/10 rounded-2xl border border-indigo-500/30 p-4 sm:p-5 space-y-4">
+    <div className="bg-[#00e6ff]/5 rounded-2xl border border-[#00e6ff]/25 p-4 sm:p-5 space-y-4">
       {flash && (
         <div
           role="status"
@@ -191,11 +191,11 @@ export function ApprovalQueue({
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-indigo-300" />
-          <span className="text-sm font-medium text-indigo-200">
+          <CheckCircle2 className="w-4 h-4 text-[#00e6ff]" />
+          <span className="text-sm font-medium text-[#00e6ff]">
             Pipeline Approval ({posts.length})
             {filtered.length !== posts.length && (
-              <span className="text-indigo-300/70"> · {filtered.length} shown</span>
+              <span className="text-[#00e6ff]/70"> · {filtered.length} shown</span>
             )}
           </span>
         </div>
@@ -234,8 +234,8 @@ export function ApprovalQueue({
                 onClick={() => setIdeaFilter(null)}
                 className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
                   ideaFilter === null
-                    ? 'bg-indigo-500/20 text-indigo-200 border-indigo-500/40'
-                    : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
+                    ? 'bg-[#00e6ff]/15 text-[#00e6ff] border-[#00e6ff]/40'
+                    : 'bg-[#050505]/80 text-zinc-400 border-[#c5a062]/20 hover:border-[#c5a062]/50'
                 }`}
               >
                 All
@@ -246,8 +246,8 @@ export function ApprovalQueue({
                   onClick={() => setIdeaFilter(id)}
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
                     ideaFilter === id
-                      ? 'bg-indigo-500/20 text-indigo-200 border-indigo-500/40'
-                      : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
+                      ? 'bg-[#00e6ff]/15 text-[#00e6ff] border-[#00e6ff]/40'
+                      : 'bg-[#050505]/80 text-zinc-400 border-[#c5a062]/20 hover:border-[#c5a062]/50'
                   }`}
                   title={ideaById.get(id)?.concept || id}
                 >
@@ -264,8 +264,8 @@ export function ApprovalQueue({
                 onClick={() => setModelFilter(null)}
                 className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
                   modelFilter === null
-                    ? 'bg-indigo-500/20 text-indigo-200 border-indigo-500/40'
-                    : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
+                    ? 'bg-[#00e6ff]/15 text-[#00e6ff] border-[#00e6ff]/40'
+                    : 'bg-[#050505]/80 text-zinc-400 border-[#c5a062]/20 hover:border-[#c5a062]/50'
                 }`}
               >
                 All
@@ -276,8 +276,8 @@ export function ApprovalQueue({
                   onClick={() => setModelFilter(m)}
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
                     modelFilter === m
-                      ? 'bg-indigo-500/20 text-indigo-200 border-indigo-500/40'
-                      : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
+                      ? 'bg-[#00e6ff]/15 text-[#00e6ff] border-[#00e6ff]/40'
+                      : 'bg-[#050505]/80 text-zinc-400 border-[#c5a062]/20 hover:border-[#c5a062]/50'
                   }`}
                 >
                   {m}
@@ -433,7 +433,7 @@ export function ApprovalQueue({
 
               <div className="flex items-center justify-between text-[10px] text-zinc-500">
                 <span>{post.date} {post.time}</span>
-                {modelName && <span className="text-indigo-300/80">{modelName}</span>}
+                {modelName && <span className="text-[#00e6ff]/80">{modelName}</span>}
               </div>
 
               {post.platforms && post.platforms.length > 0 && (
