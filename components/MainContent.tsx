@@ -94,6 +94,7 @@ import { enhancePromptForModel } from '@/lib/modelOptimizer';
 import { getErrorMessage } from '@/lib/errors';
 import { recordOutcome } from '@/lib/outcome-tracker';
 import { findPostingBlock, isStillScheduled } from '@/lib/post-approval-gate';
+import { getAllRejectedImageIds } from '@/lib/gallery-visibility';
 import { useSmartScheduler } from '@/hooks/useSmartScheduler';
 import { SmartScheduleModal } from './SmartScheduleModal';
 import {
@@ -1481,45 +1482,52 @@ export function MainContent() {
     [savedImages],
   );
 
-  const displayedImages = useMemo(() => (view === 'studio' ? images : savedImages)
-    .filter(img => {
-      // V040-HOTFIX-007: Gallery shows finalized images only. Pipeline
-      // images awaiting approval carry pipelinePending=true and are
-      // hidden here; they reappear when the user approves the
-      // associated ScheduledPost via the pipeline approval queue.
-      if (img.pipelinePending === true) return false;
-      const matchesSearch = img.prompt.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           img.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchesModel = filterModel === 'all' || img.modelInfo?.modelId === filterModel;
-      const matchesUniverse = filterUniverse === 'all' || img.universe === filterUniverse;
-      const matchesCollection = selectedCollectionId === 'all' || img.collectionId === selectedCollectionId;
+  const displayedImages = useMemo(() => {
+    // V080-DEV-002: hide images whose ScheduledPosts are all 'rejected'.
+    // BUG-DEV-003 stopped these from being orphaned (pipelinePending is
+    // cleared on reject so deletion / debug surfaces can see them); this
+    // layer keeps them out of the user-visible Gallery per Maurice's call.
+    // Images with mixed statuses or no posts at all stay visible.
+    const allRejectedImageIds = getAllRejectedImageIds(settings.scheduledPosts || []);
+    return (view === 'studio' ? images : savedImages)
+      .filter(img => {
+        // V040-HOTFIX-007: Gallery shows finalized images only. Pipeline
+        // images awaiting approval carry pipelinePending=true and are
+        // hidden here; they reappear when the user approves the
+        // associated ScheduledPost via the pipeline approval queue.
+        if (img.pipelinePending === true) return false;
+        if (allRejectedImageIds.has(img.id)) return false;
+        const matchesSearch = img.prompt.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                             img.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
+        const matchesModel = filterModel === 'all' || img.modelInfo?.modelId === filterModel;
+        const matchesUniverse = filterUniverse === 'all' || img.universe === filterUniverse;
+        const matchesCollection = selectedCollectionId === 'all' || img.collectionId === selectedCollectionId;
 
-      const matchesTag = !tagQuery.trim() || (() => {
-        const query = tagQuery.toLowerCase();
-        const orParts = query.split(/\s+or\s+|,/i);
-        return orParts.some(part => {
-          const andParts = part.trim().split(/\s+and\s+|;/i);
-          return andParts.every(term => {
-            term = term.trim();
-            if (term.startsWith('not ') || term.startsWith('-')) {
-              const excluded = term.replace(/^not\s+|-/, '').trim();
-              return !img.tags?.some(t => t.toLowerCase() === excluded);
-            } else {
-              return img.tags?.some(t => t.toLowerCase() === term);
-            }
+        const matchesTag = !tagQuery.trim() || (() => {
+          const query = tagQuery.toLowerCase();
+          const orParts = query.split(/\s+or\s+|,/i);
+          return orParts.some(part => {
+            const andParts = part.trim().split(/\s+and\s+|;/i);
+            return andParts.every(term => {
+              term = term.trim();
+              if (term.startsWith('not ') || term.startsWith('-')) {
+                const excluded = term.replace(/^not\s+|-/, '').trim();
+                return !img.tags?.some(t => t.toLowerCase() === excluded);
+              } else {
+                return img.tags?.some(t => t.toLowerCase() === term);
+              }
+            });
           });
-        });
-      })();
+        })();
 
-      return matchesSearch && matchesModel && matchesUniverse && matchesCollection && matchesTag;
-    })
-    .sort((a, b) => {
-      const timeA = a.savedAt || 0;
-      const timeB = b.savedAt || 0;
-      return sortBy === 'newest' ? timeB - timeA : timeA - timeB;
-    }),
-    [view, images, savedImages, searchQuery, filterModel, filterUniverse, selectedCollectionId, tagQuery, sortBy],
-  );
+        return matchesSearch && matchesModel && matchesUniverse && matchesCollection && matchesTag;
+      })
+      .sort((a, b) => {
+        const timeA = a.savedAt || 0;
+        const timeB = b.savedAt || 0;
+        return sortBy === 'newest' ? timeB - timeA : timeA - timeB;
+      });
+  }, [view, images, savedImages, settings.scheduledPosts, searchQuery, filterModel, filterUniverse, selectedCollectionId, tagQuery, sortBy]);
 
   /**
    * Active Post-Ready images — everything flagged `isPostReady` EXCEPT
