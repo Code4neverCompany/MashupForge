@@ -61,6 +61,10 @@ const styles = [
   { name: 'Portrait Cinematic', uuid: 'u4' },
   { name: 'Pro B&W Photography', uuid: 'u5' },
   { name: 'Fashion', uuid: 'u6' },
+  { name: 'Graphic Design 2D', uuid: 'u7' },
+  { name: 'Creative', uuid: 'u8' },
+  { name: 'Pro Film Photography', uuid: 'u9' },
+  { name: 'Ray Traced', uuid: 'u10' },
 ];
 
 describe('suggestParameters', () => {
@@ -272,6 +276,54 @@ describe('suggestParameters', () => {
     });
     expect(s.modelIds.length).toBeGreaterThan(0);
     expect(Object.keys(s.perModel).length).toBeGreaterThan(0);
+  });
+
+  it('V085-MODEL-STYLE-DIVERSITY: sibling models drawing from the same style pool get distinct styles', () => {
+    // nano-banana-2 and nano-banana-pro both share LEONARDO_SHARED_STYLES.
+    // Pre-V085, both would receive 'Illustration' for an anime prompt,
+    // making A/B comparisons pointless. The diversity rule walks the
+    // ranked candidates list and assigns each sibling a different style.
+    const s = suggestParameters({
+      prompt: 'anime illustration of a samurai',
+      availableModels: [makeModel('nano-banana-2'), makeModel('nano-banana-pro')],
+      modelGuides: {
+        'nano-banana-2': 'illustration anime',
+        'nano-banana-pro': 'illustration anime',
+      },
+      availableStyles: styles,
+      savedImages: [],
+    });
+    const a = s.perModel['nano-banana-2'];
+    const b = s.perModel['nano-banana-pro'];
+    if (a.type !== 'image' || b.type !== 'image') throw new Error('expected image');
+    expect(a.style).toBeDefined();
+    expect(b.style).toBeDefined();
+    expect(a.style).not.toBe(b.style);
+    // Both picks must come from the ranked candidate list for "anime".
+    expect(['Illustration', 'Graphic Design 2D', 'Creative']).toContain(a.style);
+    expect(['Illustration', 'Graphic Design 2D', 'Creative']).toContain(b.style);
+  });
+
+  it('V085-MODEL-STYLE-DIVERSITY: when only one candidate style is available, second sibling gets undefined', () => {
+    // Only Illustration is in the available pool — Graphic Design 2D and
+    // Creative are not. Sibling cannot find a non-colliding alternative
+    // and so receives no style rather than duplicating.
+    const limitedStyles = [{ name: 'Illustration', uuid: 'u1' }];
+    const s = suggestParameters({
+      prompt: 'anime scene',
+      availableModels: [makeModel('nano-banana-2'), makeModel('nano-banana-pro')],
+      modelGuides: {
+        'nano-banana-2': 'illustration anime',
+        'nano-banana-pro': 'illustration anime',
+      },
+      availableStyles: limitedStyles,
+      savedImages: [],
+    });
+    const entries = [s.perModel['nano-banana-2'], s.perModel['nano-banana-pro']];
+    const withStyle = entries.filter(e => e.type === 'image' && e.style).length;
+    const withoutStyle = entries.filter(e => e.type === 'image' && !e.style).length;
+    expect(withStyle).toBe(1);
+    expect(withoutStyle).toBe(1);
   });
 
   it('produces a video per-model entry when a video model is in the shortlist', () => {

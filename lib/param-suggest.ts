@@ -154,22 +154,47 @@ const ASPECT_RULES: AspectRule[] = [
   { keywords: ['cinematic', 'film still', 'movie still'], ratio: '3:2', reason: 'cinematic 3:2 framing' },
 ];
 
+// V085-MODEL-STYLE-DIVERSITY: each rule now lists styles in ranked order.
+// When multiple models share a style pool (e.g. nano-banana-2 and
+// nano-banana-pro both draw from LEONARDO_SHARED_STYLES), the first
+// model gets the top pick and siblings walk the list to find an
+// unused alternative. This prevents two siblings from being
+// suggested the identical style, which made A/B comparisons
+// pointless.
 interface StyleRule {
   keywords: string[];
-  styleName: string;
+  styleNames: readonly string[];
   reason: string;
 }
 
 const STYLE_RULES: StyleRule[] = [
-  { keywords: ['monochrome', 'black and white', 'b&w', 'noir'], styleName: 'Pro B&W Photography', reason: 'monochrome cue' },
-  { keywords: ['fashion', 'editorial', 'runway', 'vogue'], styleName: 'Fashion', reason: 'fashion / editorial cue' },
-  { keywords: ['anime', 'cartoon', 'comic', 'manga', 'illustration'], styleName: 'Illustration', reason: 'illustrated / drawn style cue' },
-  { keywords: ['3d render', '3d', 'cgi', 'octane', 'blender'], styleName: '3D Render', reason: '3D / rendered look cue' },
-  { keywords: ['watercolor', 'watercolour', 'painted', 'gouache'], styleName: 'Watercolor', reason: 'painted-medium cue' },
-  { keywords: ['game concept', 'concept art'], styleName: 'Game Concept', reason: 'concept-art cue' },
-  { keywords: ['portrait', 'headshot', 'head shot', 'close-up'], styleName: 'Portrait Cinematic', reason: 'portrait composition detected' },
-  { keywords: ['cinematic', 'dramatic', 'moody'], styleName: 'Portrait Cinematic', reason: 'cinematic / moody cue' },
-  { keywords: ['photorealistic', 'realistic', 'photograph', 'photo '], styleName: 'Pro Color Photography', reason: 'photographic-realism cue' },
+  { keywords: ['monochrome', 'black and white', 'b&w', 'noir'],
+    styleNames: ['Pro B&W Photography', 'Pro Film Photography'],
+    reason: 'monochrome cue' },
+  { keywords: ['fashion', 'editorial', 'runway', 'vogue'],
+    styleNames: ['Fashion', 'Portrait Fashion', 'Pro Color Photography'],
+    reason: 'fashion / editorial cue' },
+  { keywords: ['anime', 'cartoon', 'comic', 'manga', 'illustration'],
+    styleNames: ['Illustration', 'Graphic Design 2D', 'Creative'],
+    reason: 'illustrated / drawn style cue' },
+  { keywords: ['3d render', '3d', 'cgi', 'octane', 'blender'],
+    styleNames: ['3D Render', 'Ray Traced', 'Graphic Design 3D'],
+    reason: '3D / rendered look cue' },
+  { keywords: ['watercolor', 'watercolour', 'painted', 'gouache'],
+    styleNames: ['Watercolor', 'Acrylic', 'Creative'],
+    reason: 'painted-medium cue' },
+  { keywords: ['game concept', 'concept art'],
+    styleNames: ['Game Concept', 'Illustration', 'Dynamic'],
+    reason: 'concept-art cue' },
+  { keywords: ['portrait', 'headshot', 'head shot', 'close-up'],
+    styleNames: ['Portrait Cinematic', 'Portrait', 'Portrait Fashion'],
+    reason: 'portrait composition detected' },
+  { keywords: ['cinematic', 'dramatic', 'moody'],
+    styleNames: ['Portrait Cinematic', 'Pro Film Photography', 'Dynamic'],
+    reason: 'cinematic / moody cue' },
+  { keywords: ['photorealistic', 'realistic', 'photograph', 'photo '],
+    styleNames: ['Pro Color Photography', 'Stock Photo', 'Pro Film Photography'],
+    reason: 'photographic-realism cue' },
 ];
 
 const DETAIL_KEYWORDS = [
@@ -211,7 +236,12 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 interface RuleHints {
   aspectKeywordRatio?: string;
   aspectKeywordReason?: string;
-  styleKeyword?: { name: string; reason: string };
+  /**
+   * V085-MODEL-STYLE-DIVERSITY: ranked candidates rather than a single
+   * pick. The rule engine walks this list per model and skips styles
+   * already taken by sibling models with overlapping pools.
+   */
+  styleKeyword?: { candidates: readonly string[]; reason: string };
   detailHit?: string;
   shortVideoHit?: string;
   longVideoHit?: string;
@@ -231,7 +261,10 @@ function deriveHints(prompt: string): RuleHints {
   for (const rule of STYLE_RULES) {
     const hit = firstHit(prompt, rule.keywords);
     if (hit) {
-      hints.styleKeyword = { name: rule.styleName, reason: `"${hit.trim()}" → ${rule.reason}` };
+      hints.styleKeyword = {
+        candidates: rule.styleNames,
+        reason: `"${hit.trim()}" → ${rule.reason}`,
+      };
       break;
     }
   }
@@ -293,7 +326,15 @@ function pickImageAspect(
   };
 }
 
-/** Build a per-model rule-based suggestion for a single model. */
+/**
+ * Build a per-model rule-based suggestion for a single model.
+ *
+ * `excludedStyles` carries the styles already assigned to sibling
+ * models with overlapping style pools (V085-MODEL-STYLE-DIVERSITY).
+ * The rule engine walks `hints.styleKeyword.candidates` and picks the
+ * first one that is (a) supported by the model and (b) not in the
+ * excluded set, so sibling models never collide on the same pick.
+ */
 function ruleEngineForModel(
   modelId: string,
   spec: LeonardoModelSpec,
@@ -301,6 +342,7 @@ function ruleEngineForModel(
   hints: RuleHints,
   availableStyleNames: Set<string>,
   carriedNegativePrompt: string | undefined,
+  excludedStyles?: ReadonlySet<string>,
 ): PerModelSuggestion {
   if (spec.type === 'image') {
     const aspect = pickImageAspect(spec, hints.aspectKeywordRatio);
@@ -317,9 +359,14 @@ function ruleEngineForModel(
 
     let style: string | undefined;
     let styleReason: string | undefined;
-    if (spec.style_ids && hints.styleKeyword && availableStyleNames.has(hints.styleKeyword.name)) {
-      style = hints.styleKeyword.name;
-      styleReason = hints.styleKeyword.reason;
+    if (spec.style_ids && hints.styleKeyword) {
+      for (const candidate of hints.styleKeyword.candidates) {
+        if (availableStyleNames.has(candidate) && !excludedStyles?.has(candidate)) {
+          style = candidate;
+          styleReason = hints.styleKeyword.reason;
+          break;
+        }
+      }
     }
 
     const promptEnhance: 'ON' | 'OFF' = spec.prompt_enhance;
@@ -497,20 +544,31 @@ export function suggestParameters(input: SuggestParametersInput): ParamSuggestio
   }
 
   // ── Per-model derivation ─────────────────────────────────────────────────
+  // V085-MODEL-STYLE-DIVERSITY: walk models in rank order; each picked
+  // style joins `usedStyles`, which subsequent style-supporting models
+  // exclude from their own picks. Today every style-supporting model
+  // shares LEONARDO_SHARED_STYLES, so a single global set is sufficient.
+  // If/when distinct style pools land, swap this for a Map keyed by pool.
   const perModel: Record<string, PerModelSuggestion> = {};
+  const usedStyles = new Set<string>();
   for (const id of modelIds) {
     const spec = modelParams[id];
     const cfg = availableModels.find(m => m.id === id);
     const apiName = spec?.api_name ?? cfg?.apiModelId ?? id;
     if (!spec) continue;
-    perModel[id] = ruleEngineForModel(
+    const entry = ruleEngineForModel(
       id,
       spec,
       apiName,
       hints,
       availableStyleNames,
       carriedNegativePrompt,
+      usedStyles,
     );
+    perModel[id] = entry;
+    if (entry.type === 'image' && entry.style) {
+      usedStyles.add(entry.style);
+    }
   }
 
   // ── "Best shared" view ───────────────────────────────────────────────────
