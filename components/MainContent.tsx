@@ -134,6 +134,7 @@ import { PipelineView } from './views/PipelineView';
 // collision with `status` field names that local handlers iterate over.
 import { status as uiStatus, gold as uiGold, surface as uiSurface } from '@/lib/ui-tokens';
 import { computeCarouselView as computeCarouselViewPure, type PostItem } from '@/lib/carouselView';
+import { sortPostItems } from '@/lib/post-ready-sort';
 
 /**
  * Auto-sizing textarea that grows with its content. Resets to
@@ -298,6 +299,13 @@ export function MainContent() {
   const [postStatus, setPostStatus] = useState<Record<string, string | null>>({});
   // Post Ready view toggle + calendar navigation.
   const [postReadyView, setPostReadyView] = useState<'grid' | 'calendar' | 'history'>('grid');
+  // V082-POST-READY-SORT: user-chosen sort for the grid view.
+  //   savedAt   — when the image landed in Post Ready (newest first)
+  //   scheduled — by scheduled post time, soonest first (unscheduled last)
+  //   created   — by image creation time parsed from `img-<ts>-…` id
+  // Default is savedAt — matches the prior computeCarouselView ordering.
+  const [postReadySort, setPostReadySort] =
+    useState<'savedAt' | 'scheduled' | 'created'>('savedAt');
   const [calendarMode, setCalendarMode] = useState<'week' | 'month'>('week');
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
   // Inline edit popover state for the week view — only one open at a time.
@@ -2841,6 +2849,13 @@ export function MainContent() {
                 // Carousel-aware view used by Smart Schedule so grouped
                 // posts consume one slot each instead of N individual slots.
                 const postItems = computeCarouselView(ready);
+                // V082-POST-READY-SORT: applied after carousel grouping so
+                // the user's toggle order wins over the default savedAt.
+                const sortedPostItems = sortPostItems(
+                  postItems,
+                  postReadySort,
+                  settings.scheduledPosts || [],
+                );
                 const available = availablePlatforms();
 
                 const postAllNow = async () => {
@@ -2911,6 +2926,28 @@ export function MainContent() {
                             History {postedImages.length > 0 && `(${postedImages.length})`}
                           </button>
                         </div>
+                        {/* V082-POST-READY-SORT: sort toggle — grid view only. */}
+                        {postReadyView === 'grid' && ready.length > 0 && (
+                          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800/60 rounded-full pl-3 pr-1 py-0.5 mr-1">
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                              Sort
+                            </span>
+                            <select
+                              value={postReadySort}
+                              onChange={(e) =>
+                                setPostReadySort(
+                                  e.target.value as 'savedAt' | 'scheduled' | 'created',
+                                )
+                              }
+                              aria-label="Sort Post Ready cards"
+                              className="bg-transparent text-xs text-zinc-300 px-2 py-1 rounded-full cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#c5a062]/40"
+                            >
+                              <option value="savedAt">Saved (newest)</option>
+                              <option value="scheduled">Scheduled (soonest)</option>
+                              <option value="created">Created (newest)</option>
+                            </select>
+                          </div>
+                        )}
                         {/* Create Carousel — opens the lifted multi-source
                             picker. Source pool is every approved saved
                             image so users can mix Post-Ready and
@@ -3726,7 +3763,7 @@ export function MainContent() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {computeCarouselView(ready).map((item) => {
+                        {sortedPostItems.map((item) => {
                           // ── Carousel card branch — V060-001 ─────────────
                           if (item.kind === 'carousel') {
                             const key = `carousel-${item.id}`;
