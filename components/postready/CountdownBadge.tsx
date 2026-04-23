@@ -13,19 +13,28 @@ export interface CountdownBadgeProps {
   scheduledPost: ScheduledPost | undefined;
 }
 
-type Tone = 'active' | 'soon' | 'overdue';
+export type Tone = 'active' | 'soon' | 'overdue';
 
-function toTimestamp(date: string, time: string): number | null {
-  // YYYY-MM-DD · HH:MM (24h) — treat as local time.
-  const [hh, mm] = time.split(':').map(Number);
-  if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
-  const [y, m, d] = date.split('-').map(Number);
+export function toTimestamp(date: string, time: string): number | null {
+  // YYYY-MM-DD · HH:MM (24h) — treat as local time. V081-TEST-GAPS:
+  // an empty time string used to slip past Number.isNaN(undefined)
+  // (false!) and return NaN, which downstream rendered as "overdue
+  // by now" instead of suppressing the badge. Now we explicitly
+  // require a 2-part time and a 3-part date.
+  const timeParts = time.split(':');
+  if (timeParts.length !== 2) return null;
+  const [hh, mm] = timeParts.map(Number);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  const dateParts = date.split('-');
+  if (dateParts.length !== 3) return null;
+  const [y, m, d] = dateParts.map(Number);
   if (!y || !m || !d) return null;
   const dt = new Date(y, m - 1, d, hh, mm, 0, 0);
-  return dt.getTime();
+  const ts = dt.getTime();
+  return Number.isFinite(ts) ? ts : null;
 }
 
-function formatCountdown(deltaMs: number): { label: string; tone: Tone } {
+export function formatCountdown(deltaMs: number): { label: string; tone: Tone } {
   const future = deltaMs >= 0;
   const abs = Math.abs(deltaMs);
   const mins = Math.floor(abs / 60_000);
