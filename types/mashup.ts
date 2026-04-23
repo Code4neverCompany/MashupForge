@@ -538,6 +538,12 @@ export const LEONARDO_MODEL_PARAMS: Record<string, LeonardoModelSpec> = {
     height: 1024,
     supported_sizes: ['1024x1024'],
     quality: ['LOW', 'MEDIUM', 'HIGH'],
+    // V085-GPT15-STYLE-FIX: explicitly false (not just absent). gpt-image-1.5
+    // has NO style parameter — the param-suggest rule engine reads this flag
+    // to decide whether to assign a style. Leaving it undefined would still
+    // be falsy but invites accidental regressions; spelling it out is the
+    // canonical capability declaration.
+    style_ids: false,
     prompt_enhance: 'ON',
     supports_image_reference: true,
   },
