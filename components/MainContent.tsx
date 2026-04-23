@@ -1603,10 +1603,11 @@ export function MainContent() {
     setView('compare');
   };
 
-  // V030-007 / V030-008: ask pi.dev to reason about models/style/ratio/
-  // size/quality/negative-prompt from the prompt + compatibility matrix
-  // + prior winners. suggestParametersAI falls back to the deterministic
-  // rule engine on any pi failure, so the user always gets a card.
+  // V082-PARAM-SCRIPT: deterministic rule engine. Reads the prompt for
+  // subject/style/theme cues, looks up each model's supported parameters,
+  // and emits per-model panels that respect each model's capabilities.
+  // The pi.dev variant was retired (it produced wrong values for
+  // capability-aware models); rule-based is now the normal path.
   const handleSuggestParameters = async () => {
     if (!comparisonPrompt.trim()) {
       showToast('Enter a prompt first so we can suggest parameters.', 'error');
@@ -1623,9 +1624,6 @@ export function MainContent() {
         includedModelIds: comparisonModels,
       });
       setParamSuggestion(suggestion);
-      if (suggestion.source === 'rules') {
-        showToast('AI unavailable — showing rule-based suggestions.', 'error');
-      }
     } finally {
       setIsSuggesting(false);
     }

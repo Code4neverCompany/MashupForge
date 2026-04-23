@@ -142,7 +142,7 @@ export function ParamSuggestionCard({
                 ? 'pi.dev authored every per-model suggestion'
                 : suggestion.source === 'ai+rules'
                   ? 'pi.dev answered for some models; missing ones were filled from rule-based defaults'
-                  : 'pi.dev unavailable — rule-based fallback'
+                  : 'Rule-based suggestions — deterministic per-model parameters'
             }
           >
             {suggestion.source === 'ai' ? 'pi' : suggestion.source === 'ai+rules' ? 'pi + rules' : 'rules'}
