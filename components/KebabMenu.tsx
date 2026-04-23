@@ -8,9 +8,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { MoreVertical, type LucideIcon } from 'lucide-react';
 
 export type KebabMenuItem =
@@ -63,6 +65,7 @@ export function KebabMenu({
     placement === 'top' ? 'top' : 'bottom',
   );
   const [resolvedAlign, setResolvedAlign] = useState<'left' | 'right'>('right');
+  const [panelStyle, setPanelStyle] = useState<CSSProperties>({ position: 'fixed', top: 0, left: 0 });
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [reduceMotion, setReduceMotion] = useState(false);
 
@@ -133,8 +136,15 @@ export function KebabMenu({
     if (rect.right - PANEL_MIN_WIDTH < VIEWPORT_EDGE_GUARD) align = 'left';
     else if (rect.left + PANEL_MIN_WIDTH > vw - VIEWPORT_EDGE_GUARD) align = 'right';
 
+    const style: CSSProperties = { position: 'fixed' };
+    if (next === 'bottom') style.top = rect.bottom + 4;
+    else style.bottom = vh - rect.top + 4;
+    if (align === 'right') style.right = vw - rect.right;
+    else style.left = rect.left;
+
     setResolvedPlacement(next);
     setResolvedAlign(align);
+    setPanelStyle(style);
   }, [placement]);
 
   useLayoutEffect(() => {
@@ -304,52 +314,30 @@ export function KebabMenu({
 
   if (items.length === 0) return null;
 
-  const panelPositionClass =
-    resolvedPlacement === 'top'
-      ? 'bottom-[calc(100%+4px)]'
-      : 'top-[calc(100%+4px)]';
-  const panelAlignClass = resolvedAlign === 'right' ? 'right-0' : 'left-0';
   const enterTransform = resolvedPlacement === 'top' ? 'translate-y-1' : '-translate-y-1';
 
-  return (
-    <div className="relative inline-block">
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        aria-label={ariaLabel}
-        disabled={disabled}
-        onClick={handleTriggerClick}
-        onKeyDown={handleTriggerKeyDown}
-        className={triggerClass}
-      >
-        <MoreVertical className="w-4 h-4" />
-      </button>
-
-      {mounted && (
-        <div
-          ref={panelRef}
-          id={menuId}
-          role="menu"
-          aria-label={ariaLabel}
-          tabIndex={-1}
-          onKeyDown={handlePanelKeyDown}
-          onClick={(e) => e.stopPropagation()}
-          className={[
-            'absolute z-50 min-w-[180px] max-w-[240px] p-1.5',
-            'bg-zinc-900/95 backdrop-blur-md border border-[#c5a062]/30',
-            'rounded-xl shadow-2xl shadow-black/60',
-            panelPositionClass,
-            panelAlignClass,
-            reduceMotion
-              ? open ? 'opacity-100' : 'opacity-0'
-              : open
-                ? 'opacity-100 scale-100 translate-y-0 transition-[opacity,transform] duration-[120ms] ease-out'
-                : `opacity-0 scale-95 ${enterTransform} transition-[opacity,transform] duration-[80ms] ease-in`,
-          ].join(' ')}
-        >
+  const panel = mounted ? (
+    <div
+      ref={panelRef}
+      id={menuId}
+      role="menu"
+      aria-label={ariaLabel}
+      tabIndex={-1}
+      onKeyDown={handlePanelKeyDown}
+      onClick={(e) => e.stopPropagation()}
+      style={panelStyle}
+      className={[
+        'z-[9999] min-w-[180px] max-w-[240px] p-1.5',
+        'bg-zinc-900/95 backdrop-blur-md border border-[#c5a062]/30',
+        'rounded-xl shadow-2xl shadow-black/60',
+        resolvedAlign === 'right' ? 'origin-top-right' : 'origin-top-left',
+        reduceMotion
+          ? open ? 'opacity-100' : 'opacity-0'
+          : open
+            ? 'opacity-100 scale-100 translate-y-0 transition-[opacity,transform] duration-[120ms] ease-out'
+            : `opacity-0 scale-95 ${enterTransform} transition-[opacity,transform] duration-[80ms] ease-in`,
+      ].join(' ')}
+    >
           {items.map((item, idx) => {
             if (item.kind === 'separator') {
               return (
@@ -414,8 +402,26 @@ export function KebabMenu({
               </button>
             );
           })}
-        </div>
-      )}
     </div>
+  ) : null;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        aria-label={ariaLabel}
+        disabled={disabled}
+        onClick={handleTriggerClick}
+        onKeyDown={handleTriggerKeyDown}
+        className={triggerClass}
+      >
+        <MoreVertical className="w-4 h-4" />
+      </button>
+      {panel && typeof document !== 'undefined' ? createPortal(panel, document.body) : null}
+    </>
   );
 }
