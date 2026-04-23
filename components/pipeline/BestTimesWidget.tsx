@@ -62,13 +62,13 @@ export function BestTimesWidget({ settings }: { settings: UserSettings }) {
                 ? 'Research-backed defaults (DACH/EU)'
                 : 'Research-backed + partial data'}
           </p>
-          <div className="grid grid-cols-5 gap-1.5">
+          <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
             {insights.bestTimes?.map((t, i) => (
               <div
                 key={i}
-                className="flex flex-col items-center px-2 py-1.5 bg-zinc-800/50 border border-[#c5a062]/15 rounded-lg"
+                className="flex flex-col items-center px-1.5 sm:px-2 py-1 sm:py-1.5 bg-zinc-800/50 border border-[#c5a062]/15 rounded-lg"
               >
-                <span className="text-xs font-mono text-white">{String(t.hour).padStart(2, '0')}:00</span>
+                <span className="text-[11px] sm:text-xs font-mono text-white">{String(t.hour).padStart(2, '0')}:00</span>
                 <div className="w-full h-1 bg-zinc-700/80 rounded-full mt-1 overflow-hidden">
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-[#00b8cc] to-[#00e6ff]"
