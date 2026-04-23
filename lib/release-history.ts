@@ -12,6 +12,16 @@ export interface ReleaseNote {
 
 export const RELEASE_HISTORY: readonly ReleaseNote[] = [
   {
+    version: '0.8.3',
+    date: '2026-04-23',
+    highlights: [
+      'Update toast now shows a visual gold→cyan progress bar + byte readout',
+      'Settings → Updates: installing row gets the same progress bar',
+      'New Release history panel in Settings → Updates (this one)',
+      'Audited Tauri update system — all core features verified shipped',
+    ],
+  },
+  {
     version: '0.8.2',
     date: '2026-04-23',
     highlights: [
