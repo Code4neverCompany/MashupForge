@@ -24,6 +24,7 @@ import {
   type ResumeContext,
 } from '@/lib/pipeline-processor';
 import { awaitImagesOrSkip } from '@/lib/image-readiness';
+import { generateNegativePrompt } from '@/lib/negative-prompts';
 import type { WriteCheckpointBase } from './usePipelineDaemon';
 import { useDesktopConfig } from './useDesktopConfig';
 
@@ -167,7 +168,18 @@ Return ONLY the prompt text, nothing else.`;
         },
         expandIdeaToPrompt,
         triggerImageGeneration: (prompt, modelIds) => {
-          imageReadyPromise = generateComparison(prompt, modelIds, { skipEnhance: false });
+          // Supply a context-aware base negative prompt built from the
+          // user's active genres/niches. Per-model enhancement inside
+          // generateComparison may refine it further.
+          const s = getSettings();
+          const baseNegative = generateNegativePrompt(
+            s.agentGenres || [],
+            s.agentNiches || [],
+          );
+          imageReadyPromise = generateComparison(prompt, modelIds, {
+            skipEnhance: false,
+            negativePrompt: baseNegative,
+          });
           // Swallow the images here — processor contract is Promise<void>.
           // waitForImages reads the captured Promise next.
           return imageReadyPromise.then(() => undefined);

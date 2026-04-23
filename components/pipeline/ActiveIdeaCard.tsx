@@ -133,10 +133,18 @@ export function ActiveIdeaCard({
                     </div>
                   )}
                   {isReady && (
-                    <div className="absolute bottom-0 left-0 right-0 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm">
+                    <div className="absolute bottom-0 left-0 right-0 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm flex items-center justify-between gap-1">
                       <p className="text-[9px] text-white truncate">
                         {img.modelInfo?.modelName}
                       </p>
+                      {img.style && (
+                        <span
+                          className="shrink-0 px-1 py-0.5 text-[8px] font-medium bg-[#c5a062]/25 text-[#c5a062] border border-[#c5a062]/40 rounded-full max-w-[70px] truncate"
+                          title={`Style: ${img.style}`}
+                        >
+                          {img.style}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

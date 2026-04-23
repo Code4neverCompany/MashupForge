@@ -351,10 +351,18 @@ function ruleEngineForModel(
     let quality: 'LOW' | 'MEDIUM' | 'HIGH' | undefined;
     let qualityReason: string | undefined;
     if (spec.quality && spec.quality.length > 0) {
-      quality = hints.detailHit ? 'HIGH' : 'MEDIUM';
-      qualityReason = hints.detailHit
-        ? `"${hints.detailHit}" → HIGH quality`
-        : 'MEDIUM — balanced cost / quality';
+      // gpt-image-1.5 spec pins quality to HIGH (see lib/model-specs/gpt-image-1.5.json:
+      // "quality must always be HIGH"). Other quality-capable models keep the
+      // detailHit-driven heuristic for cost/quality balance.
+      if (modelId === 'gpt-image-1.5') {
+        quality = 'HIGH';
+        qualityReason = 'HIGH quality — per model spec';
+      } else {
+        quality = hints.detailHit ? 'HIGH' : 'MEDIUM';
+        qualityReason = hints.detailHit
+          ? `"${hints.detailHit}" → HIGH quality`
+          : 'MEDIUM — balanced cost / quality';
+      }
     }
 
     let style: string | undefined;

@@ -421,7 +421,7 @@ Return ONLY a JSON array of 4 objects, each with:
 - "tags": array of strings — 5-8 tags (universes, characters, themes)
 - "selectedNiches": array of strings
 - "selectedGenres": array of strings
-- "negativePrompt": string — 15 words max, focused on technical quality (blurry, deformed, extra limbs)
+- "negativePrompt": string — 15 words max, CONTEXT-AWARE to the prompt's subject. Pick from: character art → "bad anatomy, wrong proportions, extra fingers, mutated hands"; landscapes → "overexposed, washed out, text, watermark, signature"; action scenes → "motion blur, static pose, flat lighting"; dark/grimdark → "bright colors, cartoon style, flat shading". Always include the core technical defects (blurry, low quality, deformed).
 
 Random Seed: ${Math.random()}`,
           { mode: 'idea' }
@@ -462,7 +462,7 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
 - "tags": array of strings — 5-8 tags
 - "selectedNiches": array of strings
 - "selectedGenres": array of strings
-- "negativePrompt": string — 15 words max, focused on technical quality (blurry, deformed, extra limbs)`,
+- "negativePrompt": string — 15 words max, CONTEXT-AWARE to the prompt's subject. Pick from: character art → "bad anatomy, wrong proportions, extra fingers, mutated hands"; landscapes → "overexposed, washed out, text, watermark, signature"; action scenes → "motion blur, static pose, flat lighting"; dark/grimdark → "bright colors, cartoon style, flat shading". Always include the core technical defects (blurry, low quality, deformed).`,
           { mode: 'idea' }
         );
 
@@ -569,6 +569,7 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
             seed: success.seed,
             negativePrompt: generatedNegativePrompt,
             aspectRatio: currentAspectRatio,
+            style: modelStyle,
             status: 'ready',
             modelInfo: {
               provider: 'leonardo',
@@ -743,6 +744,7 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
           seed: success.seed,
           negativePrompt: modelNegPrompt,
           aspectRatio: currentAspectRatio,
+          style: modelStyle,
           status: 'ready',
           modelInfo: {
             provider: 'leonardo',

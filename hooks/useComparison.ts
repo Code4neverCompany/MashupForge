@@ -206,6 +206,7 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
               negativePrompt: modelNegPrompt,
               aspectRatio: modelRatio,
               imageSize: options?.imageSize,
+              style: modelStyle,
               modelInfo: { provider: 'leonardo', modelId, modelName }
             };
             setComparisonResults(prev => prev.map(img => img.id === placeholders[i].id ? newImg : img));

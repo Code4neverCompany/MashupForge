@@ -98,7 +98,9 @@ describe('suggestParameters', () => {
     expect(entry.height).toBe(1024);
     expect(entry.imageSize).toBe('1K');
     expect(entry.promptEnhance).toBe('ON');
-    expect(entry.quality).toBe('MEDIUM');
+    // gpt-image-1.5 spec pins quality to HIGH regardless of detailHit
+    // (see lib/model-specs/gpt-image-1.5.json: "quality must always be HIGH").
+    expect(entry.quality).toBe('HIGH');
   });
 
   it('per-model image entry bumps to 2K + HIGH quality on detail keywords', () => {

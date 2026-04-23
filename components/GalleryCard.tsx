@@ -295,15 +295,26 @@ export function GalleryCard({
 
         {/* DESIGN-002 §3: permanent model chip (bottom-left).
             Replaces the bottom-left "Approved" pill — the inset
-            emerald ring already conveys approved state. */}
-        {img.modelInfo?.modelName && (
-          <span
-            className={`absolute bottom-2 left-2 z-[5] px-1.5 py-0.5 text-[9px] font-semibold tracking-wide uppercase bg-black/55 backdrop-blur-md ${uiGold.text} border ${uiGold.border.default} rounded-full max-w-[80px] truncate pointer-events-none select-none`}
-            title={img.modelInfo.modelName}
-          >
-            {img.modelInfo.modelName}
-          </span>
-        )}
+            emerald ring already conveys approved state.
+            Style chip sits alongside when the generation picked a style. */}
+        <div className="absolute bottom-2 left-2 z-[5] flex items-center gap-1 pointer-events-none select-none">
+          {img.modelInfo?.modelName && (
+            <span
+              className={`px-1.5 py-0.5 text-[9px] font-semibold tracking-wide uppercase bg-black/55 backdrop-blur-md ${uiGold.text} border ${uiGold.border.default} rounded-full max-w-[80px] truncate`}
+              title={img.modelInfo.modelName}
+            >
+              {img.modelInfo.modelName}
+            </span>
+          )}
+          {img.style && (
+            <span
+              className="px-1.5 py-0.5 text-[9px] font-medium tracking-wide bg-[#c5a062]/20 backdrop-blur-md text-[#c5a062] border border-[#c5a062]/40 rounded-full max-w-[110px] truncate"
+              title={`Style: ${img.style}`}
+            >
+              {img.style}
+            </span>
+          )}
+        </div>
 
         {/* Top Actions Overlay — compact icon row (3 primary + kebab, DESIGN-002 §3.7).
             BUG-CRIT-010: z-30 keeps the row (and its KebabMenu dropdown,
