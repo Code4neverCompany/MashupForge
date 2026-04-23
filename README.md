@@ -2,93 +2,147 @@
 
 # MashupForge
 
-**AI-Powered Creative Crossover Studio**
+### AI-Powered Creative Crossover Studio
 
-Generate epic crossover artwork combining characters and universes from Star Wars, Marvel, DC, Warhammer 40k, and beyond.
+*Generate epic crossover artwork combining characters and universes from Star Wars, Marvel, DC, Warhammer 40k, and beyond.*
+
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-4.1-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![Leonardo.ai](https://img.shields.io/badge/Leonardo.ai-v2-C5A062?style=for-the-badge)](https://leonardo.ai)
+[![pi.dev](https://img.shields.io/badge/pi.dev-RPC-00E6FF?style=for-the-badge)](https://pi.dev)
+
+[![License](https://img.shields.io/badge/License-Proprietary-050505?style=flat-square)](#license)
+[![Version](https://img.shields.io/badge/version-0.8.5-C5A062?style=flat-square)](package.json)
+
+![hero](assets/hero.png)
 
 </div>
 
 ---
 
-## What It Does
+## Features
 
-- **Idea Generator** — AI brainstorms creative "what if" crossover scenarios across franchises
-- **Image Generation** — Turn ideas into images via Leonardo.ai (3 models: GPT Image-1.5, Nano Banana 2, Nano Banana Pro)
-- **Compare Mode** — Generate the same prompt across multiple models side-by-side
-- **History** — Browse and re-roll previous generations
-- **Chat Assistant** — Conversational AI for brainstorming and prompt refinement
+| | |
+| :---: | :--- |
+| **Idea Generator** | AI brainstorms "what if" crossover scenarios across franchises, with taste controls and re-rolls. |
+| **Image Generation** | Turn any idea into artwork via Leonardo.ai — GPT Image-1.5, Nano Banana 2, Nano Banana Pro. |
+| **Compare Mode** | Run the same prompt across multiple models side-by-side and pick the winner. |
+| **Pipeline** | Automated flow: Ideas → Approve → Caption → Post Ready, with a smart scheduler. |
+| **Chat Assistant** | Conversational AI for brainstorming, prompt refinement, and exploration. |
+
+![feature showcase](assets/features.png)
 
 ## AI Engine
 
 All text AI (ideas, prompts, captions, chat) runs through **[pi.dev](https://pi.dev)** — a local AI coding agent that connects to any LLM provider. You pick the provider, pi handles the rest.
 
-Supported pi providers include: Google Antigravity, Google AI Studio, Anthropic, OpenAI, ZAI, Groq, Cerebras, and 15+ more.
+Supported providers include Google Antigravity, Google AI Studio, Anthropic, OpenAI, ZAI, Groq, Cerebras, and 15+ more. Pi stores its own credentials in `~/.pi/agent/auth.json` — no API keys for text features in the app itself.
 
-## Tech Stack
+## Quick Start
 
-- **Next.js 16** (Turbopack) + React 19
-- **TypeScript** throughout
-- **Leonardo.ai v2 API** for image generation
-- **pi.dev RPC** for text AI (subprocess, no cloud dependency)
-- **Tailwind CSS** for styling
-
-## Local Setup
-
-**Requirements**
-
-- Node.js 18 or newer
-- `tmux` (used by the pi.dev setup flow to host pi's interactive login)
-
-**Steps**
+**Prerequisites**
+- Node.js 18+
+- `tmux` (used by the pi.dev setup flow)
 
 ```bash
-# 1. Clone the repo
+# 1. Clone
 git clone https://github.com/Code4neverCompany/MashupForge.git
 cd MashupForge
 
-# 2. Install dependencies
+# 2. Install
 npm install
 
-# 3. Start the dev server
-npm run dev
+# 3. Configure environment
+cp .env.example .env.local
+# then edit .env.local with your Leonardo.ai key (see below)
 
-# 4. Open http://localhost:3000 in your browser
+# 4. Run
+npm run dev
+# → http://localhost:3000
 ```
 
-5. In the app, open **Settings** and click **Setup Pi.dev**. This installs
-   pi into a local prefix and opens its login flow in a tmux session so you
-   can pick a provider and authenticate. Once pi reports as installed +
-   authenticated, click **Start Pi** to bring the RPC subprocess up.
+Then open **Settings → Setup Pi.dev** in the app to install pi, pick a provider, and authenticate.
 
-Pi stores its own credentials in `~/.pi/agent/auth.json`. No API keys needed in the app for text features.
+## Environment Variables
 
-### Leonardo.ai (Image Generation)
+Copy `.env.example` → `.env.local` and fill in:
 
-Get an API key from [leonardo.ai](https://leonardo.ai) and set it in `.env.local` or directly in the app's settings panel.
+| Variable | Required | Description |
+| --- | :---: | --- |
+| `LEONARDO_API_KEY` | ✓ | API key from [leonardo.ai](https://leonardo.ai) — used for image generation. |
+| `GEMINI_API_KEY` | — | Optional Gemini API key. Text AI normally flows through pi.dev; this is a fallback. |
+| `APP_URL` | — | Self-referential base URL. Auto-injected when deployed via AI Studio / Cloud Run. |
+
+## Scripts
+
+```bash
+npm run dev          # Dev server (Next.js + Turbopack)
+npm run build        # Production build + bundle-size check
+npm run start        # Start production server
+npm run lint         # ESLint
+npm test             # Vitest (one-shot)
+npm run test:watch   # Vitest (watch mode)
+npm run tauri:dev    # Desktop app (Tauri) — dev
+npm run tauri:build  # Desktop app (Tauri) — build
+```
 
 ## Project Structure
 
 ```
-app/
-  api/
-    leonardo/          # Leonardo image generation + polling
-    pi/                # pi.dev RPC proxy (start/stop/prompt/status)
-  page.tsx             # Main app entry
-components/
-  MainContent.tsx      # Primary UI (all tabs, settings, image grid)
-  Sidebar.tsx          # Chat + content generator
-  MashupStudio.tsx     # Root layout
-hooks/
-  useImageGeneration.ts  # Image generation + polling logic
-  useComparison.ts       # Compare mode (multi-model generation)
-lib/
-  pi-client.ts        # pi.dev RPC subprocess client
-  pi-setup.ts         # pi install/auth helpers
-  aiClient.ts         # Client-side AI utilities (SSE consumption)
-types/
-  mashup.ts           # Leonardo models, styles, dimensions, type defs
+MashupForge/
+├── app/
+│   ├── api/
+│   │   ├── leonardo/        # Image generation + polling
+│   │   ├── pi/              # pi.dev RPC proxy (start/stop/prompt/status)
+│   │   ├── social/          # Social posting (Instagram, Twitter)
+│   │   ├── trending/        # Trend discovery
+│   │   └── web-search/      # Web search helper
+│   ├── login/               # Auth entry
+│   ├── layout.tsx           # Root layout
+│   └── page.tsx             # Main app entry
+├── components/
+│   ├── MainContent.tsx      # Primary UI (tabs, gallery, settings)
+│   ├── Sidebar.tsx          # Chat + content generator
+│   ├── MashupStudio.tsx     # Root layout shell
+│   ├── onboarding/          # First-run flow
+│   ├── pipeline/            # Pipeline panels
+│   ├── approval/            # Approval queue UI
+│   └── platform/            # Per-platform helpers
+├── hooks/                   # React hooks (image gen, pipeline, ideas, …)
+├── lib/                     # Client/server utilities, pi.dev client
+├── types/                   # Leonardo models, styles, dimensions
+├── tests/                   # Vitest suites (api, components, hooks, integration, lib)
+├── src-tauri/               # Tauri (desktop) shell
+└── docs/                    # Release, runbooks, internal docs
 ```
+
+## Tech Stack
+
+- **Framework:** Next.js 16 (Turbopack) + React 19
+- **Language:** TypeScript 5.9
+- **Styling:** Tailwind CSS 4 + `@tailwindcss/typography`
+- **Image AI:** Leonardo.ai v2 API
+- **Text AI:** pi.dev RPC subprocess (local, multi-provider)
+- **Desktop:** Tauri 2
+- **Testing:** Vitest + Testing Library + jsdom
+- **Storage:** `idb-keyval` (client-side persistence)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, code style, and PR guidelines.
+
+Bug report? Feature idea? Open an issue — templates are under `.github/ISSUE_TEMPLATE/`.
 
 ## License
 
-Private — 4neverCompany
+Proprietary — © 4neverCompany. All rights reserved.
+
+---
+
+<div align="center">
+
+Built by **[4neverCompany](https://4never.company)** ·  Agency Black · Metallic Gold · Electric Blue
+
+</div>
