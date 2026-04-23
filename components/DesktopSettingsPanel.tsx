@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power, Download, RefreshCw, Camera, MessageCircle, Pin, Hash } from 'lucide-react';
+import { Eye, EyeOff, Monitor, CheckCircle2, AlertCircle, Loader2, Power, Download, RefreshCw, Camera, MessageCircle, Pin, Hash, History, Sparkles } from 'lucide-react';
+import { recentReleases } from '@/lib/release-history';
 import {
   DESKTOP_CONFIG_KEYS,
   PLATFORM_GROUPS,
@@ -351,6 +352,83 @@ interface UpdaterModule {
   } | null>;
 }
 
+// V083-UPDATE-UI — visual progress bar for downloads/installs.
+// `percent === null` renders an indeterminate shimmer (content-length
+// not known yet or stream reports no totals). A determinate track is
+// rendered at exactly `percent` width so screen readers and humans
+// agree with the textual readout next to it.
+function UpdateProgressBar({ percent }: { percent: number | null }) {
+  const indeterminate = percent === null;
+  return (
+    <div
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={indeterminate ? undefined : percent ?? undefined}
+      aria-label="Update download progress"
+      className="relative h-1.5 w-full overflow-hidden rounded-full bg-zinc-800/80"
+    >
+      {indeterminate ? (
+        <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[#c5a062]/60 via-[#00e6ff]/80 to-[#c5a062]/60 animate-pulse" />
+      ) : (
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-[#c5a062] to-[#00e6ff] transition-[width] duration-200 ease-out"
+          style={{ width: `${Math.max(0, Math.min(100, percent ?? 0))}%` }}
+        />
+      )}
+    </div>
+  );
+}
+
+// V083-UPDATE-UI — Release history / changelog display. Reads from the
+// static `lib/release-history.ts` data source (hand-maintained alongside
+// every `chore(release)` commit). Collapsed by default; the trigger
+// mirrors the tone of UpdaterDiagnosticLog below.
+function ReleaseHistoryList({ currentVersion }: { currentVersion: string | null }) {
+  const releases = recentReleases(5);
+  if (releases.length === 0) return null;
+  return (
+    <details className="text-[11px] group">
+      <summary className="flex items-center gap-1.5 cursor-pointer text-zinc-400 hover:text-zinc-200 select-none">
+        <History className="w-3 h-3 text-[#c5a062] shrink-0" />
+        Release history
+        <span className="text-zinc-600">({releases.length})</span>
+      </summary>
+      <ol className="mt-2 space-y-3 border-l border-zinc-800/60 pl-3">
+        {releases.map((r) => {
+          const isCurrent = currentVersion === r.version;
+          return (
+            <li key={r.version} className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span
+                  className={[
+                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-mono text-[10px] border',
+                    isCurrent
+                      ? 'bg-[#00e6ff]/10 border-[#00e6ff]/40 text-[#00e6ff]'
+                      : 'bg-[#c5a062]/10 border-[#c5a062]/30 text-[#c5a062]',
+                  ].join(' ')}
+                >
+                  {isCurrent && <Sparkles className="w-2.5 h-2.5" aria-hidden />}
+                  v{r.version}
+                </span>
+                <span className="text-[10px] text-zinc-600 font-mono">{r.date}</span>
+                {isCurrent && (
+                  <span className="text-[9px] uppercase tracking-wider text-[#00e6ff]">installed</span>
+                )}
+              </div>
+              <ul className="list-disc list-outside ml-4 marker:text-zinc-700 text-zinc-400 space-y-0.5">
+                {r.highlights.map((h, i) => (
+                  <li key={i} className="leading-snug">{h}</li>
+                ))}
+              </ul>
+            </li>
+          );
+        })}
+      </ol>
+    </details>
+  );
+}
+
 function UpdatesSection({ behavior, onBehaviorChange }: UpdatesSectionProps) {
   const [version, setVersion] = useState<string | null>(null);
   const [lastCheckedAt, setLastCheckedAt] = useState<number | null>(null);
@@ -541,10 +619,23 @@ function UpdatesSection({ behavior, onBehaviorChange }: UpdatesSectionProps) {
         </div>
       )}
       {result.kind === 'installing' && (
-        <p className="text-[11px] text-zinc-300 flex items-center gap-1">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          Installing v{result.version}{result.pct !== null ? ` — ${result.pct}%` : '…'}
-        </p>
+        <div
+          className="space-y-1.5"
+          role="status"
+          aria-live="polite"
+          aria-label={`Installing v${result.version}`}
+        >
+          <div className="flex items-center justify-between text-[11px] text-zinc-300">
+            <span className="flex items-center gap-1">
+              <Loader2 className="w-3 h-3 animate-spin text-[#00e6ff]" />
+              Installing v{result.version}
+            </span>
+            <span className="font-mono text-[#00e6ff]">
+              {result.pct !== null ? `${result.pct}%` : '…'}
+            </span>
+          </div>
+          <UpdateProgressBar percent={result.pct} />
+        </div>
       )}
       {result.kind === 'unavailable' && (
         <div
@@ -573,6 +664,8 @@ function UpdatesSection({ behavior, onBehaviorChange }: UpdatesSectionProps) {
           {result.message}
         </p>
       )}
+
+      <ReleaseHistoryList currentVersion={version} />
 
       <UpdaterDiagnosticLog />
     </div>

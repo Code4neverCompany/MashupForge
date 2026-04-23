@@ -40,6 +40,17 @@ export const LAST_CHECKED_AT_KEY = 'mashup_update_last_checked_at';
 // FEAT-006: postpone-related constants + decision logic live in
 // lib/update-postpone.ts so vitest can exercise them without jsdom.
 
+// V083-UPDATE-UI — byte-size formatter for the download progress row.
+// Human-readable, no i18n — matches the updater's existing English-only
+// copy. Exported for test access.
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
 export function UpdateChecker() {
   const { isDesktop } = useDesktopConfig();
   const [state, setState] = useState<State>({ kind: 'idle' });
@@ -430,10 +441,43 @@ export function UpdateChecker() {
           )}
         </div>
 
-        {body && (
+        {body && !isDownloading && (
           <p className="text-[10px] text-zinc-400 leading-relaxed line-clamp-3 whitespace-pre-wrap font-mono">
             {body}
           </p>
+        )}
+
+        {/* V083-UPDATE-UI: visual progress bar during download. Renders
+            an indeterminate pulse when content-length is unknown so the
+            user still has visible proof the download is running. */}
+        {isDownloading && (
+          <div className="space-y-1.5" role="status" aria-live="polite">
+            <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono">
+              <span>{progress !== null ? `Downloading ${progress}%` : 'Downloading…'}</span>
+              {state.total && (
+                <span>
+                  {formatBytes(state.downloaded)} / {formatBytes(state.total)}
+                </span>
+              )}
+            </div>
+            <div
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progress ?? undefined}
+              aria-label="Update download progress"
+              className="relative h-1.5 w-full overflow-hidden rounded-full bg-zinc-800/80"
+            >
+              {progress !== null ? (
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-[#c5a062] to-[#00e6ff] transition-[width] duration-200 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              ) : (
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[#c5a062]/60 via-[#00e6ff]/80 to-[#c5a062]/60 animate-pulse" />
+              )}
+            </div>
+          </div>
         )}
 
         <div className="flex items-center gap-2">
