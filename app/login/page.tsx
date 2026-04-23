@@ -22,7 +22,7 @@ export default function LoginPage() {
       if (username === 'admin' && password === 'admin') {
         // Store auth state in localStorage or a cookie
         localStorage.setItem('mashup_auth', 'true');
-        router.push('/');
+        router.push('/app');
       } else {
         setError('Invalid username or password. (Hint: admin/admin)');
         setIsLoading(false);

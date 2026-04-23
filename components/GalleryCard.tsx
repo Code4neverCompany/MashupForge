@@ -157,7 +157,19 @@ export function GalleryCard({
       transition={{ duration: 0.4, delay: idx * 0.1, ease: 'easeOut' }}
       whileHover={{ scale: 1.02, y: -4, transition: { type: 'spring', stiffness: 300, damping: 25 } }}
       onClick={() => onOpen(img)}
-      className={`group relative bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer ${
+      role="button"
+      tabIndex={0}
+      aria-label={`Open image details: ${img.prompt.slice(0, 80)}`}
+      onKeyDown={(e) => {
+        // Only react to Enter/Space when the card itself is focused — nested
+        // buttons/inputs handle their own keyboard activation.
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen(img);
+        }
+      }}
+      className={`group relative bg-zinc-900/80 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00e6ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050505] ${
         dragOverCollection ? 'ring-2 ring-[#00e6ff] border-[#00e6ff]/50' : 'border-[#c5a062]/20 hover:border-[#c5a062]/60 hover:shadow-[0_8px_40px_rgba(197,160,98,0.18),0_0_0_1px_rgba(197,160,98,0.15)]'
       }`}
       draggable={view === 'gallery'}
