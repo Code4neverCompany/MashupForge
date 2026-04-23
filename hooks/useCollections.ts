@@ -128,3 +128,86 @@ Return a JSON object with "name" and "description" keys.`,
     isCollectionsLoaded,
   };
 }
+
+// V082-COLLECTION-FEATURES: pure helpers for tag-driven auto-grouping.
+// Exported at module scope so tests can exercise the grouping logic
+// without spinning up React state.
+
+/**
+ * Lowercase + trim a tag so matching is case-insensitive and robust to
+ * stray whitespace. Returns '' for falsy input — callers should filter
+ * empty keys before grouping.
+ */
+export function normalizeTag(tag: string): string {
+  return tag.trim().toLowerCase();
+}
+
+/** All distinct tags on an image — user tags + post hashtags. */
+function imageTags(img: GeneratedImage): string[] {
+  const user = (img.tags || []).map(normalizeTag);
+  const hash = (img.postHashtags || []).map((t) => normalizeTag(t.replace(/^#/, '')));
+  return Array.from(new Set([...user, ...hash].filter(Boolean)));
+}
+
+export interface TagGroupProposal {
+  tag: string;
+  displayName: string;
+  imageIds: string[];
+}
+
+/**
+ * Bucket savedImages by their tags. Each image lands in every bucket
+ * for every tag it carries (so one image may seed multiple proposals).
+ * Only buckets with >= minImages are surfaced as proposals. Buckets are
+ * sorted largest-first so the UI can lead with the biggest groups.
+ */
+export function proposeTagGroups(
+  savedImages: GeneratedImage[],
+  minImages = 3,
+): TagGroupProposal[] {
+  const buckets = new Map<string, { display: string; ids: Set<string> }>();
+  for (const img of savedImages) {
+    const tags = imageTags(img);
+    const displayByTag = new Map<string, string>();
+    for (const raw of [...(img.tags || []), ...(img.postHashtags || [])]) {
+      const norm = normalizeTag(raw.replace(/^#/, ''));
+      if (!norm) continue;
+      if (!displayByTag.has(norm)) displayByTag.set(norm, raw.replace(/^#/, '').trim());
+    }
+    for (const t of tags) {
+      const entry = buckets.get(t) ?? {
+        display: displayByTag.get(t) || t,
+        ids: new Set<string>(),
+      };
+      entry.ids.add(img.id);
+      buckets.set(t, entry);
+    }
+  }
+  const proposals: TagGroupProposal[] = [];
+  for (const [tag, { display, ids }] of buckets.entries()) {
+    if (ids.size < minImages) continue;
+    proposals.push({ tag, displayName: display, imageIds: Array.from(ids) });
+  }
+  proposals.sort((a, b) => b.imageIds.length - a.imageIds.length);
+  return proposals;
+}
+
+/**
+ * Find images in `pool` that share any tag with `collectionImages` and
+ * are not already in the collection. Used by the "auto-add matching"
+ * action on an existing collection so new Batman renders land next to
+ * their siblings without the user dragging each one manually.
+ */
+export function findMatchingImages(
+  pool: GeneratedImage[],
+  collectionImages: GeneratedImage[],
+  collectionId: string,
+): GeneratedImage[] {
+  const targetTags = new Set<string>();
+  for (const img of collectionImages) for (const t of imageTags(img)) targetTags.add(t);
+  if (targetTags.size === 0) return [];
+  return pool.filter((img) => {
+    if (img.collectionId === collectionId) return false;
+    return imageTags(img).some((t) => targetTags.has(t));
+  });
+}

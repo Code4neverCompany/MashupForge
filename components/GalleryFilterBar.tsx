@@ -11,6 +11,8 @@ import {
   Tag,
   Trash2,
   XCircle,
+  FolderPlus,
+  Wand2,
 } from 'lucide-react';
 import { LEONARDO_MODELS, type Collection } from './MashupContext';
 
@@ -43,6 +45,8 @@ export interface GalleryFilterBarProps {
   onBatchCaption: () => void;
   onBatchAnimate: () => void;
   onBatchDelete: () => void;
+  onBatchCreateCollection: () => void;
+  onAutoOrganizeByTag: () => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
 }
@@ -70,6 +74,8 @@ export function GalleryFilterBar({
   onBatchCaption,
   onBatchAnimate,
   onBatchDelete,
+  onBatchCreateCollection,
+  onAutoOrganizeByTag,
   onSelectAll,
   onClearSelection,
 }: GalleryFilterBarProps) {
@@ -94,6 +100,14 @@ export function GalleryFilterBar({
           <span>{galleryStats.captioned} captioned</span>
           <span className="text-zinc-700">·</span>
           <span>{postReadyCount} post-ready</span>
+          <button
+            onClick={onAutoOrganizeByTag}
+            title="Scan saved images and auto-create a collection for every shared tag"
+            className="ml-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#c5a062]/10 border border-[#c5a062]/30 text-[11px] text-[#c5a062] hover:bg-[#c5a062]/20 transition-colors"
+          >
+            <Wand2 className="w-3 h-3" />
+            Auto-organize
+          </button>
         </div>
       </div>
 
@@ -143,6 +157,14 @@ export function GalleryFilterBar({
                 >
                   <Tag className="w-3.5 h-3.5" />
                   Tag
+                </button>
+                <button
+                  onClick={onBatchCreateCollection}
+                  title="Create a new collection from the selected images (AI can auto-name it)"
+                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-medium transition-colors flex items-center gap-2"
+                >
+                  <FolderPlus className="w-3.5 h-3.5" />
+                  Collection
                 </button>
                 <button
                   onClick={onBatchDelete}

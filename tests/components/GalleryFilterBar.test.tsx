@@ -32,6 +32,8 @@ function makeProps(overrides: Partial<GalleryFilterBarProps> = {}): GalleryFilte
     onBatchCaption: vi.fn(),
     onBatchAnimate: vi.fn(),
     onBatchDelete: vi.fn(),
+    onBatchCreateCollection: vi.fn(),
+    onAutoOrganizeByTag: vi.fn(),
     onSelectAll: vi.fn(),
     onClearSelection: vi.fn(),
     ...overrides,

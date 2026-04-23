@@ -135,6 +135,7 @@ import { PipelineView } from './views/PipelineView';
 import { status as uiStatus, gold as uiGold, surface as uiSurface } from '@/lib/ui-tokens';
 import { computeCarouselView as computeCarouselViewPure, type PostItem } from '@/lib/carouselView';
 import { sortPostItems } from '@/lib/post-ready-sort';
+import { proposeTagGroups } from '@/hooks/useCollections';
 
 /**
  * Auto-sizing textarea that grows with its content. Resets to
@@ -1883,6 +1884,47 @@ export function MainContent() {
     setSelectedForBatch(new Set());
   };
 
+  // V082-COLLECTION-FEATURES: open the collection modal in "batch" mode.
+  // The existing onCreate wiring already forwards selectedForBatch ids
+  // and pi.dev auto-naming, but it stopped short of assigning images.
+  // See the CollectionModal block below for the assign step added in
+  // the same commit.
+  const handleBatchCreateCollection = () => {
+    if (selectedForBatch.size === 0) return;
+    setShowCollectionModal(true);
+  };
+
+  // V082-COLLECTION-FEATURES: scan saved images, bucket them by tag, and
+  // for each bucket ≥ 3 images create a collection and assign every
+  // matching image to it. Uses window.confirm for scope — a bespoke
+  // preview modal would be nicer but pushes this past the designer
+  // autonomy budget. Existing collection membership is respected:
+  // images already in a collection are skipped.
+  const handleAutoOrganizeByTag = async () => {
+    if (savedImages.length === 0) return;
+    const proposals = proposeTagGroups(savedImages, 3);
+    if (proposals.length === 0) {
+      window.alert('No tag groups found. Tag at least 3 images with the same tag first.');
+      return;
+    }
+    const preview = proposals
+      .slice(0, 8)
+      .map((g) => `  • ${g.displayName} (${g.imageIds.length})`)
+      .join('\n');
+    const more = proposals.length > 8 ? `\n  … +${proposals.length - 8} more` : '';
+    const ok = window.confirm(
+      `Auto-organize will create ${proposals.length} collection${proposals.length === 1 ? '' : 's'}:\n\n${preview}${more}\n\nContinue?`,
+    );
+    if (!ok) return;
+    for (const group of proposals) {
+      const collection = await createCollection(group.displayName, undefined, undefined, undefined);
+      for (const imageId of group.imageIds) {
+        const img = savedImages.find((i) => i.id === imageId);
+        if (img && !img.collectionId) addImageToCollection(imageId, collection.id);
+      }
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden relative">
       {/* Header */}
@@ -2034,6 +2076,8 @@ export function MainContent() {
                   onBatchCaption={handleBatchCaption}
                   onBatchAnimate={handleBatchAnimate}
                   onBatchDelete={handleBatchDelete}
+                  onBatchCreateCollection={handleBatchCreateCollection}
+                  onAutoOrganizeByTag={handleAutoOrganizeByTag}
                   onSelectAll={handleSelectAllGallery}
                   onClearSelection={handleClearGallerySelection}
                 />
@@ -4245,7 +4289,13 @@ export function MainContent() {
             const imageIds = selectedForBatch.size > 0 ? Array.from(selectedForBatch) : undefined;
             // Pass savedImages so createCollection's pi.dev auto-name
             // fallback can fire when the user submits with a blank name.
-            await createCollection(name, description, imageIds, savedImages);
+            const created = await createCollection(name, description, imageIds, savedImages);
+            // V082-COLLECTION-FEATURES: actually assign the selected
+            // images to the new collection. Previously imageIds only
+            // seeded the AI auto-name; membership was left to the user.
+            if (imageIds && created) {
+              for (const id of imageIds) addImageToCollection(id, created.id);
+            }
             setShowCollectionModal(false);
             if (imageIds) setSelectedForBatch(new Set());
           }}
