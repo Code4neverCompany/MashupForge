@@ -31,12 +31,18 @@ const COLUMNS: Array<{ heading: string; links: FooterLink[] }> = [
     links: [
       {
         label: 'GitHub',
-        href: 'https://github.com/4nevercompany',
+        href: 'https://github.com/Code4neverCompany/MashupForge',
         external: true,
       },
       {
-        label: 'Documentation',
-        href: '#',
+        label: 'Leonardo.ai',
+        href: 'https://leonardo.ai',
+        external: true,
+      },
+      {
+        label: 'pi.dev',
+        href: 'https://pi.dev',
+        external: true,
       },
     ],
   },

@@ -16,7 +16,7 @@
 [![License](https://img.shields.io/badge/License-Proprietary-050505?style=flat-square)](#license)
 [![Version](https://img.shields.io/badge/version-0.8.5-C5A062?style=flat-square)](package.json)
 
-![hero](assets/hero.png)
+![MashupForge — AI-Powered Creative Crossover Studio](assets/hero.svg)
 
 </div>
 
@@ -32,7 +32,7 @@
 | **Pipeline** | Automated flow: Ideas → Approve → Caption → Post Ready, with a smart scheduler. |
 | **Chat Assistant** | Conversational AI for brainstorming, prompt refinement, and exploration. |
 
-![feature showcase](assets/features.png)
+![Feature showcase — Idea Generator, Image Generation, Compare Mode, Autonomous Pipeline](assets/features.svg)
 
 ## AI Engine
 
