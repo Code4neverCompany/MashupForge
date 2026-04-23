@@ -9,7 +9,11 @@ import {
   type GenerateOptions,
   type ScheduledPost,
   type PipelineProgress,
+  LEONARDO_MODELS,
+  LEONARDO_SHARED_STYLES,
+  MODEL_PROMPT_GUIDES,
 } from '../types/mashup';
+import { suggestParametersAI } from '@/lib/param-suggest';
 import {
   loadEngagementData,
   type CachedEngagement,
@@ -167,22 +171,46 @@ Return ONLY the prompt text, nothing else.`;
           return '';
         },
         expandIdeaToPrompt,
-        triggerImageGeneration: (prompt, modelIds) => {
-          // Supply a context-aware base negative prompt built from the
-          // user's active genres/niches. Per-model enhancement inside
-          // generateComparison may refine it further.
+        triggerImageGeneration: async (prompt, modelIds) => {
+          // Run the deterministic param-suggest rule engine for this
+          // idea's prompt so the pipeline uses the same style / aspect /
+          // negative prompt picks as the interactive Compare flow. Falls
+          // back silently if suggestion fails — generation still runs
+          // with the base negative prompt derived from user genres.
           const s = getSettings();
           const baseNegative = generateNegativePrompt(
             s.agentGenres || [],
             s.agentNiches || [],
           );
+          let suggestedOptions: Partial<GenerateOptions> = {};
+          try {
+            const suggestion = await suggestParametersAI({
+              prompt,
+              availableModels: LEONARDO_MODELS,
+              modelGuides: MODEL_PROMPT_GUIDES,
+              availableStyles: LEONARDO_SHARED_STYLES,
+              savedImages: [],
+              includedModelIds: modelIds,
+            });
+            suggestedOptions = {
+              style: suggestion.style,
+              aspectRatio: suggestion.aspectRatio,
+              imageSize: suggestion.imageSize,
+              negativePrompt: suggestion.negativePrompt || baseNegative,
+              quality: suggestion.quality,
+              promptEnhance: suggestion.promptEnhance,
+            };
+          } catch {
+            suggestedOptions = { negativePrompt: baseNegative };
+          }
+
           imageReadyPromise = generateComparison(prompt, modelIds, {
             skipEnhance: false,
-            negativePrompt: baseNegative,
+            ...suggestedOptions,
           });
           // Swallow the images here — processor contract is Promise<void>.
           // waitForImages reads the captured Promise next.
-          return imageReadyPromise.then(() => undefined);
+          await imageReadyPromise;
         },
         waitForImages: async () => {
           if (!imageReadyPromise) return [];
