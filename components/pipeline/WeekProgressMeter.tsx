@@ -29,6 +29,23 @@ export function WeekProgressMeter() {
         </span>
       </div>
 
+      {/* V081-PIPELINE-POLISH / STORY-011 — thin animated aggregate bar. */}
+      <div
+        className="w-full h-1 rounded-full bg-zinc-800/80 overflow-hidden mb-2"
+        role="progressbar"
+        aria-valuenow={percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Week fill progress"
+      >
+        <div
+          className={`h-full transition-[width] duration-500 ease-out ${
+            filled ? 'bg-emerald-500' : 'bg-[#00e6ff]'
+          }`}
+          style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+        />
+      </div>
+
       {hasDays && (
         <>
           <div
@@ -57,7 +74,7 @@ export function WeekProgressMeter() {
                   }`}
                 >
                   <div
-                    className={`w-full h-6 rounded-sm transition-colors ${barColor}`}
+                    className={`w-full h-6 rounded-sm transition-[background-color] duration-300 ease-out ${barColor}`}
                     aria-hidden="true"
                   />
                   <span
