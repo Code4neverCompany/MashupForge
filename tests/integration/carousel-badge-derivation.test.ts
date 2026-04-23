@@ -82,7 +82,9 @@ describe('BUG-CRIT-007 — carousel/single-image status derivation (shared helpe
         mkPost({ status: 'scheduled', date: '2026-05-01', time: '14:30' }),
       );
       expect(s.kind).toBe('scheduled');
-      expect(s.label).toMatch(/^Scheduled 2026-05-01/);
+      // V082-UI-FIX: label now uses compact `MMM D` so the carousel
+      // card status row fits on one line in grid-cols-2 layouts.
+      expect(s.label).toMatch(/^Scheduled May 1/);
     });
   });
 

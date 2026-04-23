@@ -72,7 +72,9 @@ describe('V060-001 — PostReadyCard layout & interactions', () => {
       status: 'scheduled',
     };
     render(<PostReadyCard {...baseProps()} scheduledPost={sched} />);
-    expect(screen.getByLabelText(/Status: Scheduled 2026-04-25/)).toBeTruthy();
+    // V082-UI-FIX: compact date format (MMM D) so the carousel status
+    // row fits on one line in grid-cols-2 layouts.
+    expect(screen.getByLabelText(/Status: Scheduled Apr 25/)).toBeTruthy();
   });
 
   it('renders a Posted status pill when img.postedAt is set', () => {
