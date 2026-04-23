@@ -278,7 +278,7 @@ Return ONLY the JSON array, no prose.`;
                 {images.filter(img => img.status === 'ready').map((img) => (
                   <button
                     key={img.id}
-                    className="group relative aspect-square bg-zinc-900/60 rounded-lg overflow-hidden border border-[#c5a062]/15 hover:border-[#c5a062]/50 transition-all duration-200 cursor-pointer text-left"
+                    className="group relative aspect-square bg-zinc-900/60 rounded-xl overflow-hidden border border-[#c5a062]/15 hover:border-[#c5a062]/50 transition-all duration-200 cursor-pointer text-left"
                     onClick={() => {
                       setComparisonPrompt(img.prompt);
                       setView('compare');
@@ -397,7 +397,7 @@ Return ONLY the JSON array, no prose.`;
                 {msg.ideas.map((idea, j) => (
                   <div
                     key={j}
-                    className="group cursor-pointer rounded-lg bg-zinc-800/50 border border-zinc-700/50 hover:border-emerald-500/40 p-2.5 transition-colors"
+                    className="group cursor-pointer rounded-xl bg-zinc-800/50 border border-zinc-700/50 hover:border-emerald-500/40 p-2.5 transition-colors"
                     onClick={() => {
                       setComparisonPrompt(idea.concept);
                       setView('compare');

@@ -327,7 +327,7 @@ export function GalleryCard({
             <button
               onClick={(e) => { e.stopPropagation(); rerollImage(img.id, img.prompt); }}
               disabled={isGenerating}
-              className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
+              className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 text-white rounded-xl backdrop-blur-md transition-colors"
               title="Re-roll Image"
             >
               <RefreshCw className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
@@ -335,7 +335,7 @@ export function GalleryCard({
           )}
           <button
             onClick={(e) => { e.stopPropagation(); toggleApproveImage(img.id); }}
-            className={`w-8 h-8 flex items-center justify-center rounded-lg backdrop-blur-md transition-colors ${
+            className={`w-8 h-8 flex items-center justify-center rounded-xl backdrop-blur-md transition-colors ${
               img.approved
                 ? 'bg-emerald-500 text-white'
                 : 'bg-black/50 hover:bg-emerald-500/80 text-white'
@@ -351,7 +351,7 @@ export function GalleryCard({
                 onClick={(e) => { e.stopPropagation(); setCollectionOpen((v) => !v); }}
                 aria-haspopup="menu"
                 aria-expanded={collectionOpen}
-                className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 text-white rounded-lg backdrop-blur-md transition-colors"
+                className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 text-white rounded-xl backdrop-blur-md transition-colors"
                 title="Add to Collection"
               >
                 <FolderPlus className="w-4 h-4" />
@@ -422,7 +422,7 @@ export function GalleryCard({
             <button
               onClick={(e) => { e.stopPropagation(); saveImage(img); }}
               disabled={isSaved}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg backdrop-blur-md transition-colors ${
+              className={`w-8 h-8 flex items-center justify-center rounded-xl backdrop-blur-md transition-colors ${
                 isSaved
                   ? 'bg-emerald-500/80 text-white cursor-default'
                   : 'bg-black/50 hover:bg-black/80 text-white'
@@ -448,7 +448,7 @@ export function GalleryCard({
                   setPreparingPostId(null);
                 }
               }}
-              className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 disabled:opacity-60 disabled:hover:bg-black/50 text-white rounded-lg backdrop-blur-md transition-colors"
+              className="w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-emerald-500/80 disabled:opacity-60 disabled:hover:bg-black/50 text-white rounded-xl backdrop-blur-md transition-colors"
               title={preparingPostId === img.id ? 'Generating caption…' : 'Prepare for Post'}
             >
               {preparingPostId === img.id ? (

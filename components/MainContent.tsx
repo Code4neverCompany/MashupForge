@@ -1931,12 +1931,12 @@ export function MainContent() {
           <button
             type="button"
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="md:hidden p-2 -ml-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+            className="md:hidden p-2 -ml-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors"
             aria-label="Toggle sidebar"
           >
             <Menu className="w-5 h-5" />
           </button>
-          <div className="w-8 h-8 rounded-lg bg-[#00e6ff]/15 border border-[#00e6ff]/25 hidden sm:flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl bg-[#00e6ff]/15 border border-[#00e6ff]/25 hidden sm:flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-[#00e6ff]" />
           </div>
           <h1 className="text-base md:text-lg font-semibold tracking-tight text-white truncate max-w-[120px] sm:max-w-none">Mashup Studio</h1>
@@ -1949,12 +1949,12 @@ export function MainContent() {
                 <button
                   key={v}
                   onClick={() => setView(v as ViewType)}
-                  className={`relative px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2 shrink-0 snap-start z-10 ${view === v ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                  className={`relative px-3 py-1.5 text-sm font-medium rounded-xl transition-all duration-200 flex items-center gap-2 shrink-0 snap-start z-10 ${view === v ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
                 >
                   {view === v && (
                     <motion.div
                       layoutId="activeTab"
-                      className="absolute inset-0 bg-[#00e6ff]/10 border border-[#00e6ff]/20 rounded-lg"
+                      className="absolute inset-0 bg-[#00e6ff]/10 border border-[#00e6ff]/20 rounded-xl"
                       transition={{ type: 'spring', duration: 0.4, bounce: 0.15 }}
                     />
                   )}
@@ -1980,7 +1980,7 @@ export function MainContent() {
 
           <button
             onClick={logout}
-            className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+            className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors shrink-0"
             title="Log Out"
           >
             <LogOut className="w-5 h-5" />
@@ -1988,7 +1988,7 @@ export function MainContent() {
           
           <button
             onClick={() => setShowSettings(true)}
-            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors shrink-0"
+            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors shrink-0"
             title="Settings"
           >
             <Settings className="w-5 h-5" />
@@ -2027,7 +2027,7 @@ export function MainContent() {
                 key={key}
                 onClick={() => setView(key)}
                 aria-current={active ? 'page' : undefined}
-                className={`flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[44px] rounded-lg transition-all duration-200 ${
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[44px] rounded-xl transition-all duration-200 ${
                   active ? 'text-[#00e6ff] bg-[#00e6ff]/8' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
@@ -2567,7 +2567,7 @@ export function MainContent() {
                         </p>
                         <button
                           onClick={() => setView('gallery')}
-                          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm"
+                          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-sm"
                         >
                           Go to Gallery
                         </button>
@@ -2600,7 +2600,7 @@ export function MainContent() {
                                           alt={ci.prompt}
                                           loading="lazy"
                                           onClick={() => setSelectedImage(ci)}
-                                          className="h-32 w-32 object-cover rounded-lg cursor-zoom-in"
+                                          className="h-32 w-32 object-cover rounded-xl cursor-zoom-in"
                                         />
                                         {isExplicit && (
                                           <button
@@ -2654,7 +2654,7 @@ export function MainContent() {
                                       }}
                                       placeholder="No caption yet…"
                                       minRows={2}
-                                      className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-[#c5a062]/50 focus:outline-none transition-colors"
+                                      className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-xl px-3 py-2 text-sm text-zinc-200 focus:border-[#c5a062]/50 focus:outline-none transition-colors"
                                     />
                                   </div>
                                   {(anchor.postHashtags || []).length > 0 && (
@@ -2791,7 +2791,7 @@ export function MainContent() {
                                     onChange={(e) => patchImage(img, { postCaption: e.target.value })}
                                     placeholder="No caption yet…"
                                     minRows={2}
-                                    className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-[#c5a062]/50 focus:outline-none transition-colors"
+                                    className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-xl px-3 py-2 text-sm text-zinc-200 focus:border-[#c5a062]/50 focus:outline-none transition-colors"
                                   />
                                 </div>
 
@@ -2996,7 +2996,7 @@ export function MainContent() {
                             Captioning-stage images into one carousel. */}
                         <button
                           onClick={() => openCarouselPicker(null)}
-                          className="btn-blue-sm rounded-lg"
+                          className="btn-blue-sm"
                           title="Group images into a single multi-image carousel post"
                         >
                           <LayoutGrid className="w-3.5 h-3.5" /> Create Carousel
@@ -3012,7 +3012,7 @@ export function MainContent() {
                               persistCarouselGroup(`manual-${ids[0]}`, ids);
                               setPostReadySelected(new Set());
                             }}
-                            className="btn-blue-sm rounded-lg"
+                            className="btn-blue-sm"
                           >
                             <LayoutGrid className="w-3.5 h-3.5" />
                             Group Selected ({postReadySelected.size})
@@ -3026,7 +3026,7 @@ export function MainContent() {
                           disabled={ready.length === 0 || available.length === 0 || smartScheduler.loading}
                           aria-busy={smartScheduler.loading}
                           aria-label={smartScheduler.loading ? 'Analysing best posting times…' : 'Schedule with optimal posting times'}
-                          className="btn-gold-sm rounded-lg"
+                          className="btn-gold-sm"
                           title={smartScheduler.loading ? 'Analysing best posting times…' : 'Schedule with optimal posting times'}
                         >
                           {smartScheduler.loading ? (
@@ -3039,7 +3039,7 @@ export function MainContent() {
                         <button
                           onClick={postAllNow}
                           disabled={ready.length === 0 || available.length === 0}
-                          className="btn-blue-sm rounded-lg"
+                          className="btn-blue-sm"
                           title="Post every image to its selected platforms"
                         >
                           <Send className="w-3.5 h-3.5" /> Post All Now
@@ -3661,7 +3661,7 @@ export function MainContent() {
                                           onClick={() =>
                                             setCalendarSlotClick({ ...slot, imageId: img.id })
                                           }
-                                          className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                                          className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
                                             isSel
                                               ? 'border-emerald-500 ring-2 ring-emerald-500/30'
                                               : 'border-zinc-800/60 hover:border-zinc-600'
@@ -3791,13 +3791,13 @@ export function MainContent() {
                         <div className="flex gap-2">
                           <button
                             onClick={() => setView('gallery')}
-                            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm"
+                            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-sm"
                           >
                             Open Gallery
                           </button>
                           <button
                             onClick={() => setView('captioning')}
-                            className="btn-blue-sm px-4 py-2 text-sm rounded-lg"
+                            className="btn-blue-sm px-4 py-2 text-sm"
                           >
                             Captioning Studio
                           </button>
