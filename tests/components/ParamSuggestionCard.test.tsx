@@ -90,10 +90,14 @@ describe('ParamSuggestionCard — per-model state isolation', () => {
   });
 
   it('changing style in Edit mode for one model does NOT change another model', () => {
+    // V082-PARAM-SCRIPT: gpt-image-1.5's editor no longer renders a
+    // Style row (the model has no style parameter), so this test now
+    // pairs two style-capable models and verifies the per-model
+    // isolation that the original test asserted.
     const onApply = vi.fn();
     const suggestion = makeSuggestion({
       'nano-banana-2': makeImageSuggestion('nano-banana-2', { style: 'Dynamic' }),
-      'gpt-image-1.5': makeImageSuggestion('gpt-image-1.5'),
+      'nano-banana-pro': makeImageSuggestion('nano-banana-pro'),
     });
 
     const { container } = render(
@@ -108,41 +112,56 @@ describe('ParamSuggestionCard — per-model state isolation', () => {
     // Enter edit mode
     fireEvent.click(screen.getByTitle('Override per-model settings'));
 
-    // Each model panel has its own set of selects. Find the panels and
-    // then locate the Style select inside each one.
     const panels = container.querySelectorAll('.border.border-zinc-800\\/80');
     expect(panels.length).toBe(2);
 
-    // Find Style selects within each panel — they have a preceding label "Style"
-    const styleSelects = container.querySelectorAll('select');
-    // Each panel has: Aspect Ratio, Image Size, Quality(conditional), Prompt Enhance, Style, Negative Prompt
-    // The first Style select belongs to nano-banana-2, the second to gpt-image-1.5.
-    // Let's find selects by looking at the label text before them.
     const allLabels = Array.from(container.querySelectorAll('label'));
     const styleLabels = allLabels.filter(l => l.textContent?.trim() === 'Style');
     expect(styleLabels.length).toBe(2);
 
     const nanoStyleSelect = styleLabels[0].parentElement?.querySelector('select');
-    const gptStyleSelect = styleLabels[1].parentElement?.querySelector('select');
+    const proStyleSelect = styleLabels[1].parentElement?.querySelector('select');
     expect(nanoStyleSelect).toBeTruthy();
-    expect(gptStyleSelect).toBeTruthy();
+    expect(proStyleSelect).toBeTruthy();
 
-    // Change the FIRST model's style to "Ray Traced"
     fireEvent.change(nanoStyleSelect!, { target: { value: 'Ray Traced' } });
 
-    // The second model's style select should still be empty (no style set for gpt-image-1.5)
-    expect((gptStyleSelect as HTMLSelectElement).value).toBe('');
+    // The second model's style select should still be untouched.
+    expect((proStyleSelect as HTMLSelectElement).value).toBe('');
 
-    // Apply and verify per-model map has independent values
     fireEvent.click(screen.getByText('Apply'));
 
     expect(onApply).toHaveBeenCalledTimes(1);
     const [, , perModel] = onApply.mock.calls[0];
 
-    // nano-banana-2 should have "Ray Traced" (changed)
     expect(perModel['nano-banana-2'].style).toBe('Ray Traced');
-    // gpt-image-1.5 should still have no style (wasn't changed)
-    expect(perModel['gpt-image-1.5'].style).toBeUndefined();
+    expect(perModel['nano-banana-pro'].style).toBeUndefined();
+  });
+
+  it('hides Style and Negative Prompt rows for models that do not support them', () => {
+    // V082-PARAM-SCRIPT: gpt-image-1.5 has capabilities.styles === false
+    // and capabilities.negativePrompt === false. The editor must not
+    // expose those knobs for it.
+    const suggestion = makeSuggestion({
+      'gpt-image-1.5': makeImageSuggestion('gpt-image-1.5'),
+    });
+
+    const { container } = render(
+      <ParamSuggestionCard
+        suggestion={suggestion}
+        availableStyles={styles}
+        onApply={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle('Override per-model settings'));
+
+    const allLabels = Array.from(container.querySelectorAll('label'));
+    const styleLabels = allLabels.filter(l => l.textContent?.trim() === 'Style');
+    const negLabels = allLabels.filter(l => l.textContent?.trim() === 'Negative Prompt');
+    expect(styleLabels.length).toBe(0);
+    expect(negLabels.length).toBe(0);
   });
 
   it('Apply emits the full per-model map with independent values', () => {

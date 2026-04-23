@@ -378,6 +378,16 @@ function ImageEditor({
   qualityOptions,
   onUpdate,
 }: ImageEditorProps) {
+  // V082-PARAM-SCRIPT: capability-aware editor. Each model's structured
+  // spec exposes which knobs the API accepts — we hide the rest so the
+  // user can't pick a Style for gpt-image-1.5 (which has no style
+  // parameter), or a 2K render for a model that ignores it.
+  const caps = getModelSpec(sug.modelId)?.capabilities;
+  const supportsStyles = caps?.styles !== false;
+  const supportsNegativePrompt = caps?.negativePrompt !== false;
+  const supportsImageSize = caps?.imageSize !== false;
+  const supportsPromptEnhance = caps?.promptEnhance !== false;
+
   return (
     <div className="grid grid-cols-2 gap-2 text-[11px]">
       <FieldSelect
@@ -386,12 +396,14 @@ function ImageEditor({
         options={aspectOptions}
         onChange={v => onUpdate('aspectRatio', v)}
       />
-      <FieldSelect
-        label="Image Size"
-        value={sug.imageSize}
-        options={sizeOptions}
-        onChange={v => onUpdate('imageSize', v as '1K' | '2K')}
-      />
+      {supportsImageSize && (
+        <FieldSelect
+          label="Image Size"
+          value={sug.imageSize}
+          options={sizeOptions}
+          onChange={v => onUpdate('imageSize', v as '1K' | '2K')}
+        />
+      )}
       {sug.quality !== undefined && (
         <FieldSelect
           label="Quality"
@@ -400,33 +412,39 @@ function ImageEditor({
           onChange={v => onUpdate('quality', v as 'LOW' | 'MEDIUM' | 'HIGH')}
         />
       )}
-      <FieldSelect
-        label="Prompt Enhance"
-        value={sug.promptEnhance}
-        options={['ON', 'OFF']}
-        onChange={v => onUpdate('promptEnhance', v as 'ON' | 'OFF')}
-      />
-      <div className="col-span-2">
+      {supportsPromptEnhance && (
         <FieldSelect
-          label="Style"
-          value={sug.style ?? ''}
-          options={['', ...availableStyles.map(s => s.name)]}
-          renderOption={v => (v === '' ? '(none)' : v)}
-          onChange={v => onUpdate('style', v === '' ? undefined : v)}
+          label="Prompt Enhance"
+          value={sug.promptEnhance}
+          options={['ON', 'OFF']}
+          onChange={v => onUpdate('promptEnhance', v as 'ON' | 'OFF')}
         />
-      </div>
-      <div className="col-span-2">
-        <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
-          Negative Prompt
-        </label>
-        <input
-          type="text"
-          value={sug.negativePrompt ?? ''}
-          onChange={e => onUpdate('negativePrompt', e.target.value || undefined)}
-          placeholder="(optional)"
-          className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
-        />
-      </div>
+      )}
+      {supportsStyles && (
+        <div className="col-span-2">
+          <FieldSelect
+            label="Style"
+            value={sug.style ?? ''}
+            options={['', ...availableStyles.map(s => s.name)]}
+            renderOption={v => (v === '' ? '(none)' : v)}
+            onChange={v => onUpdate('style', v === '' ? undefined : v)}
+          />
+        </div>
+      )}
+      {supportsNegativePrompt && (
+        <div className="col-span-2">
+          <label className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
+            Negative Prompt
+          </label>
+          <input
+            type="text"
+            value={sug.negativePrompt ?? ''}
+            onChange={e => onUpdate('negativePrompt', e.target.value || undefined)}
+            placeholder="(optional)"
+            className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#00e6ff]/40"
+          />
+        </div>
+      )}
     </div>
   );
 }

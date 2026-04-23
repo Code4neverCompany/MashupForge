@@ -1,14 +1,12 @@
 // V030-007: suggestParameters is pure and deterministic.
 // V030-008: AI variant via dependency-injected aiCall.
 // V030-008-per-model: parameters are now produced PER MODEL.
+// V082-PARAM-SCRIPT: pi.dev variant retired — suggestParametersAI now
+// just async-wraps suggestParameters. Tests for buildAIPromptPayload /
+// buildPerModelPromptPayload were removed with the helpers themselves.
 
 import { describe, it, expect } from 'vitest';
-import {
-  suggestParameters,
-  suggestParametersAI,
-  buildAIPromptPayload,
-  buildPerModelPromptPayload,
-} from '@/lib/param-suggest';
+import { suggestParameters, suggestParametersAI } from '@/lib/param-suggest';
 import type { GeneratedImage, LeonardoModelConfig } from '@/types/mashup';
 
 function makeModel(id: string, overrides?: Partial<LeonardoModelConfig>): LeonardoModelConfig {
@@ -295,7 +293,7 @@ describe('suggestParameters', () => {
   });
 });
 
-describe('suggestParametersAI', () => {
+describe('suggestParametersAI (V082 deterministic delegate)', () => {
   const baseInput = {
     prompt: 'photorealistic mountains at dawn',
     availableModels: models,
@@ -304,176 +302,63 @@ describe('suggestParametersAI', () => {
     savedImages: [] as GeneratedImage[],
   };
 
-  it('tags overall source as "ai" when every per-model pi call returns valid JSON', async () => {
-    const aiCall = async (prompt: string) => {
-      // Distinguish per-model prompts by which model id appears.
-      if (prompt.includes('gpt-image-1.5')) {
-        return JSON.stringify({
-          aspectRatio: '1:1',
-          imageSize: '1K',
-          quality: 'HIGH',
-          promptEnhance: 'ON',
-          reason: 'gpt photo-real choice',
-        });
-      }
-      if (prompt.includes('nano-banana-pro')) {
-        return JSON.stringify({
-          aspectRatio: '1:1',
-          imageSize: '1K',
-          promptEnhance: 'ON',
-          style: 'Pro Color Photography',
-          reason: 'nano pro photo-real',
-        });
-      }
-      return JSON.stringify({
-        aspectRatio: '1:1',
-        imageSize: '1K',
-        promptEnhance: 'ON',
-        reason: 'fallback',
-      });
-    };
-
-    const s = await suggestParametersAI(baseInput, { aiCall });
-    expect(s.source).toBe('ai');
-    for (const id of s.modelIds) {
-      expect(s.perModel[id].source).toBe('ai');
-    }
+  it('returns the same shape as suggestParameters', async () => {
+    const sync = suggestParameters(baseInput);
+    const async_ = await suggestParametersAI(baseInput);
+    expect(async_.modelIds).toEqual(sync.modelIds);
+    expect(async_.source).toBe('rules');
+    expect(Object.keys(async_.perModel)).toEqual(Object.keys(sync.perModel));
   });
 
-  it('per-model failure falls back to rules for that model only', async () => {
-    const aiCall = async (prompt: string) => {
-      if (prompt.includes('gpt-image-1.5')) {
-        throw new Error('pi unreachable for gpt');
-      }
-      return JSON.stringify({
-        aspectRatio: '1:1',
-        imageSize: '1K',
-        promptEnhance: 'ON',
-        reason: 'pi answered',
-      });
-    };
-    const s = await suggestParametersAI(baseInput, { aiCall });
-    // Mixed → ai+rules at the top level.
-    expect(s.source).toBe('ai+rules');
-    expect(s.perModel['gpt-image-1.5'].source).toBe('rules');
-  });
-
-  it('falls back entirely to rules when every pi call throws', async () => {
+  it('ignores aiCall — pi.dev path was removed in V082', async () => {
+    let aiCalled = false;
     const s = await suggestParametersAI(baseInput, {
       aiCall: async () => {
-        throw new Error('pi unreachable');
+        aiCalled = true;
+        return '{}';
       },
     });
+    expect(aiCalled).toBe(false);
     expect(s.source).toBe('rules');
   });
 
-  it('translates a UUID accidentally returned by pi back to the canonical name', async () => {
-    const aiCall = async (prompt: string) => {
-      if (prompt.includes('nano-banana-pro')) {
-        return JSON.stringify({
-          aspectRatio: '1:1',
-          imageSize: '1K',
-          promptEnhance: 'ON',
-          // pi misbehaving — returning a UUID instead of a name.
-          style: '7c3f932b-a572-47cb-9b9b-f20211e63b5b',
-          reason: 'oops, returned a UUID',
-        });
-      }
-      return JSON.stringify({
-        aspectRatio: '1:1',
-        imageSize: '1K',
-        promptEnhance: 'ON',
-        reason: 'ok',
-      });
+  it('honors a fallback override', async () => {
+    let fallbackCalled = false;
+    const fakeFallback = (input: typeof baseInput): ReturnType<typeof suggestParameters> => {
+      fallbackCalled = true;
+      return suggestParameters(input);
     };
-    const s = await suggestParametersAI(baseInput, { aiCall });
-    const nano = s.perModel['nano-banana-pro'];
-    if (!nano || nano.type !== 'image') throw new Error('expected nano-banana-pro image entry');
-    // UUID was resolved back to the canonical name.
-    expect(nano.style).toBe('Pro Color Photography');
+    await suggestParametersAI(baseInput, { fallback: fakeFallback });
+    expect(fallbackCalled).toBe(true);
   });
 
-  it('drops a style name pi invents that is not in availableStyles', async () => {
-    const aiCall = async () =>
-      JSON.stringify({
-        aspectRatio: '1:1',
-        imageSize: '1K',
-        promptEnhance: 'ON',
-        style: 'Totally Made Up Style',
-        reason: 'bad style',
-      });
-    const s = await suggestParametersAI(baseInput, { aiCall });
-    for (const id of s.modelIds) {
-      const e = s.perModel[id];
-      if (e.type === 'image') {
-        expect(e.style).not.toBe('Totally Made Up Style');
-      }
-    }
-  });
-});
-
-describe('buildPerModelPromptPayload', () => {
-  it('contains the model id, API doc slice, and style-name contract for an image model', () => {
-    const body = buildPerModelPromptPayload({
-      prompt: 'photorealistic mountains',
-      modelId: 'gpt-image-1.5',
-      apiName: 'gpt-image-1.5',
-      spec: {
-        type: 'image',
-        width: 1024,
-        height: 1024,
-        supported_sizes: ['1024x1024'],
-        quality: ['LOW', 'MEDIUM', 'HIGH'],
-        prompt_enhance: 'ON',
-        supports_image_reference: true,
-      },
-      apiDocSlice: '## Parameters\n- quality (LOW | MEDIUM | HIGH)',
+  it('never sets style for gpt-image-1.5 even when a style cue is present', async () => {
+    const s = await suggestParametersAI({
+      prompt: 'cinematic dramatic photoreal mountain',
+      availableModels: [makeModel('gpt-image-1.5')],
+      modelGuides: { 'gpt-image-1.5': 'photorealistic cinematic' },
       availableStyles: styles,
-      priorWinnersOnThisModel: [],
+      savedImages: [],
     });
-    expect(body).toContain('gpt-image-1.5');
-    expect(body).toContain('quality (LOW | MEDIUM | HIGH)');
-    expect(body).toContain('AVAILABLE STYLE NAMES');
-    expect(body).toContain('Do NOT return a UUID');
-    expect(body).toContain('photorealistic mountains');
+    const entry = s.perModel['gpt-image-1.5'];
+    if (entry.type !== 'image') throw new Error('expected image');
+    expect(entry.style).toBeUndefined();
   });
 
-  it('omits style guidance for video models', () => {
-    const body = buildPerModelPromptPayload({
-      prompt: 'a vertical reel of a dancer',
-      modelId: 'kling-3.0',
-      apiName: 'kling-3.0',
-      spec: {
-        type: 'video',
-        width: 1920,
-        height: 1080,
-        duration: 5,
-        mode: 'RESOLUTION_1080',
-        motion_has_audio: true,
-        supports_start_frame: true,
-        supports_end_frame: false,
-      },
-      apiDocSlice: '## Parameters\n- duration: 3-15s',
-      availableStyles: styles,
-      priorWinnersOnThisModel: [],
-    });
-    expect(body).toContain('kling-3.0');
-    expect(body).toContain('STYLES: not applicable to video models');
-    expect(body).toContain('duration: 3-15s');
-  });
-});
-
-describe('buildAIPromptPayload (legacy holistic prompt)', () => {
-  it('still includes the model database and eligibility', () => {
-    const body = buildAIPromptPayload({
-      prompt: 'photorealistic mountains',
+  it('keeps user-selected models in the shortlist instead of auto-deactivating them', async () => {
+    // Default topN bumped to 99 in V082, so all eligible models survive
+    // the ranking pass — nothing the user selected gets silently dropped.
+    const s = await suggestParametersAI({
+      prompt: 'anime scene',
       availableModels: models,
       modelGuides: guides,
       availableStyles: styles,
       savedImages: [],
     });
-    expect(body).toContain('MODEL DATABASE');
-    expect(body).toContain('IN-APP ELIGIBILITY');
-    expect(body).toContain('photorealistic mountains');
+    // All non-excluded models should appear.
+    expect(s.modelIds).toContain('gpt-image-1.5');
+    expect(s.modelIds).toContain('nano-banana-2');
+    expect(s.modelIds).toContain('nano-banana-pro');
+    expect(s.modelIds).not.toContain('nano-banana');
   });
 });
