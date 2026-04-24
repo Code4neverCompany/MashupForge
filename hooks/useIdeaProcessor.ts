@@ -13,7 +13,7 @@ import {
   LEONARDO_SHARED_STYLES,
   MODEL_PROMPT_GUIDES,
 } from '../types/mashup';
-import { suggestParametersAI } from '@/lib/param-suggest';
+import { suggestParametersAI, type PerModelSuggestion } from '@/lib/param-suggest';
 import {
   loadEngagementData,
   type CachedEngagement,
@@ -192,6 +192,16 @@ Return ONLY the prompt text, nothing else.`;
               savedImages: [],
               includedModelIds: modelIds,
             });
+            // V090-PIPELINE-STYLE-DIVERSITY: extract per-model styles
+            // from the suggestion so nano-banana siblings each get a
+            // different style instead of all sharing the first model's pick.
+            const perModelOpts: Record<string, { style?: string; aspectRatio?: string; negativePrompt?: string }> = {};
+            for (const mid of Object.keys(suggestion.perModel)) {
+              const entry = suggestion.perModel[mid] as PerModelSuggestion;
+              if (entry.type === 'image' && entry.style) {
+                perModelOpts[mid] = { style: entry.style };
+              }
+            }
             suggestedOptions = {
               style: suggestion.style,
               aspectRatio: suggestion.aspectRatio,
@@ -199,6 +209,7 @@ Return ONLY the prompt text, nothing else.`;
               negativePrompt: suggestion.negativePrompt || baseNegative,
               quality: suggestion.quality,
               promptEnhance: suggestion.promptEnhance,
+              perModelOptions: perModelOpts,
             };
           } catch {
             suggestedOptions = { negativePrompt: baseNegative };

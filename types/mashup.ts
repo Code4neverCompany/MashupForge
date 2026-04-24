@@ -122,6 +122,15 @@ export interface GenerateOptions {
    * smart-suggest card and any future UI can explicitly override.
    */
   promptEnhance?: 'ON' | 'OFF';
+  /**
+   * V090-PIPELINE-STYLE-DIVERSITY: per-model parameter overrides. Keyed
+   * by in-app model id. The pipeline's suggestParametersAI call produces
+   * a different style per nano-banana variant; this field carries those
+   * per-model picks into generateComparison so siblings don't all get
+   * the same style. Falls back to the shared style when a model has no
+   * entry here.
+   */
+  perModelOptions?: Record<string, { style?: string; aspectRatio?: string; negativePrompt?: string }>;
 }
 
 export interface WatermarkSettings {

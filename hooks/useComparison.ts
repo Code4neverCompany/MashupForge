@@ -77,9 +77,8 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
     const readyImages: GeneratedImage[] = [];
 
     let finalPrompt = prompt;
-    if (options?.style || options?.lighting || options?.angle) {
+    if (options?.lighting || options?.angle) {
       const parts = [prompt];
-      if (options.style) parts.push(`Art style: ${options.style}`);
       if (options.lighting) parts.push(`Lighting: ${options.lighting}`);
       if (options.angle) parts.push(`Camera angle: ${options.angle}`);
       parts.push('Highly detailed, cinematic composition.');
@@ -126,10 +125,24 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
                 aspectRatio: options?.aspectRatio,
                 negativePrompt: options?.negativePrompt,
               });
-        const modelPrompt = enhancement.prompt;
+        // V090-PIPELINE-STYLE-DIVERSITY: prefer per-model style override,
+        // fall back to enhancement / shared option. Per-model picks come
+        // from the rule engine's style diversity (each nano-banana gets a
+        // different style).
+        const perModelStyle = options?.perModelOptions?.[modelId]?.style;
+        // V090-GPT15-STYLE-SKIP: only inject style text for models that
+        // support style_ids. gpt-image-1.5 has no style parameter.
+        const modelConfig = LEONARDO_MODELS.find(m => m.id === modelId);
+        const modelSupportsStyle = Boolean(modelConfig?.styles?.length);
+        const effectiveStyle = modelSupportsStyle
+          ? (perModelStyle || enhancement.style || options?.style)
+          : undefined;
+        const modelStyle = effectiveStyle;
+        const modelPrompt = modelSupportsStyle && modelStyle
+          ? `${enhancement.prompt}. Art style: ${modelStyle}`
+          : enhancement.prompt;
         const modelRatio =
           enhancement.aspectRatio || options?.aspectRatio || '1:1';
-        const modelStyle = enhancement.style || options?.style;
         const modelNegPrompt =
           enhancement.negativePrompt || options?.negativePrompt;
 
