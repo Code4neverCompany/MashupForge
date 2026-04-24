@@ -29,9 +29,12 @@ export function WeekProgressMeter() {
         </span>
       </div>
 
-      {/* V081-PIPELINE-POLISH / STORY-011 — thin animated aggregate bar. */}
+      {/* V081-PIPELINE-POLISH / STORY-011 — thin animated aggregate bar.
+          Uses an Electric Blue gradient with a subtle inner glow to match
+          the .progress-fill token aesthetic, with a slower 700ms ease so
+          the fill visibly catches up after a scheduling tick. */}
       <div
-        className="w-full h-1 rounded-full bg-zinc-800/80 overflow-hidden mb-2"
+        className="w-full h-1.5 rounded-full bg-zinc-800/80 overflow-hidden mb-2"
         role="progressbar"
         aria-valuenow={percent}
         aria-valuemin={0}
@@ -39,10 +42,14 @@ export function WeekProgressMeter() {
         aria-label="Week fill progress"
       >
         <div
-          className={`h-full transition-[width] duration-500 ease-out ${
-            filled ? 'bg-emerald-500' : 'bg-[#00e6ff]'
-          }`}
-          style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+          className="h-full transition-[width] duration-700 ease-out rounded-full"
+          style={{
+            width: `${Math.min(100, Math.max(0, percent))}%`,
+            background: filled
+              ? 'linear-gradient(90deg, #00b8cc 0%, #00e6ff 50%, #7ffeff 100%)'
+              : 'linear-gradient(90deg, #00b8cc 0%, #00e6ff 100%)',
+            boxShadow: '0 0 10px rgba(0, 230, 255, 0.35)',
+          }}
         />
       </div>
 

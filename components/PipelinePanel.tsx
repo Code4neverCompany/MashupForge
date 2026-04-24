@@ -347,7 +347,7 @@ export function PipelinePanel() {
             onChange={(e) =>
               setPipelineDelay(Math.max(5, Math.min(300, Number(e.target.value))))
             }
-            className="w-20 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-white text-center"
+            className="w-20 px-2 py-1 bg-zinc-900 border border-[#c5a062]/25 rounded-xl text-sm text-white text-center focus:outline-none focus:ring-2 focus:ring-[#00e6ff]/30 focus:border-[#00e6ff]/40 transition-colors"
           />
           <span className="text-sm text-zinc-500">seconds</span>
         </div>
@@ -369,27 +369,35 @@ export function PipelinePanel() {
             />
           </button>
           {pipelineContinuous && (
-            <>
-              <span className="text-sm text-zinc-500">Every</span>
-              <input
-                type="number"
-                min={30}
-                max={1440}
-                value={pipelineInterval}
-                onChange={(e) => setPipelineInterval(Math.max(30, Math.min(1440, Number(e.target.value))))}
-                className="w-20 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-white text-center"
-              />
-              <span className="text-sm text-zinc-500">min, target</span>
-              <input
-                type="number"
-                min={1}
-                max={30}
-                value={pipelineTargetDays}
-                onChange={(e) => setPipelineTargetDays(Math.max(1, Math.min(30, Number(e.target.value))))}
-                className="w-16 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-white text-center"
-              />
-              <span className="text-sm text-zinc-500">days ahead</span>
-            </>
+            // V082-PIPELINE-RESPONSIVE / STORY-012 — keep "Every X min" and
+            // "target Y days ahead" as inseparable groups so the row wraps
+            // semantically at 390px instead of breaking inside a phrase.
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-zinc-500">Every</span>
+                <input
+                  type="number"
+                  min={30}
+                  max={1440}
+                  value={pipelineInterval}
+                  onChange={(e) => setPipelineInterval(Math.max(30, Math.min(1440, Number(e.target.value))))}
+                  className="w-20 px-2 py-1 bg-zinc-900 border border-[#c5a062]/25 rounded-xl text-sm text-white text-center focus:outline-none focus:ring-2 focus:ring-[#00e6ff]/30 focus:border-[#00e6ff]/40 transition-colors"
+                />
+                <span className="text-sm text-zinc-500">min</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-zinc-500">target</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={pipelineTargetDays}
+                  onChange={(e) => setPipelineTargetDays(Math.max(1, Math.min(30, Number(e.target.value))))}
+                  className="w-16 px-2 py-1 bg-zinc-900 border border-[#c5a062]/25 rounded-xl text-sm text-white text-center focus:outline-none focus:ring-2 focus:ring-[#00e6ff]/30 focus:border-[#00e6ff]/40 transition-colors"
+                />
+                <span className="text-sm text-zinc-500">days ahead</span>
+              </div>
+            </div>
           )}
         </div>
 
@@ -588,7 +596,7 @@ export function PipelinePanel() {
                       setDailyCap(p, raw === '' ? null : Number(raw));
                     }}
                     placeholder="∞"
-                    className="w-12 px-1.5 py-0.5 bg-zinc-900 border border-zinc-700 rounded-md text-xs text-white text-center"
+                    className="w-12 px-1.5 py-0.5 bg-zinc-900 border border-[#c5a062]/25 rounded-lg text-xs text-white text-center focus:outline-none focus:ring-2 focus:ring-[#00e6ff]/30 focus:border-[#00e6ff]/40 transition-colors"
                   />
                   <span className="text-[10px] text-zinc-500">/day</span>
                 </label>

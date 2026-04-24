@@ -110,7 +110,7 @@ export function ActiveIdeaCard({
               return (
                 <div
                   key={img.id}
-                  className="relative aspect-square rounded-lg overflow-hidden bg-zinc-800 border border-zinc-700"
+                  className="relative aspect-square rounded-xl overflow-hidden bg-zinc-900 border border-[#c5a062]/15 hover:border-[#c5a062]/35 transition-colors"
                   title={img.modelInfo?.modelName || img.modelInfo?.modelId}
                 >
                   {isReady ? (

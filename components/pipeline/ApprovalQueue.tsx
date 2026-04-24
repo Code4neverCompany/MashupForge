@@ -199,7 +199,7 @@ export function ApprovalQueue({
             )}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleApproveAllFiltered}
             disabled={filtered.length === 0}
@@ -293,7 +293,7 @@ export function ApprovalQueue({
                 onClick={() => setPlatformFilter(null)}
                 className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
                   platformFilter === null
-                    ? 'bg-emerald-500/20 text-emerald-200 border-emerald-500/40'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                     : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
                 }`}
               >
@@ -305,7 +305,7 @@ export function ApprovalQueue({
                   onClick={() => setPlatformFilter(p)}
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
                     platformFilter === p
-                      ? 'bg-emerald-500/20 text-emerald-200 border-emerald-500/40'
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                       : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500'
                   }`}
                 >
@@ -323,7 +323,7 @@ export function ApprovalQueue({
           <span className="text-xs text-[#c5a062]">{selectedCount} selected</span>
           <button
             onClick={handleBulkApprove}
-            className="text-xs px-3 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 rounded-xl border border-emerald-500/40 transition-colors"
+            className="text-xs px-3 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 rounded-xl border border-emerald-500/40 transition-colors"
           >
             <Check className="w-3 h-3 inline mr-1" />
             Approve Selected
@@ -402,7 +402,7 @@ export function ApprovalQueue({
                 />
               </label>
 
-              <div className="w-full aspect-video rounded-lg overflow-hidden bg-zinc-800">
+              <div className="w-full aspect-video rounded-xl overflow-hidden bg-zinc-900 border border-[#c5a062]/15">
                 {img ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img

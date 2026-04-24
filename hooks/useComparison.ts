@@ -132,12 +132,12 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
         const perModelStyle = options?.perModelOptions?.[modelId]?.style;
         // V090-GPT15-STYLE-SKIP: only inject style text for models that
         // support style_ids. gpt-image-1.5 has no style parameter.
+        // modelConfig is reused in leonardoStyleUuids below.
         const modelConfig = LEONARDO_MODELS.find(m => m.id === modelId);
         const modelSupportsStyle = Boolean(modelConfig?.styles?.length);
-        const effectiveStyle = modelSupportsStyle
+        const modelStyle = modelSupportsStyle
           ? (perModelStyle || enhancement.style || options?.style)
           : undefined;
-        const modelStyle = effectiveStyle;
         const modelPrompt = modelSupportsStyle && modelStyle
           ? `${enhancement.prompt}. Art style: ${modelStyle}`
           : enhancement.prompt;
@@ -155,10 +155,9 @@ export function useComparison({ settings, saveImage, applyWatermark }: UseCompar
 
           const dims = getLeonardoDimensions(modelId, modelRatio);
 
-          // Map art style name → Leonardo UUID
+          // Map art style name → Leonardo UUID (reuses modelConfig from above)
           const leonardoStyleUuids = (() => {
             if (!modelStyle) return undefined;
-            const modelConfig = LEONARDO_MODELS.find(m => m.id === modelId);
             if (!modelConfig?.styles) return undefined;
             const match = modelConfig.styles.find(s =>
               s.name.toLowerCase() === modelStyle.toLowerCase() ||
