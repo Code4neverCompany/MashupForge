@@ -124,6 +124,40 @@ describe('computeWeekFillStatus', () => {
     expect(s.scheduledTotal).toBe(0);
   });
 
+  it('pending_approval posts outside the horizon are ignored from pendingApprovalTotal', () => {
+    const posts: ScheduledPost[] = [
+      post('2026-04-21', '14:00', 'pending_approval'),  // day 1 — counted
+      post('2026-04-27', '14:00', 'pending_approval'),  // day 7 (last day) — counted
+      post('2026-04-28', '14:00', 'pending_approval'),  // day 8 — outside horizon
+      post('2026-05-15', '14:00', 'pending_approval'),  // far future — outside
+    ];
+    const s = computeWeekFillStatus(posts, 7, 2, NOW);
+    expect(s.pendingApprovalTotal).toBe(2);
+    expect(s.days[0].pendingApprovalCount).toBe(1);
+    expect(s.days[6].pendingApprovalCount).toBe(1);
+  });
+
+  it('over-scheduled day with pending_approval still bounds scheduledTotal at target', () => {
+    // 4 scheduled (over the 2/day target) + 3 pending_approval on day 0.
+    // scheduledCount=4, pendingApprovalCount=3 — but capped contribution=2.
+    // Other days remain empty → not filled.
+    const posts: ScheduledPost[] = [
+      post('2026-04-21', '10:00', 'scheduled'),
+      post('2026-04-21', '12:00', 'scheduled'),
+      post('2026-04-21', '14:00', 'scheduled'),
+      post('2026-04-21', '16:00', 'scheduled'),
+      post('2026-04-21', '18:00', 'pending_approval'),
+      post('2026-04-21', '20:00', 'pending_approval'),
+      post('2026-04-21', '22:00', 'pending_approval'),
+    ];
+    const s = computeWeekFillStatus(posts, 7, 2, NOW);
+    expect(s.days[0].scheduledCount).toBe(4);
+    expect(s.days[0].pendingApprovalCount).toBe(3);
+    expect(s.scheduledTotal).toBe(2); // capped at day-0's target
+    expect(s.pendingApprovalTotal).toBe(3);
+    expect(s.filled).toBe(false);
+  });
+
   it('posts dated today are off-window (today is excluded — scheduler starts tomorrow)', () => {
     const posts: ScheduledPost[] = [
       post('2026-04-20', '14:00', 'scheduled'), // today → off-window
