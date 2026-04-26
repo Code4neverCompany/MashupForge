@@ -52,6 +52,8 @@ const STEP_LABELS: Record<string, string> = {
   'pipeline-error':  'Error',
   'pipeline-timeout':    'Timeout',
   'pipeline-week-filled': 'Week Filled',
+  'pipeline-week-confirmed': 'Week Confirmed',
+  'pipeline-week-partial':   'Week Partial',
   'complete':        'Complete',
 };
 
@@ -85,6 +87,8 @@ export function PipelinePanel() {
     setPipelineInterval,
     pipelineTargetDays,
     setPipelineTargetDays,
+    pipelineIdeasPerCycle,
+    setPipelineIdeasPerCycle,
     weekFillStatus,
   } = useMashup();
 
@@ -377,10 +381,10 @@ export function PipelinePanel() {
                 <span className="text-sm text-zinc-500">Every</span>
                 <input
                   type="number"
-                  min={30}
+                  min={120}
                   max={1440}
                   value={pipelineInterval}
-                  onChange={(e) => setPipelineInterval(Math.max(30, Math.min(1440, Number(e.target.value))))}
+                  onChange={(e) => setPipelineInterval(Math.max(120, Math.min(1440, Number(e.target.value))))}
                   className="w-20 px-2 py-1 bg-zinc-900 border border-[#c5a062]/25 rounded-xl text-sm text-white text-center focus:outline-none focus:ring-2 focus:ring-[#00e6ff]/30 focus:border-[#00e6ff]/40 transition-colors"
                 />
                 <span className="text-sm text-zinc-500">min</span>
@@ -397,12 +401,34 @@ export function PipelinePanel() {
                 />
                 <span className="text-sm text-zinc-500">days ahead</span>
               </div>
+              {/* PIPELINE-CONT-V2: configurable ideas/cycle so the daemon
+                  can sustain a full week even when posts get rejected. */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-zinc-500">ideas/cycle</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={pipelineIdeasPerCycle}
+                  onChange={(e) => setPipelineIdeasPerCycle(Math.max(1, Math.min(10, Number(e.target.value))))}
+                  className="w-16 px-2 py-1 bg-zinc-900 border border-[#c5a062]/25 rounded-xl text-sm text-white text-center focus:outline-none focus:ring-2 focus:ring-[#00e6ff]/30 focus:border-[#00e6ff]/40 transition-colors"
+                />
+              </div>
             </div>
           )}
         </div>
 
         {/* V030-004: week-ahead progress meter */}
         <WeekProgressMeter />
+
+        {/* PIPELINE-CONT-V2: pending-approval indicator. Surfaces the
+            backlog that the daemon will keep generating against until
+            it's cleared (approved → scheduled, or rejected). */}
+        {weekFillStatus.pendingApprovalTotal > 0 && (
+          <p className="text-sm text-amber-400">
+            {weekFillStatus.pendingApprovalTotal} pending approval
+          </p>
+        )}
 
         {/* Best posting times */}
         <BestTimesWidget settings={settings} />
