@@ -64,45 +64,15 @@ export interface PiStatus {
 
 export type PiBusy = null | 'install' | 'start' | 'stop' | 'setup';
 
-const RECOMMENDED_NICHES = [
-  'Multiverse Mashup',
-  'Fan Fiction & Lore',
-  'Merchandise & Collectibles',
-  'Cosplay & Fan Art',
-  'Pop Culture Crossovers',
-  'Alternate Realities',
-  'Sci-Fi & Fantasy',
-  'Retro & Nostalgia',
-  'Cyberpunk & Futurism',
-  'Grimdark & Gothic',
-  'Street-Level Heroes',
-  'Galactic Empires',
-  'Eldritch Horrors',
-  'Mythic Legends',
-];
-
-const RECOMMENDED_GENRES = [
-  'Visual Storytelling',
-  'High Contrast',
-  'Emotional Resonance',
-  'Cinematic Crossovers',
-  'What If Scenarios',
-  'Alternative Timelines',
-  'Epic Battles',
-  'Character Dialogues',
-  'Behind-the-Scenes Concepts',
-  'Meme-worthy Mashups',
-  'Deep Lore Explorations',
-  'Hyper-Realistic',
-  'Dramatic Lighting',
-  'Epic Action',
-  'Concept Art',
-  'Digital Illustration',
-  'Noir & Gritty',
-  'Vibrant & Neon',
-  'Surreal & Abstract',
-  'Minimalist Design',
-];
+// V080-DES-003: defaults + builder live in lib/agent-prompt so the
+// runtime ("Reset to Default" button) can interpolate the user's actual
+// niches/genres into the system prompt instead of the old hardcoded
+// "Marvel, DC, Star Wars, Warhammer 40k" paragraph.
+import {
+  DEFAULT_NICHES as RECOMMENDED_NICHES,
+  DEFAULT_GENRES as RECOMMENDED_GENRES,
+  buildDefaultAgentPrompt,
+} from '@/lib/agent-prompt';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -1037,47 +1007,25 @@ export function SettingsModal({
               </div>
 
               <button
-                onClick={() => updateSettings({
-                  agentPrompt: `You are a Master Content Creator and Social Media Growth Strategist. Your mission is to generate high-impact, viral-potential image prompts that drive massive traffic and engagement. You specialize in the 'Multiverse Mashup' niche, blending iconic universes like Marvel, DC, Star Wars, and Warhammer 40k. Your tone is professional yet edgy, focusing on 'what if' scenarios, alternative timelines, and epic cinematic crossovers. Every prompt you generate must be optimized for visual storytelling, high contrast, and emotional resonance to capture attention on platforms like Instagram, TikTok, and Twitter. Research current social media trends, popular crossover memes, and viral "what if" scenarios for these franchises to ensure your output is optimized for virality. Use the provided focus tags to strictly influence the style, theme, and technical execution of your output.`,
-                  agentNiches: [
-                    'Multiverse Mashup',
-                    'Fan Fiction & Lore',
-                    'Merchandise & Collectibles',
-                    'Cosplay & Fan Art',
-                    'Pop Culture Crossovers',
-                    'Alternate Realities',
-                    'Sci-Fi & Fantasy',
-                    'Retro & Nostalgia',
-                    'Cyberpunk & Futurism',
-                    'Grimdark & Gothic',
-                    'Street-Level Heroes',
-                    'Galactic Empires',
-                    'Eldritch Horrors',
-                    'Mythic Legends',
-                  ],
-                  agentGenres: [
-                    'Visual Storytelling',
-                    'High Contrast',
-                    'Emotional Resonance',
-                    'Cinematic Crossovers',
-                    'What If Scenarios',
-                    'Alternative Timelines',
-                    'Epic Battles',
-                    'Character Dialogues',
-                    'Behind-the-Scenes Concepts',
-                    'Meme-worthy Mashups',
-                    'Deep Lore Explorations',
-                    'Hyper-Realistic',
-                    'Dramatic Lighting',
-                    'Epic Action',
-                    'Concept Art',
-                    'Digital Illustration',
-                    'Noir & Gritty',
-                    'Vibrant & Neon',
-                    'Surreal & Abstract',
-                    'Minimalist Design',
-                  ],
-                })}
+                onClick={() => {
+                  // V080-DES-003: build the prompt against the user's
+                  // CURRENT niches/genres (or curated defaults if they
+                  // have nothing selected) so Reset doesn't quietly
+                  // overwrite their personalisation with a hardcoded
+                  // franchise list. The runtime call sites then append
+                  // the live tag list on every request.
+                  const niches = (settings.agentNiches && settings.agentNiches.length > 0)
+                    ? settings.agentNiches
+                    : [...RECOMMENDED_NICHES];
+                  const genres = (settings.agentGenres && settings.agentGenres.length > 0)
+                    ? settings.agentGenres
+                    : [...RECOMMENDED_GENRES];
+                  updateSettings({
+                    agentPrompt: buildDefaultAgentPrompt({ niches, genres }),
+                    agentNiches: niches,
+                    agentGenres: genres,
+                  });
+                }}
                 className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl font-bold transition-all border border-zinc-800/60 flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest"
               >
                 <RefreshCw className="w-3 h-3" />
