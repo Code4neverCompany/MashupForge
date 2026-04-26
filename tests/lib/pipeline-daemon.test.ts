@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { countFutureScheduledPosts, IdeaTimeoutError } from '@/lib/pipeline-daemon-utils';
 import { SkipIdeaSignal } from '@/lib/pipeline-processor';
+import { computeWeekFillStatus } from '@/lib/weekly-fill';
 import type { ScheduledPost } from '@/types/mashup';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -160,5 +161,116 @@ describe('per-idea timeout race — IdeaTimeoutError + AbortController pattern',
     expect(skip).not.toBeInstanceOf(IdeaTimeoutError);
     expect(timeout.kind).toBe('timeout');
     expect(skip.kind).toBe('skip');
+  });
+});
+
+// ─── Continuous-mode fill decision (PIPELINE-CONT-V2) ────────────────────────
+//
+// The daemon's continuous-mode block (hooks/usePipelineDaemon.ts) picks one
+// of three branches per cycle based on `computeWeekFillStatus`:
+//
+//   !filled                              → continue immediately (generate more)
+//   filled && pendingApprovalTotal > 0   → continue immediately (no sleep)
+//   filled && pendingApprovalTotal === 0 → sleep `interval` minutes
+//
+// Asserting the predicate directly (rather than instantiating the hook) is
+// the cheapest way to pin the contract — the hook itself is a 200-line
+// callback wrapping IDB / fetch / AI calls and resists isolated unit tests.
+// If the daemon's decision diverges from these predicates, the regression
+// shows up here AND in tests/integration coverage.
+
+describe('continuous-mode fill decision predicates (PIPELINE-CONT-V2)', () => {
+  // Pin "now" to Mon 2026-04-20 noon — window starts Tue 2026-04-21.
+  const NOW = new Date(2026, 3, 20, 12, 0, 0);
+
+  /** Mirror of the hook's branch picker — kept tiny so a future change to
+   *  the hook can be reflected here in one place. */
+  function pickBranch(fill: ReturnType<typeof computeWeekFillStatus>):
+    | 'continue-not-filled'
+    | 'continue-pending'
+    | 'sleep-confirmed' {
+    if (!fill.filled) return 'continue-not-filled';
+    if (fill.pendingApprovalTotal > 0) return 'continue-pending';
+    return 'sleep-confirmed';
+  }
+
+  function fillFor(posts: ScheduledPost[], horizonDays = 14, perDay = 2) {
+    return computeWeekFillStatus(posts, horizonDays, perDay, NOW);
+  }
+
+  function fullWeekOf(status: ScheduledPost['status']): ScheduledPost[] {
+    // 14 days × 2 posts each = 28 posts, all the given status.
+    const tomorrow = new Date(NOW);
+    tomorrow.setDate(NOW.getDate() + 1);
+    const out: ScheduledPost[] = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(tomorrow);
+      d.setDate(tomorrow.getDate() + i);
+      const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      out.push(makePost(ds, '14:00', status));
+      out.push(makePost(ds, '20:00', status));
+    }
+    return out;
+  }
+
+  it('empty schedule → continue (not filled)', () => {
+    const fill = fillFor([]);
+    expect(fill.filled).toBe(false);
+    expect(fill.pendingApprovalTotal).toBe(0);
+    expect(pickBranch(fill)).toBe('continue-not-filled');
+  });
+
+  it('horizon full of pending_approval → continue (not filled, pending > 0)', () => {
+    const fill = fillFor(fullWeekOf('pending_approval'));
+    // Critical: pending_approval does NOT count as filled. Pre-V2 this was
+    // `filled = true` and the daemon slept while the user had 28 posts
+    // waiting for approval.
+    expect(fill.filled).toBe(false);
+    expect(fill.pendingApprovalTotal).toBe(28);
+    expect(pickBranch(fill)).toBe('continue-not-filled');
+  });
+
+  it('horizon full of scheduled → sleep (confirmed fill)', () => {
+    const fill = fillFor(fullWeekOf('scheduled'));
+    expect(fill.filled).toBe(true);
+    expect(fill.pendingApprovalTotal).toBe(0);
+    expect(pickBranch(fill)).toBe('sleep-confirmed');
+  });
+
+  it('horizon full of scheduled + extra pending elsewhere → continue (partial)', () => {
+    // Every slot in the 2-week window is scheduled (filled=true), AND there
+    // are extra pending_approval posts on the same days (pendingTotal>0).
+    // Branch: continue immediately — the pending posts will either get
+    // approved (rolling forward into another scheduled day later) or
+    // rejected, both of which warrant another cycle.
+    const posts = [
+      ...fullWeekOf('scheduled'),
+      makePost('2026-04-22', '15:00', 'pending_approval'),
+      makePost('2026-04-23', '15:00', 'pending_approval'),
+    ];
+    const fill = fillFor(posts);
+    expect(fill.filled).toBe(true);
+    expect(fill.pendingApprovalTotal).toBe(2);
+    expect(pickBranch(fill)).toBe('continue-pending');
+  });
+
+  it('mixed half-scheduled half-pending → continue (not filled)', () => {
+    // 14 scheduled + 14 pending across 14 days (1 each per day).
+    // scheduledCount per day = 1, target = 2 → never filled.
+    const tomorrow = new Date(NOW);
+    tomorrow.setDate(NOW.getDate() + 1);
+    const posts: ScheduledPost[] = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(tomorrow);
+      d.setDate(tomorrow.getDate() + i);
+      const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      posts.push(makePost(ds, '14:00', 'scheduled'));
+      posts.push(makePost(ds, '20:00', 'pending_approval'));
+    }
+    const fill = fillFor(posts);
+    expect(fill.filled).toBe(false);
+    expect(fill.scheduledTotal).toBe(14);
+    expect(fill.pendingApprovalTotal).toBe(14);
+    expect(pickBranch(fill)).toBe('continue-not-filled');
   });
 });
