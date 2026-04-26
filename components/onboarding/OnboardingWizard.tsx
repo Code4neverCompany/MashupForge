@@ -140,7 +140,12 @@ export function OnboardingWizard({ initialStep = 1, onComplete, onSkip }: Onboar
     >
       <div
         ref={dialogRef}
-        className="max-w-[640px] w-[calc(100vw-2rem)] min-h-[540px] max-h-[calc(100vh-2rem)] bg-zinc-950/95 backdrop-blur-xl border border-[#c5a062]/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        // V080-DES-001: drop the unconditional min-h on small viewports —
+        // a 540px floor on a 360px-tall phone pushes the footer (Continue
+        // button) below the visible area. The body's flex-1 + overflow-y-auto
+        // already handles content growth; we just need to let the dialog
+        // size to the viewport on short screens.
+        className="max-w-[640px] w-[calc(100vw-2rem)] sm:min-h-[540px] max-h-[calc(100vh-2rem)] bg-zinc-950/95 backdrop-blur-xl border border-[#c5a062]/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
       >
         {/* Header */}
         <div className="px-6 py-4 flex items-center justify-between border-b border-zinc-900 flex-shrink-0">

@@ -3,12 +3,16 @@
 import { useState } from 'react';
 import { Plus, X, Drama } from 'lucide-react';
 
+// V080-DES-001 (re-pass): pool expanded to 32 universes + 32 genres so
+// every row sits comfortably above the "30+" target with headroom for
+// niches the curator hadn't covered yet.
 const CURATED_UNIVERSES = [
   'Marvel', 'DC', 'Star Wars', 'Star Trek', 'Warhammer 40k', 'Dune',
   'LOTR', 'Game of Thrones', 'Anime', 'Studio Ghibli', 'Disney', 'Cyberpunk 2077',
   'Harry Potter', 'Witcher', 'Mass Effect', 'Halo', 'Fallout', 'Bloodborne',
   'Attack on Titan', 'One Piece', 'Naruto', 'Dragon Ball', 'Evangelion', 'Avatar',
   'Stranger Things', 'The Matrix', 'Blade Runner', 'Akira',
+  'Pokémon', 'Zelda', 'Final Fantasy', 'Elder Scrolls',
 ];
 
 const CURATED_GENRES = [
@@ -16,6 +20,9 @@ const CURATED_GENRES = [
   'Noir', 'Post-apocalyptic', 'Slice-of-life', 'Mythology',
   'Dark Fantasy', 'High Fantasy', 'Space Opera', 'Dystopian', 'Gothic',
   'Urban Fantasy', 'Mecha', 'Isekai', 'Cosmic Horror', 'Solarpunk',
+  'Grimdark', 'Magical Realism', 'Sword & Sorcery', 'Biopunk',
+  'Weird West', 'Lovecraftian', 'Superhero', 'Crime',
+  'Surrealism', 'Retro-futurism', 'Vaporwave', 'Afrofuturism',
 ];
 
 const MAX_SELECTIONS = 10;
