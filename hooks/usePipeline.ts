@@ -184,6 +184,8 @@ export function usePipeline(deps: UsePipelineDeps) {
     setPipelineInterval: daemon.setPipelineInterval,
     pipelineTargetDays: daemon.pipelineTargetDays,
     setPipelineTargetDays: daemon.setPipelineTargetDays,
+    pipelineIdeasPerCycle: daemon.pipelineIdeasPerCycle,
+    setPipelineIdeasPerCycle: daemon.setPipelineIdeasPerCycle,
     clearPipelineLog: daemon.clearPipelineLog,
     pendingResume: daemon.pendingResume,
     acceptResume,

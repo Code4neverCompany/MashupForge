@@ -429,6 +429,8 @@ export function MashupProvider({ children }: { children: ReactNode }) {
     setPipelineInterval: pipelineHook.setPipelineInterval,
     pipelineTargetDays: pipelineHook.pipelineTargetDays,
     setPipelineTargetDays: pipelineHook.setPipelineTargetDays,
+    pipelineIdeasPerCycle: pipelineHook.pipelineIdeasPerCycle,
+    setPipelineIdeasPerCycle: pipelineHook.setPipelineIdeasPerCycle,
     clearPipelineLog: pipelineHook.clearPipelineLog,
     approveScheduledPost,
     rejectScheduledPost,

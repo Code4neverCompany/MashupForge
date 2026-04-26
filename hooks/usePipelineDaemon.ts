@@ -42,6 +42,7 @@ interface PersistedPipelineConfig {
   continuous: boolean;
   interval: number;
   targetDays: number;
+  ideasPerCycle: number;
 }
 
 function loadPersistedConfig(): PersistedPipelineConfig {
@@ -55,12 +56,20 @@ function loadPersistedConfig(): PersistedPipelineConfig {
         continuous: parsed.continuous ?? false,
         interval: parsed.interval ?? 120,
         targetDays: parsed.targetDays ?? 7,
+        ideasPerCycle: parsed.ideasPerCycle ?? 5,
       };
     }
   } catch {
     /* ignore */
   }
-  return { enabled: false, delay: 30, continuous: false, interval: 120, targetDays: 7 };
+  return {
+    enabled: false,
+    delay: 30,
+    continuous: false,
+    interval: 120,
+    targetDays: 7,
+    ideasPerCycle: 5,
+  };
 }
 
 function persistConfig(state: PersistedPipelineConfig) {
@@ -143,6 +152,12 @@ export function usePipelineDaemon(deps: UsePipelineDaemonDeps) {
   const [pipelineTargetDays, setPipelineTargetDaysState] = useState(
     () => loadPersistedConfig().targetDays,
   );
+  // PIPELINE-CONT-V2: configurable ideas/cycle (default 5, range 1-10).
+  // Old behaviour was a hardcoded 3 inside autoGenerateIdeas — too few to
+  // sustain a full week when posts can be rejected or fail approval.
+  const [pipelineIdeasPerCycle, setPipelineIdeasPerCycleState] = useState(
+    () => loadPersistedConfig().ideasPerCycle,
+  );
   const [pendingResume, setPendingResume] = useState<PipelineCheckpoint | null>(null);
   // AbortControllers — signal.aborted is a live read on the shared object,
   // so no ref needed. Held in useState so stop/skip handlers can reach the
@@ -212,6 +227,7 @@ export function usePipelineDaemon(deps: UsePipelineDaemonDeps) {
       continuous: pipelineContinuous,
       interval: pipelineInterval,
       targetDays: pipelineTargetDays,
+      ideasPerCycle: pipelineIdeasPerCycle,
     });
   }, [
     pipelineEnabled,
@@ -219,6 +235,7 @@ export function usePipelineDaemon(deps: UsePipelineDaemonDeps) {
     pipelineContinuous,
     pipelineInterval,
     pipelineTargetDays,
+    pipelineIdeasPerCycle,
   ]);
 
   // V030-003: persist log to IDB on every change (fire-and-forget; best-effort).
@@ -469,6 +486,7 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
         const readInterval = () => peek<number>(setPipelineIntervalState);
         const readTargetDays = () => peek<number>(setPipelineTargetDaysState);
         const readDelay = () => peek<number>(setPipelineDelayState);
+        const readIdeasPerCycle = () => peek<number>(setPipelineIdeasPerCycleState);
 
         do {
           cycle++;
@@ -487,7 +505,7 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
               currentIdea: '',
             });
             try {
-              const generated = await autoGenerateIdeas(3);
+              const generated = await autoGenerateIdeas(readIdeasPerCycle());
               for (const g of generated) {
                 addIdea(g.concept, g.context || undefined);
               }
@@ -629,13 +647,21 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
           if (runAbort.signal.aborted) break;
 
           if (readContinuous()) {
-            // V060-004: continuous mode is now "fill week → pre-schedule
-            // 2 weeks → pause → repeat". The daemon checks the 2-week
-            // (14d) horizon: while it's not yet filled, the next cycle
-            // fires immediately so the engagement-best slots in week 1
-            // (then week 2) get filled back-to-back. Once the 2-week
-            // target is met, sleep the configurable `interval` timer
-            // before rolling forward into the following week.
+            // PIPELINE-CONT-V2: continuous mode is "fill week with
+            // SCHEDULED (approved) posts → pause → repeat". The daemon
+            // computes fill over the 2-week (14d) horizon counting only
+            // `status==='scheduled'` toward `filled`. Three outcomes:
+            //
+            //   1. !filled — generate more, immediate next cycle.
+            //   2. filled but pendingApprovalTotal > 0 — week looks
+            //      "full" by raw post count but those posts haven't
+            //      been approved yet, so they won't actually publish.
+            //      Keep generating; the user's approval action will
+            //      flip them to `scheduled` over time.
+            //   3. filled AND pendingApprovalTotal === 0 — true fill,
+            //      every horizon day has its scheduled-post target met
+            //      with approved posts. Sleep `interval` before rolling
+            //      into the next week.
             const settingsTargetDays = readTargetDays();
             const intervalMin = readInterval();
             const targetPerDay =
@@ -644,43 +670,51 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
               ...(latestPropsRef.current.settings.scheduledPosts || []),
               ...accumulatedPosts,
             ];
-            // 2-week pre-schedule horizon = max(settings.targetDays, 14).
-            // settings.targetDays still drives the UI Week Progress meter
-            // and the per-cycle "filled?" check; this just ensures the
-            // daemon's pre-schedule window is at least 2 weeks even when
-            // the user configured a smaller target.
             const horizonDays = Math.max(settingsTargetDays, 14);
-            // Per-day capped fill so over-scheduled days can't mask empty
-            // ones. `filled` is only true when EVERY day in the horizon
-            // has at least `targetPerDay` scheduled posts. Use
-            // `fill.scheduledTotal` (per-day-capped) for the log line so
-            // the displayed numerator can never exceed the denominator
-            // (`fill.targetTotal`); the raw `countFutureScheduledPosts`
-            // returned values like "29/28" when one day was over-scheduled.
             const fill = computeWeekFillStatus(allPosts, horizonDays, targetPerDay);
             const futurePosts = fill.scheduledTotal;
             const targetTotal = fill.targetTotal;
+            const pendingTotal = fill.pendingApprovalTotal;
             const emptyDays = fill.days.filter((d) => d.scheduledCount < d.target);
 
             if (!fill.filled) {
               const gapSummary = emptyDays.length > 0
                 ? ` (${emptyDays.length} day${emptyDays.length === 1 ? '' : 's'} under cap: ${emptyDays.map((d) => `${d.dayLabel} ${d.scheduledCount}/${d.target}`).join(', ')})`
                 : '';
+              const pendingSuffix = pendingTotal > 0
+                ? ` + ${pendingTotal} pending approval`
+                : '';
               addLog(
                 'daemon',
                 '',
                 'success',
-                `Schedule has ${futurePosts}/${targetTotal} posts in next ${horizonDays}d${gapSummary} — running next cycle immediately`,
+                `Schedule has ${futurePosts}/${targetTotal} scheduled${pendingSuffix} in next ${horizonDays}d${gapSummary} — running next cycle immediately`,
               );
               continue;
             }
 
-            if (!weekFilledPromptedThisRun) {
+            // filled === true past this point.
+            if (pendingTotal > 0) {
+              // PARTIAL fill — scheduled posts plus pending_approval cover
+              // the slots, but pending_approval won't publish on its own.
+              // Emit one info log per cycle and continue without sleeping.
               addLog(
-                'pipeline-week-filled',
+                'pipeline-week-partial',
                 '',
                 'success',
-                `2-week schedule filled: ${futurePosts}/${targetTotal} posts across ${horizonDays}d — pausing ${intervalMin}m before next week`,
+                `Week has ${futurePosts}/${targetTotal} scheduled + ${pendingTotal} pending approval — continuing`,
+              );
+              continue;
+            }
+
+            // CONFIRMED fill — every day's scheduled count meets target
+            // and no posts are awaiting approval. Now we sleep.
+            if (!weekFilledPromptedThisRun) {
+              addLog(
+                'pipeline-week-confirmed',
+                '',
+                'success',
+                `Week confirmed filled: ${futurePosts}/${targetTotal} posts across ${horizonDays}d — all scheduled (pausing ${intervalMin}m before next week)`,
               );
               weekFilledPromptedThisRun = true;
             }
@@ -688,7 +722,7 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
               'daemon',
               '',
               'success',
-              `Schedule target met (${futurePosts}/${targetTotal}) — sleeping ${intervalMin}m before next week`,
+              `Schedule target met (${futurePosts}/${targetTotal}, 0 pending) — sleeping ${intervalMin}m before next week`,
             );
 
             setPipelineProgress({
@@ -744,11 +778,18 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
   const setPipelineDelay = useCallback((d: number) => setPipelineDelayState(d), []);
   const toggleContinuous = useCallback(() => setPipelineContinuous(p => !p), []);
   const setPipelineInterval = useCallback(
-    (m: number) => setPipelineIntervalState(Math.max(30, Math.min(1440, m))),
+    // PIPELINE-CONT-V2: minimum bumped 30 → 120 to match the user's stated
+    // preference (120-min cycles). The default was already 120; this
+    // closes the gap where the UI input could push it below the default.
+    (m: number) => setPipelineIntervalState(Math.max(120, Math.min(1440, m))),
     [],
   );
   const setPipelineTargetDays = useCallback(
     (d: number) => setPipelineTargetDaysState(Math.max(1, Math.min(30, d))),
+    [],
+  );
+  const setPipelineIdeasPerCycle = useCallback(
+    (n: number) => setPipelineIdeasPerCycleState(Math.max(1, Math.min(10, n))),
     [],
   );
   const clearPipelineLog = useCallback(() => {
@@ -802,6 +843,7 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
     pipelineContinuous,
     pipelineInterval,
     pipelineTargetDays,
+    pipelineIdeasPerCycle,
     pendingResume,
     weekFillStatus,
 
@@ -810,6 +852,7 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
     setPipelineContinuous,
     setPipelineIntervalState,
     setPipelineTargetDaysState,
+    setPipelineIdeasPerCycleState,
     setPendingResume,
     setPipelineProgress,
 
@@ -827,6 +870,7 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
     toggleContinuous,
     setPipelineInterval,
     setPipelineTargetDays,
+    setPipelineIdeasPerCycle,
     clearPipelineLog,
     stopPipeline,
     skipCurrentIdea,

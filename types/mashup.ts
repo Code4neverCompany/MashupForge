@@ -878,6 +878,9 @@ export interface MashupContextType {
   /** How many days ahead the daemon tries to keep the schedule filled. */
   pipelineTargetDays: number;
   setPipelineTargetDays: (days: number) => void;
+  /** Ideas the daemon auto-generates per cycle when the queue is empty (1-10, default 5). */
+  pipelineIdeasPerCycle: number;
+  setPipelineIdeasPerCycle: (n: number) => void;
   /** Clear the pipeline log — leaves state/persistence intact otherwise. */
   clearPipelineLog: () => void;
   /** Approve a pending_approval post — flips its status to 'scheduled'. */
