@@ -2,8 +2,9 @@
 title: MashupForge V091-REVIEW QA Review
 created: 2026-04-26
 updated: 2026-04-26
+closed: 2026-04-26
 type: project
-status: approved
+status: closed
 tags: [mashupforge, qa, review, carousel, queue, social-posting, v0.9.1]
 sources: [raw/agent-output/V091-REVIEW.md]
 confidence: 0.87
