@@ -109,9 +109,22 @@ export function CollectionModal({
                 if (e.key === 'Enter') { e.preventDefault(); void submit(); }
                 else if (e.key === 'Escape') { e.preventDefault(); onClose(); }
               }}
-              placeholder={canSuggest ? 'Name (or leave blank to auto-name)' : 'Collection name'}
+              placeholder={
+                isSuggesting
+                  ? 'Generating name from your selection…'
+                  : canSuggest
+                    ? 'Name (or leave blank to auto-name)'
+                    : 'Collection name'
+              }
               disabled={isSuggesting || isCreating}
-              className="flex-1 min-w-0 bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/40 disabled:opacity-60"
+              // V080-DES-004: subtle gold-tinted ring while pi.dev is
+              // composing the suggestion so users see WHICH fields will
+              // get populated, not just that the button is busy.
+              className={`flex-1 min-w-0 bg-zinc-950 border rounded-lg px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/40 disabled:opacity-60 transition-colors ${
+                isSuggesting
+                  ? 'border-[#c5a062]/50 ring-1 ring-[#c5a062]/30 animate-pulse'
+                  : 'border-zinc-800/60'
+              }`}
             />
             {canSuggest && (
               <button
@@ -149,9 +162,17 @@ export function CollectionModal({
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void submit(); }
                 else if (e.key === 'Escape') { e.preventDefault(); onClose(); }
               }}
-              placeholder="What is this collection about?"
+              placeholder={
+                isSuggesting
+                  ? 'Generating description…'
+                  : 'What is this collection about?'
+              }
               disabled={isSuggesting || isCreating}
-              className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/40 min-h-[64px] resize-none disabled:opacity-60"
+              className={`w-full bg-zinc-950 border rounded-lg px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-[#c5a062]/40 min-h-[64px] resize-none disabled:opacity-60 transition-colors ${
+                isSuggesting
+                  ? 'border-[#c5a062]/50 ring-1 ring-[#c5a062]/30 animate-pulse'
+                  : 'border-zinc-800/60'
+              }`}
             />
           )}
         </div>
