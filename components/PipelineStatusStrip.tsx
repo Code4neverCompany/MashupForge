@@ -14,7 +14,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Zap } from 'lucide-react';
+import { Zap, CheckCircle2 } from 'lucide-react';
 import { useMashup, type ViewType } from './MashupContext';
 
 interface Props {
@@ -39,6 +39,7 @@ export const PipelineStatusStrip: React.FC<Props> = ({ setView }) => {
     pipelineQueue,
     pipelineProgress,
     pipelineContinuous,
+    pipelineLog,
   } = useMashup();
 
   const [now, setNow] = useState(() => Date.now());
@@ -84,6 +85,21 @@ export const PipelineStatusStrip: React.FC<Props> = ({ setView }) => {
     timerText = 'Ready';
   }
 
+  // PIPELINE-CONT-V2 (V091-QA-FOLLOWUP §4): success banner for the
+  // confirmed-fill event. The daemon emits a `pipeline-week-confirmed`
+  // log entry only when the horizon is fully scheduled AND no posts
+  // are awaiting approval — the only "true done" state for continuous
+  // mode. Surfacing it on the strip means the user gets the same
+  // confirmation on every tab, not just the pipeline view.
+  //
+  // Auto-dismiss: the banner is bound to the most-recent log entry, so
+  // it disappears the moment the daemon emits any newer event (next
+  // cycle's `pipeline-cycle`, `daemon`, etc.) — no timer needed.
+  const latestLog = pipelineLog && pipelineLog.length > 0
+    ? pipelineLog[pipelineLog.length - 1]
+    : null;
+  const showWeekConfirmedBanner = latestLog?.step === 'pipeline-week-confirmed';
+
   return (
     <button
       type="button"
@@ -106,6 +122,18 @@ export const PipelineStatusStrip: React.FC<Props> = ({ setView }) => {
         <>
           <span className="h-3 w-px bg-zinc-700" aria-hidden="true" />
           <span className="text-zinc-400 tabular-nums max-w-[140px] truncate">{timerText}</span>
+        </>
+      )}
+      {showWeekConfirmedBanner && (
+        <>
+          <span className="h-3 w-px bg-zinc-700" aria-hidden="true" />
+          <span
+            data-testid="pipeline-week-confirmed-banner"
+            className="flex items-center gap-1 px-2 py-0.5 bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 rounded-full text-[10px] font-medium"
+          >
+            <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
+            Week confirmed
+          </span>
         </>
       )}
     </button>
