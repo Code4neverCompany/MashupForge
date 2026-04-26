@@ -184,6 +184,19 @@ export function PostReadyCard({
           {label}
         </span>
         {kind === 'scheduled' && <CountdownBadge scheduledPost={scheduledPost} />}
+        {/* V080-DES-002: explicit "Not scheduled" affordance so the
+            absence of a countdown badge isn't confused with "scheduled
+            but no time set yet" — matches the story AC. Suppressed for
+            posted/failed where the status pill already says enough. */}
+        {kind === 'ready' && (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full border bg-zinc-900/60 border-zinc-700 text-zinc-400"
+            aria-label="Not scheduled"
+          >
+            <Clock className="w-3 h-3" aria-hidden="true" />
+            Not scheduled
+          </span>
+        )}
       </div>
 
       <div className="flex flex-col md:flex-row">

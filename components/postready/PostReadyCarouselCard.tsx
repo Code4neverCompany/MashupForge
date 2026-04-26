@@ -163,6 +163,17 @@ export function PostReadyCarouselCard({
           {label}
         </span>
         {kind === 'scheduled' && <CountdownBadge scheduledPost={scheduledPost} />}
+        {/* V080-DES-002: explicit "Not scheduled" affordance so an
+            unscheduled carousel reads the same as an unscheduled single. */}
+        {kind === 'ready' && (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full border bg-zinc-900/60 border-zinc-700 text-zinc-400"
+            aria-label="Not scheduled"
+          >
+            <Clock className="w-3 h-3" aria-hidden="true" />
+            Not scheduled
+          </span>
+        )}
         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#00e6ff]/15 border border-[#00e6ff]/30 text-[10px] font-medium text-[#00e6ff] rounded-full">
           <LayoutGrid className="w-3 h-3" /> Carousel · {images.length}
         </span>
