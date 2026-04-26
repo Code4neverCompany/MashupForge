@@ -1,4 +1,5 @@
 import type { ScheduledPost, UserSettings } from '../types/mashup';
+import type { WeekFillStatus } from './weekly-fill';
 
 type AutoApproveMap = UserSettings['pipelineAutoApprove'];
 type PlatformKey = 'instagram' | 'pinterest' | 'twitter' | 'discord';
@@ -136,4 +137,33 @@ export class IdeaTimeoutError extends Error {
     super('__IDEA_TIMEOUT__');
     this.name = 'IdeaTimeoutError';
   }
+}
+
+/**
+ * PIPELINE-CONT-V2 — three possible per-cycle decisions for the daemon's
+ * continuous-mode block.
+ *
+ *   continue-not-filled  — horizon has gaps in `scheduled` posts; generate more
+ *   continue-pending     — horizon's `scheduled` count meets target but there
+ *                          are still `pending_approval` posts in flight; keep
+ *                          generating because pending posts won't publish
+ *                          until the user approves them
+ *   sleep-confirmed      — horizon is fully scheduled (publishable) AND no
+ *                          posts are awaiting approval; sleep `interval`
+ *                          minutes before the next week
+ */
+export type ContinuousBranch =
+  | 'continue-not-filled'
+  | 'continue-pending'
+  | 'sleep-confirmed';
+
+/**
+ * Pure decision function used by the daemon's continuous-mode block.
+ * Lifted out of the hook so the contract is tested against the actual
+ * production code rather than a mirror — see V091-QA-FOLLOWUP.
+ */
+export function pickContinuousBranch(fill: WeekFillStatus): ContinuousBranch {
+  if (!fill.filled) return 'continue-not-filled';
+  if (fill.pendingApprovalTotal > 0) return 'continue-pending';
+  return 'sleep-confirmed';
 }

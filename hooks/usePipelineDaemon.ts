@@ -31,7 +31,7 @@ import {
   loadPipelineLog,
   clearPipelineLog as clearPipelineLogStore,
 } from '@/lib/pipeline-log-store';
-import { IdeaTimeoutError } from '@/lib/pipeline-daemon-utils';
+import { IdeaTimeoutError, pickContinuousBranch } from '@/lib/pipeline-daemon-utils';
 import { computeWeekFillStatus, type WeekFillStatus } from '@/lib/weekly-fill';
 
 const PIPELINE_STORAGE_KEY = 'mashup_pipeline_state';
@@ -676,8 +676,9 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
             const targetTotal = fill.targetTotal;
             const pendingTotal = fill.pendingApprovalTotal;
             const emptyDays = fill.days.filter((d) => d.scheduledCount < d.target);
+            const branch = pickContinuousBranch(fill);
 
-            if (!fill.filled) {
+            if (branch === 'continue-not-filled') {
               const gapSummary = emptyDays.length > 0
                 ? ` (${emptyDays.length} day${emptyDays.length === 1 ? '' : 's'} under cap: ${emptyDays.map((d) => `${d.dayLabel} ${d.scheduledCount}/${d.target}`).join(', ')})`
                 : '';
@@ -693,8 +694,7 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
               continue;
             }
 
-            // filled === true past this point.
-            if (pendingTotal > 0) {
+            if (branch === 'continue-pending') {
               // PARTIAL fill — scheduled posts plus pending_approval cover
               // the slots, but pending_approval won't publish on its own.
               // Emit one info log per cycle and continue without sleeping.
@@ -707,8 +707,8 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
               continue;
             }
 
-            // CONFIRMED fill — every day's scheduled count meets target
-            // and no posts are awaiting approval. Now we sleep.
+            // branch === 'sleep-confirmed' — every day's scheduled count
+            // meets target and no posts are awaiting approval. Now we sleep.
             if (!weekFilledPromptedThisRun) {
               addLog(
                 'pipeline-week-confirmed',

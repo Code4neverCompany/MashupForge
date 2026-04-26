@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { countFutureScheduledPosts, IdeaTimeoutError } from '@/lib/pipeline-daemon-utils';
+import {
+  countFutureScheduledPosts,
+  IdeaTimeoutError,
+  pickContinuousBranch,
+} from '@/lib/pipeline-daemon-utils';
 import { SkipIdeaSignal } from '@/lib/pipeline-processor';
 import { computeWeekFillStatus } from '@/lib/weekly-fill';
 import type { ScheduledPost } from '@/types/mashup';
@@ -167,32 +171,20 @@ describe('per-idea timeout race — IdeaTimeoutError + AbortController pattern',
 // ─── Continuous-mode fill decision (PIPELINE-CONT-V2) ────────────────────────
 //
 // The daemon's continuous-mode block (hooks/usePipelineDaemon.ts) picks one
-// of three branches per cycle based on `computeWeekFillStatus`:
+// of three branches per cycle via `pickContinuousBranch`:
 //
-//   !filled                              → continue immediately (generate more)
-//   filled && pendingApprovalTotal > 0   → continue immediately (no sleep)
-//   filled && pendingApprovalTotal === 0 → sleep `interval` minutes
+//   continue-not-filled  — !filled, generate more (immediate next cycle)
+//   continue-pending     — filled but pendingApprovalTotal > 0 (no sleep)
+//   sleep-confirmed      — filled AND pendingApprovalTotal === 0 (sleep)
 //
-// Asserting the predicate directly (rather than instantiating the hook) is
-// the cheapest way to pin the contract — the hook itself is a 200-line
-// callback wrapping IDB / fetch / AI calls and resists isolated unit tests.
-// If the daemon's decision diverges from these predicates, the regression
-// shows up here AND in tests/integration coverage.
+// V091-QA-FOLLOWUP: the helper was lifted out of the hook into
+// lib/pipeline-daemon-utils so the test binds to the actual production
+// code rather than a mirror. A future change to the branch logic now
+// surfaces here automatically.
 
-describe('continuous-mode fill decision predicates (PIPELINE-CONT-V2)', () => {
+describe('pickContinuousBranch — daemon decision (PIPELINE-CONT-V2)', () => {
   // Pin "now" to Mon 2026-04-20 noon — window starts Tue 2026-04-21.
   const NOW = new Date(2026, 3, 20, 12, 0, 0);
-
-  /** Mirror of the hook's branch picker — kept tiny so a future change to
-   *  the hook can be reflected here in one place. */
-  function pickBranch(fill: ReturnType<typeof computeWeekFillStatus>):
-    | 'continue-not-filled'
-    | 'continue-pending'
-    | 'sleep-confirmed' {
-    if (!fill.filled) return 'continue-not-filled';
-    if (fill.pendingApprovalTotal > 0) return 'continue-pending';
-    return 'sleep-confirmed';
-  }
 
   function fillFor(posts: ScheduledPost[], horizonDays = 14, perDay = 2) {
     return computeWeekFillStatus(posts, horizonDays, perDay, NOW);
@@ -217,7 +209,7 @@ describe('continuous-mode fill decision predicates (PIPELINE-CONT-V2)', () => {
     const fill = fillFor([]);
     expect(fill.filled).toBe(false);
     expect(fill.pendingApprovalTotal).toBe(0);
-    expect(pickBranch(fill)).toBe('continue-not-filled');
+    expect(pickContinuousBranch(fill)).toBe('continue-not-filled');
   });
 
   it('horizon full of pending_approval → continue (not filled, pending > 0)', () => {
@@ -227,14 +219,14 @@ describe('continuous-mode fill decision predicates (PIPELINE-CONT-V2)', () => {
     // waiting for approval.
     expect(fill.filled).toBe(false);
     expect(fill.pendingApprovalTotal).toBe(28);
-    expect(pickBranch(fill)).toBe('continue-not-filled');
+    expect(pickContinuousBranch(fill)).toBe('continue-not-filled');
   });
 
   it('horizon full of scheduled → sleep (confirmed fill)', () => {
     const fill = fillFor(fullWeekOf('scheduled'));
     expect(fill.filled).toBe(true);
     expect(fill.pendingApprovalTotal).toBe(0);
-    expect(pickBranch(fill)).toBe('sleep-confirmed');
+    expect(pickContinuousBranch(fill)).toBe('sleep-confirmed');
   });
 
   it('horizon full of scheduled + extra pending elsewhere → continue (partial)', () => {
@@ -251,7 +243,7 @@ describe('continuous-mode fill decision predicates (PIPELINE-CONT-V2)', () => {
     const fill = fillFor(posts);
     expect(fill.filled).toBe(true);
     expect(fill.pendingApprovalTotal).toBe(2);
-    expect(pickBranch(fill)).toBe('continue-pending');
+    expect(pickContinuousBranch(fill)).toBe('continue-pending');
   });
 
   it('mixed half-scheduled half-pending → continue (not filled)', () => {
@@ -271,6 +263,6 @@ describe('continuous-mode fill decision predicates (PIPELINE-CONT-V2)', () => {
     expect(fill.filled).toBe(false);
     expect(fill.scheduledTotal).toBe(14);
     expect(fill.pendingApprovalTotal).toBe(14);
-    expect(pickBranch(fill)).toBe('continue-not-filled');
+    expect(pickContinuousBranch(fill)).toBe('continue-not-filled');
   });
 });
