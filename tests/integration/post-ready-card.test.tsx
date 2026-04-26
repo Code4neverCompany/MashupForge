@@ -161,3 +161,34 @@ describe('V060-001 — PostReadyCard layout & interactions', () => {
     expect(screen.queryByLabelText('Schedule calendar')).toBeNull();
   });
 });
+
+describe('V080-DES-002 — "Not scheduled" affordance', () => {
+  it('shows the "Not scheduled" badge for a ready card with no scheduledPost', () => {
+    render(<PostReadyCard {...baseProps()} />);
+    expect(screen.getByLabelText('Not scheduled')).toBeTruthy();
+  });
+
+  it('hides the "Not scheduled" badge when a scheduled post exists', () => {
+    const sched: ScheduledPost = {
+      id: 'p1',
+      imageId: 'img-1',
+      date: '2026-05-01',
+      time: '10:00',
+      platforms: ['instagram'],
+      caption: 'cap',
+      status: 'scheduled',
+    };
+    render(<PostReadyCard {...baseProps()} scheduledPost={sched} />);
+    expect(screen.queryByLabelText('Not scheduled')).toBeNull();
+  });
+
+  it('hides the "Not scheduled" badge for a posted card (status pill already sufficient)', () => {
+    render(<PostReadyCard {...baseProps(mkImg({ postedAt: 9999, postedTo: ['instagram'] }))} />);
+    expect(screen.queryByLabelText('Not scheduled')).toBeNull();
+  });
+
+  it('hides the "Not scheduled" badge for a failed card', () => {
+    render(<PostReadyCard {...baseProps(mkImg({ postError: 'network error' }))} />);
+    expect(screen.queryByLabelText('Not scheduled')).toBeNull();
+  });
+});
