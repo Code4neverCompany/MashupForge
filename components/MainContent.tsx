@@ -1431,6 +1431,7 @@ export function MainContent() {
               statusPatches.set(gp.id, 'failed');
               processedIds.add(gp.id);
             });
+            showToast('Scheduled carousel post failed — check Post Ready for details', 'error');
           }
           continue;
         }
@@ -1471,6 +1472,7 @@ export function MainContent() {
           statusPatches.set(post.id, 'posted');
         } catch {
           statusPatches.set(post.id, 'failed');
+          showToast('Scheduled post failed to publish — check Post Ready for details', 'error');
         }
       }
 
