@@ -48,19 +48,80 @@ describe('computeWeekFillStatus', () => {
     expect(s.days[6].dayLabel).toBe('Mon');
   });
 
-  it('counts scheduled + pending_approval, ignores posted + failed', () => {
+  it('counts only scheduled, tracks pending_approval separately, ignores posted + failed', () => {
     const posts: ScheduledPost[] = [
       post('2026-04-21', '18:00', 'scheduled'),
       post('2026-04-21', '20:00', 'pending_approval'),
-      post('2026-04-21', '22:00', 'posted'),    // excluded
-      post('2026-04-22', '10:00', 'failed'),    // excluded
+      post('2026-04-21', '22:00', 'posted'),    // excluded entirely
+      post('2026-04-22', '10:00', 'failed'),    // excluded entirely
       post('2026-04-23', '09:00', 'scheduled'),
     ];
     const s = computeWeekFillStatus(posts, 7, 2, NOW);
-    expect(s.days[0].scheduledCount).toBe(2);
+    // scheduledCount is now scheduled-only — pending_approval is split off
+    expect(s.days[0].scheduledCount).toBe(1);
+    expect(s.days[0].pendingApprovalCount).toBe(1);
     expect(s.days[1].scheduledCount).toBe(0);
+    expect(s.days[1].pendingApprovalCount).toBe(0);
     expect(s.days[2].scheduledCount).toBe(1);
-    expect(s.scheduledTotal).toBe(3);
+    expect(s.days[2].pendingApprovalCount).toBe(0);
+    expect(s.scheduledTotal).toBe(2);
+    expect(s.pendingApprovalTotal).toBe(1);
+  });
+
+  it('pending_approval posts do not satisfy fill — daemon must keep generating', () => {
+    // 7 days * 2/day = 14 slots. Place 14 pending_approval posts → filled
+    // must stay false because none are scheduled (publishable) yet.
+    const tomorrow = new Date(NOW);
+    tomorrow.setDate(NOW.getDate() + 1);
+    const posts: ScheduledPost[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(tomorrow);
+      d.setDate(tomorrow.getDate() + i);
+      const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      posts.push(post(ds, '14:00', 'pending_approval'));
+      posts.push(post(ds, '20:00', 'pending_approval'));
+    }
+    const s = computeWeekFillStatus(posts, 7, 2, NOW);
+    expect(s.scheduledTotal).toBe(0);
+    expect(s.filled).toBe(false);
+    expect(s.percent).toBe(0);
+    expect(s.pendingApprovalTotal).toBe(14);
+    // Per-day pending count is preserved for the indicator UI.
+    expect(s.days.every((d) => d.pendingApprovalCount === 2)).toBe(true);
+  });
+
+  it('mixed scheduled + pending_approval: only scheduled count toward fill', () => {
+    // Tomorrow has 2 scheduled (filled), day after has 2 pending_approval (not filled).
+    const posts: ScheduledPost[] = [
+      post('2026-04-21', '14:00', 'scheduled'),
+      post('2026-04-21', '20:00', 'scheduled'),
+      post('2026-04-22', '14:00', 'pending_approval'),
+      post('2026-04-22', '20:00', 'pending_approval'),
+    ];
+    const s = computeWeekFillStatus(posts, 7, 2, NOW);
+    expect(s.days[0].scheduledCount).toBe(2);
+    expect(s.days[0].gap).toBe(0);
+    expect(s.days[0].pendingApprovalCount).toBe(0);
+    expect(s.days[1].scheduledCount).toBe(0);
+    expect(s.days[1].gap).toBe(2); // gap is computed from scheduledCount, not pending
+    expect(s.days[1].pendingApprovalCount).toBe(2);
+    expect(s.scheduledTotal).toBe(2);
+    expect(s.pendingApprovalTotal).toBe(2);
+    expect(s.filled).toBe(false);
+  });
+
+  it('pendingApprovalTotal sums across days; terminal statuses excluded from both buckets', () => {
+    const posts: ScheduledPost[] = [
+      post('2026-04-21', '14:00', 'pending_approval'),
+      post('2026-04-22', '14:00', 'pending_approval'),
+      post('2026-04-23', '14:00', 'pending_approval'),
+      post('2026-04-21', '15:00', 'posted'),     // terminal, excluded
+      post('2026-04-21', '16:00', 'failed'),     // terminal, excluded
+      post('2026-04-21', '17:00', 'rejected'),   // terminal, excluded
+    ];
+    const s = computeWeekFillStatus(posts, 7, 2, NOW);
+    expect(s.pendingApprovalTotal).toBe(3);
+    expect(s.scheduledTotal).toBe(0);
   });
 
   it('posts dated today are off-window (today is excluded — scheduler starts tomorrow)', () => {

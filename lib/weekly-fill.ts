@@ -21,12 +21,19 @@ export interface DayFill {
   date: string;
   /** Weekday short name: 'Mon' | 'Tue' | … | 'Sun'. */
   dayLabel: string;
-  /** Count of non-terminal scheduled posts on this day. */
+  /** Count of `status==='scheduled'` posts on this day (counted toward fill). */
   scheduledCount: number;
   /** Per-day target (currently uniform, may vary per day in future). */
   target: number;
   /** target minus scheduledCount, floored at 0. */
   gap: number;
+  /**
+   * Count of `status==='pending_approval'` posts on this day. Tracked
+   * separately so the daemon can decide whether to keep generating
+   * (pending approvals don't publish, so they shouldn't satisfy the
+   * weekly fill check) — see continuous-mode block in usePipelineDaemon.
+   */
+  pendingApprovalCount: number;
 }
 
 export interface WeekFillStatus {
@@ -50,20 +57,33 @@ export interface WeekFillStatus {
   percent: number;
   /** Ordered from tomorrow forward (days.length === targetDays). */
   days: DayFill[];
+  /**
+   * Sum of `pending_approval` posts across all days in the horizon.
+   * Used by continuous mode: when `filled === true` but this is > 0,
+   * the daemon keeps cycling instead of sleeping — pending approvals
+   * are not publishable slots.
+   */
+  pendingApprovalTotal: number;
 }
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 /**
- * Build a per-day breakdown of how many non-terminal (`pending_approval`
- * or `scheduled`) posts live in each of the next `targetDays` days,
- * starting from TOMORROW's calendar day (today is excluded — it matches
- * `findBestSlots` in smartScheduler.ts which also schedules from tomorrow,
- * so the daemon's "filled?" check and the scheduler's slot-pick agree on
- * which days count). Posts in the past are filtered out.
+ * Build a per-day breakdown of `scheduled` and `pending_approval` posts
+ * in each of the next `targetDays` days, starting from TOMORROW (today is
+ * excluded — matches `findBestSlots` in smartScheduler.ts which also
+ * schedules from tomorrow, so the daemon's "filled?" check and the
+ * scheduler's slot-pick agree on which days count). Posts in the past
+ * are filtered out.
  *
- * Terminal statuses (`posted`, `failed`) are excluded — they don't
- * contribute to "still to be published" capacity planning.
+ * Terminal statuses (`posted`, `failed`, `rejected`) are excluded — they
+ * don't contribute to "still to be published" capacity planning.
+ *
+ * Only `status === 'scheduled'` posts count toward `scheduledCount` /
+ * `scheduledTotal` / `filled`. `pending_approval` posts are tracked
+ * separately on `pendingApprovalCount` / `pendingApprovalTotal`: they're
+ * real work in flight but not publishable slots, so the daemon should
+ * keep generating until enough get approved to actually fill the week.
  */
 export function computeWeekFillStatus(
   posts: ScheduledPost[] | undefined,
@@ -77,7 +97,8 @@ export function computeWeekFillStatus(
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);
 
-  const counts = new Map<string, number>();
+  const scheduledCounts = new Map<string, number>();
+  const pendingCounts = new Map<string, number>();
   if (posts && posts.length > 0) {
     for (const p of posts) {
       if (p.status === 'posted' || p.status === 'failed' || p.status === 'rejected') continue;
@@ -86,7 +107,13 @@ export function computeWeekFillStatus(
       const ts = new Date(`${p.date}T${p.time}:00`).getTime();
       if (!Number.isFinite(ts)) continue;
       if (ts < now.getTime()) continue;
-      counts.set(p.date, (counts.get(p.date) ?? 0) + 1);
+      if (p.status === 'pending_approval') {
+        pendingCounts.set(p.date, (pendingCounts.get(p.date) ?? 0) + 1);
+      } else {
+        // Treat undefined / 'scheduled' as scheduled — same convention as
+        // countFutureScheduledPosts which treats undefined as in-flight.
+        scheduledCounts.set(p.date, (scheduledCounts.get(p.date) ?? 0) + 1);
+      }
     }
   }
 
@@ -94,13 +121,15 @@ export function computeWeekFillStatus(
     const d = new Date(tomorrow);
     d.setDate(tomorrow.getDate() + i);
     const dateStr = formatLocalDate(d);
-    const scheduledCount = counts.get(dateStr) ?? 0;
+    const scheduledCount = scheduledCounts.get(dateStr) ?? 0;
+    const pendingApprovalCount = pendingCounts.get(dateStr) ?? 0;
     days.push({
       date: dateStr,
       dayLabel: DAY_LABELS[d.getDay()],
       scheduledCount,
       target: postsPerDay,
       gap: Math.max(0, postsPerDay - scheduledCount),
+      pendingApprovalCount,
     });
   }
 
@@ -110,6 +139,10 @@ export function computeWeekFillStatus(
   // Per-day `scheduledCount` remains the raw count for tooltips.
   const scheduledTotal = days.reduce(
     (sum, d) => sum + Math.min(d.scheduledCount, d.target),
+    0,
+  );
+  const pendingApprovalTotal = days.reduce(
+    (sum, d) => sum + d.pendingApprovalCount,
     0,
   );
   const targetTotal = targetDays * postsPerDay;
@@ -125,5 +158,6 @@ export function computeWeekFillStatus(
     filled: scheduledTotal >= targetTotal,
     percent,
     days,
+    pendingApprovalTotal,
   };
 }
