@@ -1541,18 +1541,19 @@ export function MainContent() {
   }, [view, images, savedImages, settings.scheduledPosts, searchQuery, filterModel, filterUniverse, selectedCollectionId, tagQuery, sortBy]);
 
   /**
-   * Active Post-Ready images — everything flagged `isPostReady` EXCEPT
-   * posts where every scheduled entry has already been sent. Fully-posted
-   * images drop off to `postedImages` / the History view so the main
-   * grid stays focused on actionable content. Images with no
-   * scheduledPosts at all (freshly captioned, not yet scheduled) are
-   * kept here — `every` on an empty list returns true, so we explicitly
+   * Active Post-Ready images — everything flagged `isPostReady` EXCEPT:
+   *  - posts where every scheduled entry has already been sent (→ History)
+   *  - images with postedAt (manually posted without a scheduled post → History)
+   * Images with no scheduledPosts at all (freshly captioned, not yet scheduled)
+   * are kept here — `every` on an empty list returns true, so we explicitly
    * require at least one 'posted' post before hiding.
    */
   const postReadyImages = useMemo(() => {
     const allPosts = settings.scheduledPosts || [];
     const filtered = savedImages.filter((i) => {
       if (i.isPostReady !== true) return false;
+      // Manually posted (Post Now) without a scheduled post → History
+      if (i.postedAt) return false;
       const posts = allPosts.filter((p) => p.imageId === i.id);
       if (posts.length === 0) return true;
       return !posts.every((p) => p.status === 'posted');
@@ -1575,14 +1576,18 @@ export function MainContent() {
   }, [savedImages, settings.scheduledPosts]);
 
   /**
-   * History — Post-Ready images whose ScheduledPosts have all been
-   * posted. Shown in the History view so the user can still see what
-   * went out without cluttering the active grid.
+   * History — Post-Ready images that are done:
+   *  - All their ScheduledPosts have been posted, OR
+   *  - They have a postedAt timestamp (manually posted via Post Now)
+   * Shown in the History view so the user can still see what went out
+   * without cluttering the active grid.
    */
   const postedImages = useMemo(
     () =>
       savedImages.filter((i) => {
         if (i.isPostReady !== true) return false;
+        // Manually posted (Post Now) without a scheduled post → History
+        if (i.postedAt && i.postedAt > 0) return true;
         const posts = (settings.scheduledPosts || []).filter((p) => p.imageId === i.id);
         return posts.length > 0 && posts.every((p) => p.status === 'posted');
       }),
@@ -4082,10 +4087,10 @@ export function MainContent() {
 
               {/* Carousel multi-source picker modal — lifted out of the
                   Captioning view so Post-Ready (and any other tab) can
-                  trigger it. Source pool is every approved saved image
-                  regardless of post-ready status. */}
+                  trigger it. Source pool is every approved OR post-ready
+                  saved image so users can mix both stages into one carousel. */}
               {showCarouselPicker && (() => {
-                const pickerSource = savedImages.filter((i) => i.approved);
+                const pickerSource = savedImages.filter((i) => i.approved || i.isPostReady);
                 return (
                   <div
                     className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4"
