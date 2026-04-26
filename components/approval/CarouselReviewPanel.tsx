@@ -64,7 +64,7 @@ export function CarouselReviewPanel({
                   ? 'border-emerald-500/40 bg-emerald-500/5'
                   : st === 'rejected'
                     ? 'border-red-500/40 bg-red-500/5'
-                    : 'border-indigo-500/25 bg-zinc-900/40'
+                    : 'border-[#00e6ff]/25 bg-zinc-900/40'
               }`}
             >
               <div className="w-full aspect-video bg-zinc-800 flex items-center justify-center">
@@ -118,7 +118,7 @@ export function CarouselReviewPanel({
 
       <DegradeNotice visible={rejectGuarded} />
 
-      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-indigo-500/20">
+      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#c5a062]/15">
         <button
           type="button"
           onClick={onApproveRemaining}

@@ -7,13 +7,13 @@ import type { GeneratedImage } from '@/types/mashup';
 import type { CarouselImageState } from './CarouselStatusPill';
 
 const STATE_DOT: Record<CarouselImageState, string> = {
-  pending: 'bg-indigo-500',
+  pending: 'bg-[#00e6ff]',
   approved: 'bg-emerald-500',
   rejected: 'bg-red-500',
 };
 
 const STATE_BORDER: Record<CarouselImageState, string> = {
-  pending: 'border-indigo-500/30',
+  pending: 'border-[#00e6ff]/30',
   approved: 'border-emerald-500/60',
   rejected: 'border-red-500/40',
 };

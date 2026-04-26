@@ -2900,6 +2900,19 @@ export function MainContent() {
                 );
                 const available = availablePlatforms();
 
+                // V091-POLISH / QUEUE-STATUS: roll up the scheduled-post
+                // statuses into the Post Ready header so users see the
+                // server-scheduler's pipeline at a glance instead of
+                // having to flip to the calendar tab. Excludes "rejected"
+                // — that's a terminal action the user already knows about.
+                const allPosts = settings.scheduledPosts || [];
+                const queueCounts = {
+                  scheduled: allPosts.filter((p) => p.status === 'scheduled' || !p.status).length,
+                  pending:   allPosts.filter((p) => p.status === 'pending_approval').length,
+                  posted:    allPosts.filter((p) => p.status === 'posted').length,
+                  failed:    allPosts.filter((p) => p.status === 'failed').length,
+                };
+
                 const postAllNow = async () => {
                   for (const img of ready) {
                     const sel = getSelectedPlatforms(img.id);
@@ -2920,130 +2933,190 @@ export function MainContent() {
 
                 return (
                   <div className="space-y-6">
-                    {/* Header */}
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="icon-box-blue">
-                          <Save className="w-5 h-5 text-[#00e6ff]" />
+                    {/* V091-POLISH / Header.
+                        Three rows on narrow viewports, two on wide:
+                          1. Title block (icon + name + "N ready / M saved")
+                             paired with the queue status strip.
+                          2. View-mode toggle + sort pill (display controls).
+                          3. Action buttons (Create Carousel / Smart
+                             Schedule / Post All Now) grouped on the right.
+                        Each cluster sits in its own flex container so
+                        wraps land between groups instead of mid-cluster
+                        on 390px / 768px viewports. */}
+                    <div className="space-y-3">
+                      {/* Row 1 — title + queue status strip */}
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="icon-box-blue shrink-0">
+                            <Save className="w-5 h-5 text-[#00e6ff]" />
+                          </div>
+                          <div className="min-w-0">
+                            <h2 className="type-title truncate">Post Ready</h2>
+                            <p className="text-xs text-zinc-500 mt-0.5">
+                              {ready.length} ready · {savedImages.length} saved
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <h2 className="type-title">Post Ready</h2>
-                          <p className="text-xs text-zinc-500 mt-1">
-                            {ready.length} posts ready / {savedImages.length} total saved images
-                          </p>
+
+                        {/* Queue status strip — server-scheduler pipeline
+                            at a glance. Inline with the title row so it
+                            reads as part of the tab, not an overlay. */}
+                        <div
+                          role="group"
+                          aria-label="Scheduler queue status"
+                          className="flex flex-wrap items-center gap-1.5 bg-[#080808] border border-[#c5a062]/20 rounded-xl px-2 py-1.5"
+                        >
+                          {[
+                            { key: 'scheduled' as const, label: 'Scheduled', count: queueCounts.scheduled, dot: 'bg-[#00e6ff]', text: 'text-[#00e6ff]' },
+                            { key: 'pending'   as const, label: 'Pending',   count: queueCounts.pending,   dot: 'bg-[#c5a062]', text: 'text-[#c5a062]' },
+                            { key: 'posted'    as const, label: 'Posted',    count: queueCounts.posted,    dot: 'bg-emerald-500', text: 'text-emerald-300' },
+                            { key: 'failed'    as const, label: 'Failed',    count: queueCounts.failed,    dot: 'bg-red-500',     text: 'text-red-300'    },
+                          ].map((s, idx, arr) => (
+                            <span key={s.key} className="inline-flex items-center">
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5">
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${s.dot} ${s.count > 0 ? 'shadow-[0_0_6px_currentColor]' : 'opacity-40'}`}
+                                  aria-hidden="true"
+                                />
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                                  {s.label}
+                                </span>
+                                <span className={`text-xs font-mono tabular-nums ${s.count > 0 ? s.text : 'text-zinc-600'}`}>
+                                  {s.count}
+                                </span>
+                              </span>
+                              {idx < arr.length - 1 && (
+                                <span className="h-3 w-px bg-[#c5a062]/15" aria-hidden="true" />
+                              )}
+                            </span>
+                          ))}
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2">
-                        {/* Grid / Calendar / History view toggle */}
-                        <div className="flex bg-zinc-900 border border-zinc-800/60 rounded-full p-0.5 mr-1">
+                      {/* Row 2 — display controls + actions. On wide
+                          screens these wrap onto one line; on 390px the
+                          view-mode pill, sort, and action buttons each
+                          fall to their own line cleanly. */}
+                      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+                        {/* Display group — view mode + sort */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Grid / Calendar / History view toggle */}
+                          <div className="flex bg-zinc-900 border border-zinc-800/60 rounded-full p-0.5">
+                            <button
+                              onClick={() => setPostReadyView('grid')}
+                              className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                postReadyView === 'grid'
+                                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                                  : 'text-zinc-500 hover:text-zinc-300'
+                              }`}
+                            >
+                              Grid
+                            </button>
+                            <button
+                              onClick={() => setPostReadyView('calendar')}
+                              className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                postReadyView === 'calendar'
+                                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                                  : 'text-zinc-500 hover:text-zinc-300'
+                              }`}
+                            >
+                              Calendar
+                            </button>
+                            <button
+                              onClick={() => setPostReadyView('history')}
+                              className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                postReadyView === 'history'
+                                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                                  : 'text-zinc-500 hover:text-zinc-300'
+                              }`}
+                            >
+                              History {postedImages.length > 0 && `(${postedImages.length})`}
+                            </button>
+                          </div>
+                          {/* V082-POST-READY-SORT: sort toggle — grid view only. */}
+                          {postReadyView === 'grid' && ready.length > 0 && (
+                            <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800/60 rounded-full pl-3 pr-1 py-0.5">
+                              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                Sort
+                              </span>
+                              <select
+                                value={postReadySort}
+                                onChange={(e) =>
+                                  setPostReadySort(
+                                    e.target.value as 'savedAt' | 'scheduled' | 'created',
+                                  )
+                                }
+                                aria-label="Sort Post Ready cards"
+                                className="bg-transparent text-xs text-zinc-300 px-2 py-1 rounded-full cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#c5a062]/40"
+                              >
+                                <option value="savedAt">Saved (newest)</option>
+                                <option value="scheduled">Scheduled (soonest)</option>
+                                <option value="created">Created (newest)</option>
+                              </select>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Visual divider between display and action groups */}
+                        <span className="hidden sm:block h-6 w-px bg-[#c5a062]/15" aria-hidden="true" />
+
+                        {/* Action group — carousel + scheduling */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Create Carousel — opens the lifted multi-source
+                              picker. Source pool is every approved saved
+                              image so users can mix Post-Ready and
+                              Captioning-stage images into one carousel. */}
                           <button
-                            onClick={() => setPostReadyView('grid')}
-                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
-                              postReadyView === 'grid'
-                                ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                                : 'text-zinc-500 hover:text-zinc-300'
-                            }`}
+                            onClick={() => openCarouselPicker(null)}
+                            className="btn-blue-sm"
+                            title="Group images into a single multi-image carousel post"
                           >
-                            Grid
+                            <LayoutGrid className="w-3.5 h-3.5" /> Create Carousel
+                          </button>
+                          {/* Group Selected — quick-promote the checkboxed
+                              single Post-Ready cards into a carousel group
+                              without opening the picker. Mirrors the
+                              captioning-tab manual flow. */}
+                          {postReadySelected.size >= 2 && (
+                            <button
+                              onClick={() => {
+                                const ids = Array.from(postReadySelected);
+                                persistCarouselGroup(`manual-${ids[0]}`, ids);
+                                setPostReadySelected(new Set());
+                              }}
+                              className="btn-blue-sm"
+                            >
+                              <LayoutGrid className="w-3.5 h-3.5" />
+                              Group Selected ({postReadySelected.size})
+                            </button>
+                          )}
+                          <button
+                            onClick={async () => {
+                              await smartScheduler.trigger(postItems.length);
+                              setShowScheduleAll(true);
+                            }}
+                            disabled={ready.length === 0 || available.length === 0 || smartScheduler.loading}
+                            aria-busy={smartScheduler.loading}
+                            aria-label={smartScheduler.loading ? 'Analysing best posting times…' : 'Schedule with optimal posting times'}
+                            className="btn-gold-sm"
+                            title={smartScheduler.loading ? 'Analysing best posting times…' : 'Schedule with optimal posting times'}
+                          >
+                            {smartScheduler.loading ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <TrendingUp className="w-3.5 h-3.5" />
+                            )}
+                            {smartScheduler.loading ? 'Analysing…' : 'Smart Schedule'}
                           </button>
                           <button
-                            onClick={() => setPostReadyView('calendar')}
-                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
-                              postReadyView === 'calendar'
-                                ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                                : 'text-zinc-500 hover:text-zinc-300'
-                            }`}
+                            onClick={postAllNow}
+                            disabled={ready.length === 0 || available.length === 0}
+                            className="btn-blue-sm"
+                            title="Post every image to its selected platforms"
                           >
-                            Calendar
-                          </button>
-                          <button
-                            onClick={() => setPostReadyView('history')}
-                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
-                              postReadyView === 'history'
-                                ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                                : 'text-zinc-500 hover:text-zinc-300'
-                            }`}
-                          >
-                            History {postedImages.length > 0 && `(${postedImages.length})`}
+                            <Send className="w-3.5 h-3.5" /> Post All Now
                           </button>
                         </div>
-                        {/* V082-POST-READY-SORT: sort toggle — grid view only. */}
-                        {postReadyView === 'grid' && ready.length > 0 && (
-                          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800/60 rounded-full pl-3 pr-1 py-0.5 mr-1">
-                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                              Sort
-                            </span>
-                            <select
-                              value={postReadySort}
-                              onChange={(e) =>
-                                setPostReadySort(
-                                  e.target.value as 'savedAt' | 'scheduled' | 'created',
-                                )
-                              }
-                              aria-label="Sort Post Ready cards"
-                              className="bg-transparent text-xs text-zinc-300 px-2 py-1 rounded-full cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#c5a062]/40"
-                            >
-                              <option value="savedAt">Saved (newest)</option>
-                              <option value="scheduled">Scheduled (soonest)</option>
-                              <option value="created">Created (newest)</option>
-                            </select>
-                          </div>
-                        )}
-                        {/* Create Carousel — opens the lifted multi-source
-                            picker. Source pool is every approved saved
-                            image so users can mix Post-Ready and
-                            Captioning-stage images into one carousel. */}
-                        <button
-                          onClick={() => openCarouselPicker(null)}
-                          className="btn-blue-sm"
-                          title="Group images into a single multi-image carousel post"
-                        >
-                          <LayoutGrid className="w-3.5 h-3.5" /> Create Carousel
-                        </button>
-                        {/* Group Selected — quick-promote the checkboxed
-                            single Post-Ready cards into a carousel group
-                            without opening the picker. Mirrors the
-                            captioning-tab manual flow. */}
-                        {postReadySelected.size >= 2 && (
-                          <button
-                            onClick={() => {
-                              const ids = Array.from(postReadySelected);
-                              persistCarouselGroup(`manual-${ids[0]}`, ids);
-                              setPostReadySelected(new Set());
-                            }}
-                            className="btn-blue-sm"
-                          >
-                            <LayoutGrid className="w-3.5 h-3.5" />
-                            Group Selected ({postReadySelected.size})
-                          </button>
-                        )}
-                        <button
-                          onClick={async () => {
-                            await smartScheduler.trigger(postItems.length);
-                            setShowScheduleAll(true);
-                          }}
-                          disabled={ready.length === 0 || available.length === 0 || smartScheduler.loading}
-                          aria-busy={smartScheduler.loading}
-                          aria-label={smartScheduler.loading ? 'Analysing best posting times…' : 'Schedule with optimal posting times'}
-                          className="btn-gold-sm"
-                          title={smartScheduler.loading ? 'Analysing best posting times…' : 'Schedule with optimal posting times'}
-                        >
-                          {smartScheduler.loading ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <TrendingUp className="w-3.5 h-3.5" />
-                          )}
-                          {smartScheduler.loading ? 'Analysing…' : 'Smart Schedule'}
-                        </button>
-                        <button
-                          onClick={postAllNow}
-                          disabled={ready.length === 0 || available.length === 0}
-                          className="btn-blue-sm"
-                          title="Post every image to its selected platforms"
-                        >
-                          <Send className="w-3.5 h-3.5" /> Post All Now
-                        </button>
                       </div>
                     </div>
 

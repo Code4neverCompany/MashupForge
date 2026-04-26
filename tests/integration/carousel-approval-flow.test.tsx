@@ -135,10 +135,12 @@ describe('carousel approval — ApprovalQueue grouping', () => {
       />,
     );
 
-    // The carousel card renders the "Carousel · N images" header. Singles don't.
-    const carouselHeaders = screen.getAllByText(/Carousel · \d+ images/i);
+    // The carousel card renders a "Carousel · N" chip header. Singles don't.
+    // V091-POLISH: chip text was tightened from "Carousel · N images" to
+    // "Carousel · N" so the pill stays compact at 390px.
+    const carouselHeaders = screen.getAllByText(/Carousel · \d+/i);
     expect(carouselHeaders).toHaveLength(1);
-    expect(carouselHeaders[0]!).toHaveTextContent('Carousel · 3 images');
+    expect(carouselHeaders[0]!).toHaveTextContent('Carousel · 3');
 
     // 1 carousel + 2 singles = 3 "Approve" affordances, but only the
     // carousel card has a "Reject carousel" aria-label.
@@ -218,8 +220,8 @@ describe('carousel approval — ApprovalQueue grouping', () => {
       />,
     );
 
-    // No "Carousel · N images" header — the lone post is a single card.
-    expect(screen.queryAllByText(/Carousel · \d+ images/i)).toHaveLength(0);
+    // No "Carousel · N" chip — the lone post is a single card.
+    expect(screen.queryAllByText(/Carousel · \d+/i)).toHaveLength(0);
     // And no whole-carousel reject control either — singles use the
     // standard per-post reject affordance.
     expect(screen.queryAllByRole('button', { name: /reject carousel/i })).toHaveLength(0);

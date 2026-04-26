@@ -210,16 +210,16 @@ export function CarouselApprovalCard({
 
   return (
     <div
-      className={`relative bg-zinc-900/60 rounded-xl border p-3 space-y-3 transition-all ${
+      className={`relative bg-zinc-900/60 rounded-2xl border p-3 space-y-3 transition-all duration-200 hover:shadow-[0_4px_20px_rgba(0,230,255,0.08)] ${
         selected
           ? 'border-[#c5a062]/60 shadow-[0_0_12px_rgba(197,160,98,0.18)]'
           : counts.rejected === counts.total
-            ? 'border-red-500/40'
+            ? 'border-red-500/40 hover:border-red-500/60'
             : counts.pending === 0
-              ? 'border-emerald-500/40'
+              ? 'border-emerald-500/40 hover:border-emerald-500/60'
               : counts.approved > 0
-                ? 'border-[#c5a062]/40'
-                : 'border-indigo-500/25'
+                ? 'border-[#c5a062]/40 hover:border-[#c5a062]/60'
+                : 'border-[#00e6ff]/25 hover:border-[#00e6ff]/45'
       }`}
     >
       <label className="absolute top-2 left-2 z-10 flex items-center justify-center w-5 h-5 bg-zinc-900/80 rounded cursor-pointer">
@@ -233,10 +233,12 @@ export function CarouselApprovalCard({
       </label>
 
       <div className="flex items-center justify-between pl-7 gap-2">
-        <div className="flex items-center gap-1.5 text-xs text-zinc-300">
-          <Layers className="w-3.5 h-3.5 text-indigo-300" />
-          <span className="font-medium">Carousel · {images.length} images</span>
-        </div>
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#00e6ff]/10 border border-[#00e6ff]/25 text-[#00e6ff]">
+          <Layers className="w-3 h-3" aria-hidden="true" />
+          <span className="text-[11px] font-semibold tracking-tight">
+            Carousel · {images.length}
+          </span>
+        </span>
         <CarouselStatusPill {...counts} />
       </div>
 
