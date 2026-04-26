@@ -1,10 +1,11 @@
 ---
 task: V091-QUEUE-TOAST
-agent: developer
+agent: designer
 status: CLOSED
 verdict: dropped-by-hermes
 date: 2026-04-26
 resolution: V091-REVIEW invalidated as hallucinated against canonical; all four follow-up stories dropped (Hermes 2026-04-26)
+note: this diagnosis was authored by the designer agent (designer-claude pane). Earlier frontmatter mistakenly listed agent=developer — the designer pane on Claude Code was misreading itself as dev because the global ~/.claude/CLAUDE.md still says "You are Developer" from a pre-migration era.
 ---
 
 ## Resolution
