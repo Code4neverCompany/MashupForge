@@ -1927,7 +1927,7 @@ export function MainContent() {
             }
           };
           saveImage(newImg);
-          if (!isBatch) showToast('Video generated and saved to gallery!', 'success');
+          if (!isBatch) showToast('Video generated and saved to gallery!', 'pipeline-ready');
         }
       }
     } catch (e: unknown) {

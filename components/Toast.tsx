@@ -1,11 +1,25 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, XCircle, AlertTriangle, Info, X } from 'lucide-react';
+import {
+  CheckCircle2,
+  CheckCheck,
+  XCircle,
+  AlertTriangle,
+  Info,
+  Sparkles,
+  X,
+} from 'lucide-react';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type ToastType = 'success' | 'error' | 'warning' | 'info';
+export type ToastType =
+  | 'success'
+  | 'error'
+  | 'warning'
+  | 'info'
+  | 'pipeline-progress'
+  | 'pipeline-ready';
 
 interface ToastItem {
   id: string;
@@ -19,9 +33,22 @@ interface ToastItem {
 /**
  * Trigger a branded toast from anywhere — React or non-React.
  *
+ * Variants:
+ *   - 'success'           — generic confirmation (Electric Blue, CheckCircle2)
+ *   - 'error'             — failure (Red, XCircle)
+ *   - 'warning'           — soft caution (Metallic Gold, AlertTriangle)
+ *   - 'info'              — neutral notice (Zinc, Info)
+ *   - 'pipeline-progress' — ambient pipeline update: idea approved, caption
+ *                           generated, anything moving forward (Electric Blue,
+ *                           Sparkles)
+ *   - 'pipeline-ready'    — milestone: post-ready, scheduled, video saved
+ *                           (Metallic Gold, CheckCheck)
+ *
  * Usage:
  *   import { showToast } from '@/components/Toast';
  *   showToast('Image saved!', 'success');
+ *   showToast('3 ideas queued for captions', 'pipeline-progress');
+ *   showToast('Carousel ready to post', 'pipeline-ready');
  */
 export function showToast(message: string, type: ToastType = 'info') {
   if (typeof window === 'undefined') return;
@@ -67,6 +94,18 @@ const TYPE_CFG: Record<ToastType, {
     iconClass:   'text-zinc-400',
     borderClass: 'border-zinc-700/60',
     barClass:    'bg-zinc-600',
+  },
+  'pipeline-progress': {
+    Icon: Sparkles,
+    iconClass:   'text-[#00e6ff]',
+    borderClass: 'border-[#00e6ff]/40',
+    barClass:    'bg-[#00e6ff]',
+  },
+  'pipeline-ready': {
+    Icon: CheckCheck,
+    iconClass:   'text-[#c5a062]',
+    borderClass: 'border-[#c5a062]/40',
+    barClass:    'bg-[#c5a062]',
   },
 };
 
