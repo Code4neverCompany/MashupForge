@@ -1,10 +1,13 @@
 # QA Review — Auto-Update Settings Feature
 
-**Status:** FAIL
+**Status:** FAIL → superseded by PASS
 **Agent:** QA (Quinn)
 **Date:** 2026-04-27
 **Commit reviewed:** 5786ddf (design story only — backend story not yet shipped)
 **Confidence:** 0.55
+
+> **Superseded.** Both criticals resolved across commits fddf6ac + 3ed7906.
+> Final gate: **PASS 0.88** — see `docs/bmad/reviews/auto-update-final-qa.md`
 
 ---
 
