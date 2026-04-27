@@ -10,11 +10,13 @@
  */
 
 import { useState } from 'react';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import {
   Check,
   Clock,
   Columns,
   Copy,
+  GripVertical,
   LayoutGrid,
   Loader2,
   MinusCircle,
@@ -22,6 +24,7 @@ import {
   Send,
   X,
 } from 'lucide-react';
+import type { DragData } from './PostReadyDndGrid';
 import { CountdownBadge } from './CountdownBadge';
 import { InlineScheduleCalendar } from './InlineScheduleCalendar';
 import { KebabMenu, type KebabMenuItem } from '../KebabMenu';
@@ -76,6 +79,8 @@ const HASHTAG_PREVIEW = 3;
 
 export interface PostReadyCarouselCardProps {
   images: GeneratedImage[];
+  /** Carousel group ID — used as the droppable zone identifier. */
+  carouselId: string;
   /** When true, this is a user-locked group (shows Separate in kebab).
    *  When false, it's an auto-detected group (shows Lock Group instead). */
   isExplicit: boolean;
@@ -105,8 +110,84 @@ export interface PostReadyCarouselCardProps {
   onCancelSchedule?: () => void;
 }
 
+function DroppableImageStrip({
+  carouselId,
+  children,
+}: {
+  carouselId: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `drop-${carouselId}`,
+    data: { carouselId },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`bg-zinc-950 overflow-x-auto transition-colors ${
+        isOver ? 'bg-[#00e6ff]/5 ring-1 ring-[#00e6ff]/50' : ''
+      }`}
+    >
+      {isOver && (
+        <div className="h-0.5 w-full bg-[#00e6ff] rounded-full animate-pulse" />
+      )}
+      <div className="flex gap-1 p-2" style={{ minHeight: 144 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function DraggableImage({
+  image,
+  carouselId,
+  onPreviewClick,
+}: {
+  image: GeneratedImage;
+  carouselId: string;
+  onPreviewClick: (img: GeneratedImage) => void;
+}) {
+  const dragData: DragData = {
+    imageId: image.id,
+    sourceCarouselId: carouselId,
+    imageUrl: image.url,
+  };
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `drag-${image.id}`,
+    data: dragData,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`relative group/img shrink-0 ${isDragging ? 'opacity-30' : ''}`}
+    >
+      <button
+        type="button"
+        {...listeners}
+        {...attributes}
+        className="absolute -left-1 top-1/2 -translate-y-1/2 z-10 p-0.5 rounded bg-black/60 text-zinc-600 hover:text-zinc-200 opacity-0 group-hover/img:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
+        aria-label={`Drag image ${image.id}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <GripVertical className="w-3.5 h-3.5" />
+      </button>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={image.url}
+        alt={image.prompt}
+        loading="lazy"
+        onClick={() => onPreviewClick(image)}
+        className="h-32 w-32 object-cover rounded-lg cursor-zoom-in"
+      />
+    </div>
+  );
+}
+
 export function PostReadyCarouselCard({
   images,
+  carouselId,
   isExplicit,
   scheduledPost,
   allScheduledPosts,
@@ -184,22 +265,17 @@ export function PostReadyCarouselCard({
         )}
       </div>
 
-      {/* Image strip */}
-      <div className="bg-zinc-950 overflow-x-auto">
-        <div className="flex gap-1 p-2" style={{ minHeight: 144 }}>
-          {images.map((ci) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={ci.id}
-              src={ci.url}
-              alt={ci.prompt}
-              loading="lazy"
-              onClick={() => onPreviewClick(ci)}
-              className="h-32 w-32 object-cover rounded-lg cursor-zoom-in shrink-0"
-            />
-          ))}
-        </div>
-      </div>
+      {/* Image strip — droppable zone for receiving dragged images */}
+      <DroppableImageStrip carouselId={carouselId}>
+        {images.map((ci) => (
+          <DraggableImage
+            key={ci.id}
+            image={ci}
+            carouselId={carouselId}
+            onPreviewClick={onPreviewClick}
+          />
+        ))}
+      </DroppableImageStrip>
 
       <div className="p-3 space-y-3">
         {/* Shared caption */}

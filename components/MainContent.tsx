@@ -122,6 +122,7 @@ import { LazyImg } from './LazyImg';
 import { AspectPreview } from './postready/AspectPreview';
 import { PostReadyCard } from './postready/PostReadyCard';
 import { PostReadyCarouselCard } from './postready/PostReadyCarouselCard';
+import { PostReadyDndGrid, DraggableSingleWrapper, type DndMoveHandler } from './postready/PostReadyDndGrid';
 import { EmptyGalleryState } from './EmptyGalleryState';
 import { GalleryCard } from './GalleryCard';
 // V050-002 Phase 1: per-view modules under components/views. Phase 1
@@ -711,6 +712,60 @@ export function MainContent() {
     const nextIds = g.imageIds.filter((id) => id !== imageId);
     persistCarouselGroup(groupId, nextIds);
   };
+
+  const dndUndoStackRef = useRef<CarouselGroup[][]>([]);
+
+  const dndMoveHandler: DndMoveHandler = {
+    moveImageToCarousel: (imageId: string, sourceCarouselId: string | null, targetCarouselId: string) => {
+      const groups = [...(settings.carouselGroups || [])].map((g) => ({ ...g, imageIds: [...g.imageIds] }));
+      dndUndoStackRef.current.push(
+        JSON.parse(JSON.stringify(settings.carouselGroups || [])),
+      );
+
+      if (sourceCarouselId) {
+        const src = groups.find((g) => g.id === sourceCarouselId);
+        if (src) {
+          src.imageIds = src.imageIds.filter((id) => id !== imageId);
+        }
+      }
+
+      if (targetCarouselId.startsWith('new-group-')) {
+        const targetImageId = targetCarouselId.replace('new-group-', '');
+        if (targetImageId === imageId) { dndUndoStackRef.current.pop(); return; }
+        groups.push({ id: `manual-${targetImageId}`, imageIds: [targetImageId, imageId], status: 'draft' as const });
+      } else {
+        const tgt = groups.find((g) => g.id === targetCarouselId);
+        if (tgt) {
+          if (tgt.imageIds.includes(imageId)) { dndUndoStackRef.current.pop(); return; }
+          tgt.imageIds.push(imageId);
+        } else {
+          dndUndoStackRef.current.pop();
+          return;
+        }
+      }
+
+      const cleaned = groups.filter((g) => g.imageIds.length >= 2);
+      updateSettings({ carouselGroups: cleaned });
+    },
+    moveImageToNewGroup: (imageId: string, sourceCarouselId: string | null) => {
+      if (!sourceCarouselId) return;
+      dndUndoStackRef.current.push(
+        JSON.parse(JSON.stringify(settings.carouselGroups || [])),
+      );
+      removeFromCarousel(sourceCarouselId, imageId);
+    },
+  };
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && dndUndoStackRef.current.length > 0) {
+        const prev = dndUndoStackRef.current.pop()!;
+        updateSettings({ carouselGroups: prev });
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [updateSettings]);
 
   /** Open the multi-source image picker for an existing or new group. */
   const openCarouselPicker = (targetGroupId: string | null) => {
@@ -1889,6 +1944,35 @@ export function MainContent() {
     setSelectedForBatch(new Set());
   };
 
+  const handleBatchAddToCollection = (collectionId: string) => {
+    const ids = Array.from(selectedForBatch);
+    if (ids.length === 0) return;
+    for (const id of ids) addImageToCollection(id, collectionId);
+    setSelectedForBatch(new Set());
+    const collection = collections.find(c => c.id === collectionId);
+    showToast(
+      `${ids.length} image${ids.length === 1 ? '' : 's'} added to ${collection?.name ?? 'collection'}.`,
+      'success',
+    );
+  };
+
+  const handleSelectApproved = () => {
+    setSelectedForBatch(new Set(displayedImages.filter(img => img.approved).map(img => img.id)));
+  };
+
+  const handleSelectInCollection = () => {
+    if (selectedCollectionId === 'all') return;
+    setSelectedForBatch(
+      new Set(displayedImages.filter(img => img.collectionId === selectedCollectionId).map(img => img.id)),
+    );
+  };
+
+  const handleInvertSelection = () => {
+    setSelectedForBatch(
+      prev => new Set(displayedImages.filter(img => !prev.has(img.id)).map(img => img.id)),
+    );
+  };
+
   // V082-COLLECTION-FEATURES: open the collection modal in "batch" mode.
   // The existing onCreate wiring already forwards selectedForBatch ids
   // and pi.dev auto-naming, but it stopped short of assigning images.
@@ -2082,9 +2166,13 @@ export function MainContent() {
                   onBatchAnimate={handleBatchAnimate}
                   onBatchDelete={handleBatchDelete}
                   onBatchCreateCollection={handleBatchCreateCollection}
+                  onBatchAddToCollection={handleBatchAddToCollection}
                   onAutoOrganizeByTag={handleAutoOrganizeByTag}
                   onSelectAll={handleSelectAllGallery}
                   onClearSelection={handleClearGallerySelection}
+                  onSelectApproved={handleSelectApproved}
+                  onSelectInCollection={handleSelectInCollection}
+                  onInvertSelection={handleInvertSelection}
                 />
               )}
 
@@ -3884,6 +3972,7 @@ export function MainContent() {
                         </div>
                       </div>
                     ) : (
+                      <PostReadyDndGrid postItems={sortedPostItems} onMove={dndMoveHandler}>
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {sortedPostItems.map((item) => {
                           // ── Carousel card branch — V060-001 ─────────────
@@ -3900,6 +3989,7 @@ export function MainContent() {
                               <PostReadyCarouselCard
                                 key={item.id}
                                 images={item.images}
+                                carouselId={item.id}
                                 isExplicit={isExplicit}
                                 scheduledPost={carouselScheduled}
                                 allScheduledPosts={settings.scheduledPosts || []}
@@ -3951,8 +4041,8 @@ export function MainContent() {
                           const status = postStatus[img.id];
                           const scheduled = latestScheduleFor(img.id);
                           return (
+                            <DraggableSingleWrapper key={img.id} imageId={img.id} imageUrl={img.url}>
                             <PostReadyCard
-                              key={img.id}
                               img={img}
                               scheduledPost={scheduled}
                               allScheduledPosts={settings.scheduledPosts || []}
@@ -3991,9 +4081,11 @@ export function MainContent() {
                               onUnready={() => patchImage(img, { isPostReady: false })}
                               onCancelSchedule={() => unschedulePost(img)}
                             />
+                            </DraggableSingleWrapper>
                           );
                         })}
                       </div>
+                      </PostReadyDndGrid>
                     )
                     )}
 

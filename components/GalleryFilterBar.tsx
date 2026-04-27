@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Bookmark,
   Search,
@@ -12,6 +12,9 @@ import {
   Trash2,
   XCircle,
   FolderPlus,
+  FolderOpen,
+  ChevronDown,
+  Plus,
   Wand2,
 } from 'lucide-react';
 import { LEONARDO_MODELS, type Collection } from './MashupContext';
@@ -46,9 +49,13 @@ export interface GalleryFilterBarProps {
   onBatchAnimate: () => void;
   onBatchDelete: () => void;
   onBatchCreateCollection: () => void;
+  onBatchAddToCollection: (collectionId: string) => void;
   onAutoOrganizeByTag: () => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
+  onSelectApproved: () => void;
+  onSelectInCollection: () => void;
+  onInvertSelection: () => void;
 }
 
 export function GalleryFilterBar({
@@ -75,10 +82,35 @@ export function GalleryFilterBar({
   onBatchAnimate,
   onBatchDelete,
   onBatchCreateCollection,
+  onBatchAddToCollection,
   onAutoOrganizeByTag,
   onSelectAll,
   onClearSelection,
+  onSelectApproved,
+  onSelectInCollection,
+  onInvertSelection,
 }: GalleryFilterBarProps) {
+  const [collectionMenuOpen, setCollectionMenuOpen] = useState(false);
+  const collectionMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!collectionMenuOpen) return;
+    function onDocMouseDown(e: MouseEvent) {
+      if (collectionMenuRef.current && !collectionMenuRef.current.contains(e.target as Node)) {
+        setCollectionMenuOpen(false);
+      }
+    }
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') setCollectionMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onDocMouseDown);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [collectionMenuOpen]);
+
   return (
     <div className="mb-6 space-y-4">
       {/* Section header */}
@@ -158,14 +190,66 @@ export function GalleryFilterBar({
                   <Tag className="w-3.5 h-3.5" />
                   Tag
                 </button>
-                <button
-                  onClick={onBatchCreateCollection}
-                  title="Create a new collection from the selected images (AI can auto-name it)"
-                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-medium transition-colors flex items-center gap-2"
-                >
-                  <FolderPlus className="w-3.5 h-3.5" />
-                  Collection
-                </button>
+                <div className="relative" ref={collectionMenuRef}>
+                  <button
+                    onClick={() => setCollectionMenuOpen((o) => !o)}
+                    title="Add selected images to a collection"
+                    aria-haspopup="menu"
+                    aria-expanded={collectionMenuOpen}
+                    className={`px-3 py-2 rounded-xl text-xs font-medium transition-colors flex items-center gap-2 border ${
+                      collectionMenuOpen
+                        ? 'bg-[#c5a062]/10 text-[#c5a062] border-[#c5a062]/30'
+                        : 'bg-zinc-800 hover:bg-zinc-700 text-white border-transparent'
+                    }`}
+                  >
+                    <FolderPlus className="w-3.5 h-3.5" />
+                    Collection
+                    <ChevronDown
+                      className={`w-3 h-3 transition-transform ${collectionMenuOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                  {collectionMenuOpen && (
+                    <div
+                      role="menu"
+                      aria-label="Add selected images to collection"
+                      className="absolute right-0 top-full mt-2 z-30 min-w-[240px] max-h-[320px] overflow-y-auto bg-zinc-900 border border-zinc-800/60 rounded-xl shadow-2xl backdrop-blur-md py-1"
+                    >
+                      {collections.length > 0 && (
+                        <>
+                          <div className="px-3 py-1.5 text-[9px] font-bold text-zinc-500 uppercase tracking-wider">
+                            Add to collection
+                          </div>
+                          {collections.map((c) => (
+                            <button
+                              key={c.id}
+                              role="menuitem"
+                              onClick={() => {
+                                onBatchAddToCollection(c.id);
+                                setCollectionMenuOpen(false);
+                              }}
+                              className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 flex items-center gap-2"
+                            >
+                              <FolderOpen className="w-3.5 h-3.5 text-[#c5a062] shrink-0" />
+                              <span className="truncate">{c.name}</span>
+                            </button>
+                          ))}
+                          <div className="border-t border-zinc-800/60 my-1" />
+                        </>
+                      )}
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setCollectionMenuOpen(false);
+                          onBatchCreateCollection();
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs text-[#00e6ff] hover:bg-[#00e6ff]/10 flex items-center gap-2"
+                      >
+                        <Plus className="w-3.5 h-3.5 shrink-0" />
+                        New collection…
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={onBatchDelete}
                   className="px-3 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-300 rounded-xl text-xs font-medium transition-colors flex items-center gap-2 border border-red-500/30"
@@ -194,6 +278,39 @@ export function GalleryFilterBar({
               >
                 Select All
               </button>
+            )}
+            {displayedCount > 0 && (
+              <div className="flex items-center gap-2 text-[10px]">
+                <span className="text-zinc-600 font-bold uppercase tracking-wider">Quick</span>
+                <button
+                  onClick={onSelectApproved}
+                  className="text-[#00e6ff] hover:underline"
+                >
+                  Approved
+                </button>
+                {selectedCollectionId !== 'all' && (
+                  <>
+                    <span className="text-zinc-700">·</span>
+                    <button
+                      onClick={onSelectInCollection}
+                      className="text-[#00e6ff] hover:underline"
+                    >
+                      This Collection
+                    </button>
+                  </>
+                )}
+                {selectedForBatch.size > 0 && (
+                  <>
+                    <span className="text-zinc-700">·</span>
+                    <button
+                      onClick={onInvertSelection}
+                      className="text-[#00e6ff] hover:underline"
+                    >
+                      Invert
+                    </button>
+                  </>
+                )}
+              </div>
             )}
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-zinc-500" />
