@@ -222,6 +222,15 @@ export interface UserSettings {
   scheduledPosts?: ScheduledPost[];
   /** Persistent carousel groups (multi-image posts). */
   carouselGroups?: CarouselGroup[];
+  /**
+   * SCHED-POST-ROBUST: when true, the browser-side auto-poster
+   * (MainContent useEffect) short-circuits and a server-side cron
+   * (GitHub Actions → /api/social/cron-fire) fires scheduled posts
+   * instead. Browser still pushes new schedules to /api/queue/schedule
+   * and pulls outcomes from /api/queue/results so local state stays in
+   * sync. Default false — no behavior change unless explicitly enabled.
+   */
+  serverCronEnabled?: boolean;
   /** Pipeline stage toggles. Default (undefined) is treated as true for
    *  auto-tag/caption/schedule. The auto-post toggle was removed in
    *  V060-004 — every pipeline post lands as pending_approval and

@@ -1,0 +1,173 @@
+// SCHED-POST-ROBUST: cron entry point.
+//
+// Hit by GitHub Actions every 5 minutes (or workflow_dispatch). Drains
+// every due post from the queue and fires it via the existing
+// /api/social/post route — we forward through HTTP so the cron path
+// inherits all of /api/social/post's battle-tested platform-specific
+// quirks (IG container polling, image-aspect padding, retry logic) and
+// we don't have to refactor 500+ LOC of shared executor.
+//
+// Auth: requires `Authorization: Bearer <CRON_SHARED_SECRET>` matching
+// the env var, compared in constant time. Without the env var set, the
+// route returns 503 — never deploy this without the secret configured.
+//
+// Returns a JSON summary of what was attempted: useful in workflow logs
+// and as a smoke test via `curl -H 'Authorization: Bearer …'`.
+
+import { NextResponse } from 'next/server';
+import { claimDuePosts, markResult, type EnqueuedPost, type QueueResult } from '@/lib/server-queue';
+import { getErrorMessage } from '@/lib/errors';
+
+interface FireSummary {
+  claimed: number;
+  posted: number;
+  failed: number;
+  posts: Array<{ id: string; status: 'posted' | 'failed'; error?: string }>;
+}
+
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+function checkAuth(req: Request): { ok: true } | { ok: false; res: Response } {
+  const expected = process.env.CRON_SHARED_SECRET;
+  if (!expected) {
+    return {
+      ok: false,
+      res: NextResponse.json(
+        { error: 'CRON_SHARED_SECRET not configured on server' },
+        { status: 503 },
+      ),
+    };
+  }
+  const header = req.headers.get('authorization') || '';
+  const presented = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!presented || !safeEqual(presented, expected)) {
+    return {
+      ok: false,
+      res: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * Group claimed posts by carouselGroupId. Same logic as the browser
+ * auto-poster: posts sharing a carouselGroupId fire as one multi-image
+ * publish, not N separate publishes.
+ */
+function groupForFire(posts: EnqueuedPost[]): EnqueuedPost[][] {
+  const byGroup = new Map<string, EnqueuedPost[]>();
+  const singles: EnqueuedPost[] = [];
+  for (const p of posts) {
+    if (p.carouselGroupId) {
+      const arr = byGroup.get(p.carouselGroupId) ?? [];
+      arr.push(p);
+      byGroup.set(p.carouselGroupId, arr);
+    } else {
+      singles.push(p);
+    }
+  }
+  return [...Array.from(byGroup.values()), ...singles.map((s) => [s])];
+}
+
+/**
+ * Fire one group (single post or carousel) via /api/social/post.
+ * Credentials are intentionally empty — the route's env-fallback chain
+ * (process.env.INSTAGRAM_ACCESS_TOKEN ?? body.credentials...) lets the
+ * server post on the user's behalf when the env vars are configured.
+ */
+async function fireOne(
+  group: EnqueuedPost[],
+  baseUrl: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const head = group[0];
+  const isCarousel = group.length > 1 || (head.mediaUrls && head.mediaUrls.length > 0);
+  const body = isCarousel
+    ? {
+        caption: head.caption,
+        platforms: head.platforms,
+        mediaUrls: head.mediaUrls ?? group.map((g) => g.mediaUrl).filter((u): u is string => !!u),
+        credentials: {},
+      }
+    : {
+        caption: head.caption,
+        platforms: head.platforms,
+        mediaUrl: head.mediaUrl,
+        credentials: {},
+      };
+
+  try {
+    const res = await fetch(`${baseUrl}/api/social/post`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const data = (await res.json()) as { error?: string };
+        detail = data.error ?? '';
+      } catch {
+        detail = await res.text().catch(() => '');
+      }
+      return { ok: false, error: `HTTP ${res.status}: ${detail || 'no detail'}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: getErrorMessage(e) };
+  }
+}
+
+async function handle(req: Request): Promise<Response> {
+  const auth = checkAuth(req);
+  if (!auth.ok) return auth.res;
+
+  const baseUrl =
+    process.env.APP_URL ||
+    process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}` ||
+    new URL(req.url).origin;
+
+  let claimed: EnqueuedPost[];
+  try {
+    claimed = await claimDuePosts(Date.now());
+  } catch (e) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 503 });
+  }
+
+  const summary: FireSummary = { claimed: claimed.length, posted: 0, failed: 0, posts: [] };
+  const groups = groupForFire(claimed);
+
+  for (const group of groups) {
+    const outcome = await fireOne(group, baseUrl);
+    const at = Date.now();
+    for (const post of group) {
+      const result: QueueResult = outcome.ok
+        ? { id: post.id, status: 'posted', at, ...(post.carouselGroupId ? { carouselGroupId: post.carouselGroupId } : {}) }
+        : { id: post.id, status: 'failed', at, error: outcome.error, ...(post.carouselGroupId ? { carouselGroupId: post.carouselGroupId } : {}) };
+      try {
+        await markResult(result);
+      } catch {
+        // Result write failed — the post still fired (or failed) on the
+        // social platform; surfacing in the response is the best we can do.
+      }
+      summary.posts.push({
+        id: post.id,
+        status: result.status,
+        ...(result.error ? { error: result.error } : {}),
+      });
+      if (outcome.ok) summary.posted += 1;
+      else summary.failed += 1;
+    }
+  }
+
+  return NextResponse.json(summary);
+}
+
+export const POST = handle;
+// GET also accepted so workflow_dispatch / curl smoke-test is convenient
+// (still requires the bearer token).
+export const GET = handle;

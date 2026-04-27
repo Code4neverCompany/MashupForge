@@ -124,6 +124,13 @@ import { PostReadyCard } from './postready/PostReadyCard';
 import { PostReadyCarouselCard } from './postready/PostReadyCarouselCard';
 import { PostReadyDndGrid, DraggableSingleWrapper, CarouselReorderSlot, type DndMoveHandler } from './postready/PostReadyDndGrid';
 import { DndUndoToast } from './postready/DndUndoToast';
+import {
+  pushScheduleToServer,
+  cancelScheduleOnServer,
+  fetchQueueResults,
+  ackQueueResults,
+  reconcileResults,
+} from '@/lib/server-queue-client';
 import { EmptyGalleryState } from './EmptyGalleryState';
 import { GalleryCard } from './GalleryCard';
 // V050-002 Phase 1: per-view modules under components/views. Phase 1
@@ -576,6 +583,20 @@ export function MainContent() {
         caption,
         status: 'scheduled',
       };
+      // SCHED-POST-ROBUST: mirror to the server queue (best-effort).
+      // Only when image.url is resolvable — server has no IDB so it
+      // can't dereference imageId on its own.
+      if (img.url) {
+        void pushScheduleToServer({
+          id: scheduled.id,
+          date,
+          time,
+          platforms,
+          caption,
+          mediaUrl: img.url,
+          imageId: img.id,
+        });
+      }
       return { scheduledPosts: [...existingPosts, scheduled] };
     });
     // BUG-CRIT-013: surface the image in the Post Ready tab. Before
@@ -602,6 +623,12 @@ export function MainContent() {
    * never retroactively hidden.
    */
   const unschedulePost = (img: GeneratedImage) => {
+    // SCHED-POST-ROBUST: cancel any matching server queue entries
+    // before the local filter wipes them. Best-effort.
+    const toCancel = (settings.scheduledPosts || []).filter(
+      (p) => p.imageId === img.id && p.status !== 'posted',
+    );
+    for (const p of toCancel) void cancelScheduleOnServer(p.id);
     updateSettings((prev) => ({
       scheduledPosts: (prev.scheduledPosts || []).filter(
         (p) => p.imageId !== img.id || p.status === 'posted',
@@ -910,6 +937,26 @@ export function MainContent() {
         status: 'scheduled' as const,
         carouselGroupId: groupId,
       }));
+      // SCHED-POST-ROBUST: mirror to the server queue. Each carousel
+      // member is pushed with its own mediaUrl; the cron groups by
+      // carouselGroupId and assembles mediaUrls = [member1.url, ...]
+      // (see app/api/social/cron-fire/route.ts:fireOne). All members
+      // are present in the queue so the result-reconciler can mark
+      // each browser-side ScheduledPost on completion.
+      newPosts.forEach((p, idx) => {
+        const url = item.images[idx]?.url;
+        if (!url) return;
+        void pushScheduleToServer({
+          id: p.id,
+          date,
+          time,
+          platforms,
+          caption,
+          mediaUrl: url,
+          carouselGroupId: groupId,
+          imageId: p.imageId,
+        });
+      });
       return { scheduledPosts: [...existingPosts, ...newPosts] };
     });
     // BUG-CRIT-013: surface every image in the carousel in Post Ready,
@@ -1418,6 +1465,11 @@ export function MainContent() {
 
   // Auto-posting effect
   useEffect(() => {
+    // SCHED-POST-ROBUST: when server-side cron is the owner, the
+    // browser must not also fire — both writers + same posts = double
+    // publish. The server cron's atomic ZREM is the de-dup contract.
+    if (settings.serverCronEnabled) return;
+
     const interval = setInterval(async () => {
       if (!settings.scheduledPosts || settings.scheduledPosts.length === 0) return;
 
@@ -1575,7 +1627,31 @@ export function MainContent() {
     }, 60000); // Check every minute
 
     return () => clearInterval(interval);
-  }, [settings.scheduledPosts, settings.apiKeys, savedImages, updateSettings]);
+  }, [settings.scheduledPosts, settings.apiKeys, settings.serverCronEnabled, savedImages, updateSettings]);
+
+  // SCHED-POST-ROBUST: poll the server queue for results (cron-fired
+  // posts) and reconcile them into local scheduledPosts. Only runs
+  // when serverCronEnabled — otherwise the browser-side auto-poster
+  // is the owner and there's nothing to fetch.
+  useEffect(() => {
+    if (!settings.serverCronEnabled) return;
+    let cancelled = false;
+    const tick = async () => {
+      const results = await fetchQueueResults();
+      if (cancelled || results.length === 0) return;
+      const { next, appliedIds } = reconcileResults(settings.scheduledPosts || [], results);
+      if (appliedIds.length > 0) {
+        updateSettings({ scheduledPosts: next });
+        await ackQueueResults(appliedIds);
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [settings.serverCronEnabled, settings.scheduledPosts, updateSettings]);
 
   const allTags = useMemo(
     () => Array.from(new Set(savedImages.flatMap(img => img.tags || []))).sort(),

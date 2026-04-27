@@ -1,0 +1,65 @@
+// SCHED-POST-ROBUST: browser → server queue push.
+//
+// POST body shape mirrors a ScheduledPost plus pre-resolved media URLs
+// (the server has no IDB so it can't dereference imageId on its own).
+
+import { NextResponse } from 'next/server';
+import { computeFireAt, enqueuePost, type EnqueuedPost } from '@/lib/server-queue';
+import { getErrorMessage } from '@/lib/errors';
+
+export async function POST(req: Request): Promise<Response> {
+  let body: Partial<EnqueuedPost>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const { id, date, time, platforms, caption, mediaUrl, mediaUrls, carouselGroupId, imageId } = body;
+
+  if (!id || !date || !time) {
+    return NextResponse.json(
+      { error: 'Missing required fields: id, date, time' },
+      { status: 400 },
+    );
+  }
+  if (!Array.isArray(platforms) || platforms.length === 0) {
+    return NextResponse.json({ error: 'platforms must be a non-empty array' }, { status: 400 });
+  }
+  if (typeof caption !== 'string') {
+    return NextResponse.json({ error: 'caption is required' }, { status: 400 });
+  }
+  if (!mediaUrl && (!Array.isArray(mediaUrls) || mediaUrls.length === 0)) {
+    return NextResponse.json(
+      { error: 'mediaUrl or mediaUrls (carousel) is required' },
+      { status: 400 },
+    );
+  }
+
+  let fireAt: number;
+  try {
+    fireAt = computeFireAt(date, time);
+  } catch (e) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 400 });
+  }
+
+  const post: EnqueuedPost = {
+    id,
+    date,
+    time,
+    fireAt,
+    platforms,
+    caption,
+    ...(mediaUrl ? { mediaUrl } : {}),
+    ...(mediaUrls ? { mediaUrls } : {}),
+    ...(carouselGroupId ? { carouselGroupId } : {}),
+    ...(imageId ? { imageId } : {}),
+  };
+
+  try {
+    await enqueuePost(post);
+  } catch (e) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 503 });
+  }
+  return NextResponse.json({ ok: true, id, fireAt });
+}
