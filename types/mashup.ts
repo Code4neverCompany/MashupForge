@@ -809,6 +809,7 @@ PROMPT QUALITY:
 - Specific character names are fine (Iron Man, Batman, Thor). Leonardo handles them.
 - Equipment fusions are the creative core — one compound invention blending both universes per prompt.
 - Maximum variety across a batch — no repeated characters, different settings, different moods.`,
+  serverCronEnabled: false,
   channelName: 'MultiverseMashupAI',
   savedPersonalities: []
 };
