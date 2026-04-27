@@ -2,14 +2,28 @@ import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 
 export default defineConfig({
+  // QOL-VITEST-FIX (2026-04-27): force vite to resolve react/react-dom to
+  // their development CJS builds. Without this, `react-dom-test-utils`
+  // pre-bundles to its production build (which omits `act`), and
+  // RTL 16's `React.act(...)` call inside `cleanup()` and `render()`
+  // throws `React.act is not a function`. Setting NODE_ENV at config
+  // time wins over vitest's runtime default.
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('test'),
+  },
   test: {
-    // V050-006: integration tests live in tests/integration and opt into
-    // jsdom via `// @vitest-environment jsdom` at the top of the file
-    // (.tsx). Default stays `node` so the existing pure-function tests
-    // under tests/lib/ run unchanged with zero per-file env switching cost.
+    // QOL-VITEST-FIX (2026-04-27): React 19.2 + RTL 16 require
+    // `globalThis.IS_REACT_ACT_ENVIRONMENT = true` at module-eval time so
+    // that `React.act` is resolved to the development build. We also
+    // default to jsdom now (hook/component tests dominate the suite) —
+    // pure-function tests in tests/lib/ run fine under jsdom because
+    // they never touch the DOM. The previous `environment: 'node'` +
+    // per-file `// @vitest-environment jsdom` directive was correct
+    // before React 19 / RTL 16, but the upgrade makes jsdom the
+    // sensible default.
     include: ['tests/**/*.test.{ts,tsx}'],
-    environment: 'node',
-    setupFiles: ['./tests/setup/jest-dom.ts'],
+    environment: 'jsdom',
+    setupFiles: ['./tests/setup/react-act.ts', './tests/setup/jest-dom.ts'],
   },
   resolve: {
     alias: {
