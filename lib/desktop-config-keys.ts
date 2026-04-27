@@ -57,17 +57,26 @@ export const DESKTOP_CONFIG_KEYS: readonly DesktopConfigFieldMeta[] = [
   { key: 'PINTEREST_ENABLED',      label: 'Pinterest enabled',      hint: 'Internal toggle — managed by the Platforms section.' },
   { key: 'DISCORD_ENABLED',        label: 'Discord enabled',        hint: 'Internal toggle — managed by the Platforms section.' },
   // FEAT-006: tri-state gate for UpdateChecker's launch-time behavior.
-  // 'auto'   → silently download + relaunch on every launch
-  // 'notify' → show banner with "Update Now" button (default)
-  // 'off'    → never check on launch (Settings → "Check for updates" still works)
-  // Rendered by the dedicated Updates subsection in DesktopSettingsPanel,
-  // NOT by the generic field loop — see UPDATER_KEYS filter.
+  // Kept for backwards compat; AutoUpdateSettings renders the granular
+  // toggles below instead. Both sets live in UPDATER_KEYS so the generic
+  // FieldRouter loop never renders them a second time.
   { key: 'UPDATE_BEHAVIOR',        label: 'Update behavior',        hint: 'Auto: install silently. Notify: show banner. Off: only manual checks.', kind: 'select', options: ['auto', 'notify', 'off'] },
+  // AutoUpdateSettings — granular per-step toggles (rendered by AutoUpdateSettings, not the generic loop).
+  { key: 'AUTO_CHECK_ON_STARTUP',  label: 'Auto-check on startup',  hint: 'Run an update check each time the app launches.', kind: 'text' },
+  { key: 'AUTO_DOWNLOAD',          label: 'Auto-download',          hint: 'Download in the background when a new version is found.', kind: 'text' },
+  { key: 'AUTO_INSTALL',           label: 'Auto-install',           hint: 'Install immediately after download — app will relaunch.', kind: 'text' },
+  { key: 'WIN_INSTALL_MODE',       label: 'Windows install mode',   hint: 'passive | basicUi | quiet', kind: 'select', options: ['passive', 'basicUi', 'quiet'] },
 ] as const;
 
 // Keys owned by a dedicated subsection in DesktopSettingsPanel. The
 // generic FieldRouter loop filters these out so they don't render twice.
-export const UPDATER_KEYS: ReadonlySet<string> = new Set(['UPDATE_BEHAVIOR']);
+export const UPDATER_KEYS: ReadonlySet<string> = new Set([
+  'UPDATE_BEHAVIOR',
+  'AUTO_CHECK_ON_STARTUP',
+  'AUTO_DOWNLOAD',
+  'AUTO_INSTALL',
+  'WIN_INSTALL_MODE',
+]);
 
 // V060-002: platform groupings for the Desktop tab. Each group renders
 // as a single compact row when toggled OFF and expands to show its
