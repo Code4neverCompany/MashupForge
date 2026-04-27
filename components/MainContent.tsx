@@ -122,7 +122,7 @@ import { LazyImg } from './LazyImg';
 import { AspectPreview } from './postready/AspectPreview';
 import { PostReadyCard } from './postready/PostReadyCard';
 import { PostReadyCarouselCard } from './postready/PostReadyCarouselCard';
-import { PostReadyDndGrid, DraggableSingleWrapper, type DndMoveHandler } from './postready/PostReadyDndGrid';
+import { PostReadyDndGrid, DraggableSingleWrapper, CarouselReorderSlot, type DndMoveHandler } from './postready/PostReadyDndGrid';
 import { DndUndoToast } from './postready/DndUndoToast';
 import { EmptyGalleryState } from './EmptyGalleryState';
 import { GalleryCard } from './GalleryCard';
@@ -776,9 +776,14 @@ export function MainContent() {
       );
 
       const [moved] = groups.splice(fromIdx, 1);
-      const insertIdx = beforeGroupId === null
-        ? groups.length
-        : Math.max(0, groups.findIndex((g) => g.id === beforeGroupId));
+      // Resolve insertion point. `null` (trailing slot) and slots before
+      // non-carousel items (single-image cards whose id is an image id, not
+      // a group id) both fall through to "insert at end" — safer than
+      // silently snapping to position 0.
+      const beforeIdx = beforeGroupId === null
+        ? -1
+        : groups.findIndex((g) => g.id === beforeGroupId);
+      const insertIdx = beforeIdx === -1 ? groups.length : beforeIdx;
       groups.splice(insertIdx, 0, moved);
       updateSettings({ carouselGroups: groups });
       setDndUndoToast('Carousel reordered');
@@ -4015,50 +4020,52 @@ export function MainContent() {
                             const isCarouselRegen = preparingPostId === anchor.id;
                             const carouselScheduled = latestScheduleFor(anchor.id);
                             return (
-                              <PostReadyCarouselCard
-                                key={item.id}
-                                images={item.images}
-                                carouselId={item.id}
-                                isExplicit={isExplicit}
-                                scheduledPost={carouselScheduled}
-                                allScheduledPosts={settings.scheduledPosts || []}
-                                selectedPlatforms={selPlatforms}
-                                available={available}
-                                busy={busy}
-                                status={status}
-                                isRegen={isCarouselRegen}
-                                copyHighlighted={copiedId === `all-${key}`}
-                                onPreviewClick={(ci) => setSelectedImage(ci)}
-                                onCaptionChange={(next) =>
-                                  propagateCaptionToGroup(item.images, next, undefined)
-                                }
-                                onTogglePlatform={(p) => togglePlatformFor(key, p)}
-                                onPostNow={() => postCarouselNow(item, selPlatforms)}
-                                onSchedule={(date, time) =>
-                                  scheduleCarousel(item, selPlatforms, date, time)
-                                }
-                                onCopy={() =>
-                                  copyWithFeedback(formatPost(anchor), `all-${key}`)
-                                }
-                                onRegen={async () => {
-                                  setPreparingPostId(anchor.id);
-                                  try {
-                                    await fanCaptionToGroup(anchor, item.images, { force: true });
-                                  } finally {
-                                    setPreparingPostId(null);
+                              <React.Fragment key={item.id}>
+                                <CarouselReorderSlot beforeGroupId={item.id} />
+                                <PostReadyCarouselCard
+                                  images={item.images}
+                                  carouselId={item.id}
+                                  isExplicit={isExplicit}
+                                  scheduledPost={carouselScheduled}
+                                  allScheduledPosts={settings.scheduledPosts || []}
+                                  selectedPlatforms={selPlatforms}
+                                  available={available}
+                                  busy={busy}
+                                  status={status}
+                                  isRegen={isCarouselRegen}
+                                  copyHighlighted={copiedId === `all-${key}`}
+                                  onPreviewClick={(ci) => setSelectedImage(ci)}
+                                  onCaptionChange={(next) =>
+                                    propagateCaptionToGroup(item.images, next, undefined)
                                   }
-                                }}
-                                onUnreadyAll={() => {
-                                  for (const ci of item.images) {
-                                    patchImage(ci, { isPostReady: false });
+                                  onTogglePlatform={(p) => togglePlatformFor(key, p)}
+                                  onPostNow={() => postCarouselNow(item, selPlatforms)}
+                                  onSchedule={(date, time) =>
+                                    scheduleCarousel(item, selPlatforms, date, time)
                                   }
-                                }}
-                                onSeparate={() => separateCarousel(item.id)}
-                                onLockGroup={() =>
-                                  persistCarouselGroup(`manual-${anchor.id}`, item.images.map((i) => i.id))
-                                }
-                                onCancelSchedule={() => unscheduleCarousel(item.images, key)}
-                              />
+                                  onCopy={() =>
+                                    copyWithFeedback(formatPost(anchor), `all-${key}`)
+                                  }
+                                  onRegen={async () => {
+                                    setPreparingPostId(anchor.id);
+                                    try {
+                                      await fanCaptionToGroup(anchor, item.images, { force: true });
+                                    } finally {
+                                      setPreparingPostId(null);
+                                    }
+                                  }}
+                                  onUnreadyAll={() => {
+                                    for (const ci of item.images) {
+                                      patchImage(ci, { isPostReady: false });
+                                    }
+                                  }}
+                                  onSeparate={() => separateCarousel(item.id)}
+                                  onLockGroup={() =>
+                                    persistCarouselGroup(`manual-${anchor.id}`, item.images.map((i) => i.id))
+                                  }
+                                  onCancelSchedule={() => unscheduleCarousel(item.images, key)}
+                                />
+                              </React.Fragment>
                             );
                           }
 
@@ -4070,49 +4077,54 @@ export function MainContent() {
                           const status = postStatus[img.id];
                           const scheduled = latestScheduleFor(img.id);
                           return (
-                            <DraggableSingleWrapper key={img.id} imageId={img.id} imageUrl={img.url}>
-                            <PostReadyCard
-                              img={img}
-                              scheduledPost={scheduled}
-                              allScheduledPosts={settings.scheduledPosts || []}
-                              selectedPlatforms={selPlatforms}
-                              available={available}
-                              busy={busy}
-                              status={status}
-                              isRegen={isRegen}
-                              groupingChecked={postReadySelected.has(img.id)}
-                              onGroupingToggle={(checked) => {
-                                const next = new Set(postReadySelected);
-                                if (checked) next.add(img.id);
-                                else next.delete(img.id);
-                                setPostReadySelected(next);
-                              }}
-                              copyHighlighted={copiedId === `all-${img.id}`}
-                              onPreviewClick={() => setSelectedImage(img)}
-                              onCaptionChange={(next) => patchImage(img, { postCaption: next })}
-                              onRemoveHashtag={(i) => removeHashtag(img, i)}
-                              onTogglePlatform={(p) => togglePlatformFor(img.id, p)}
-                              onPostNow={() => postImageNow(img, selPlatforms)}
-                              onSchedule={(date, time) =>
-                                scheduleImage(img, selPlatforms, date, time)
-                              }
-                              onCopy={() =>
-                                copyWithFeedback(formatPost(img), `all-${img.id}`)
-                              }
-                              onRegen={async () => {
-                                setPreparingPostId(img.id);
-                                try {
-                                  await generatePostContent(img);
-                                } finally {
-                                  setPreparingPostId(null);
-                                }
-                              }}
-                              onUnready={() => patchImage(img, { isPostReady: false })}
-                              onCancelSchedule={() => unschedulePost(img)}
-                            />
-                            </DraggableSingleWrapper>
+                            <React.Fragment key={img.id}>
+                              <CarouselReorderSlot beforeGroupId={img.id} />
+                              <DraggableSingleWrapper imageId={img.id} imageUrl={img.url}>
+                                <PostReadyCard
+                                  img={img}
+                                  scheduledPost={scheduled}
+                                  allScheduledPosts={settings.scheduledPosts || []}
+                                  selectedPlatforms={selPlatforms}
+                                  available={available}
+                                  busy={busy}
+                                  status={status}
+                                  isRegen={isRegen}
+                                  groupingChecked={postReadySelected.has(img.id)}
+                                  onGroupingToggle={(checked) => {
+                                    const next = new Set(postReadySelected);
+                                    if (checked) next.add(img.id);
+                                    else next.delete(img.id);
+                                    setPostReadySelected(next);
+                                  }}
+                                  copyHighlighted={copiedId === `all-${img.id}`}
+                                  onPreviewClick={() => setSelectedImage(img)}
+                                  onCaptionChange={(next) => patchImage(img, { postCaption: next })}
+                                  onRemoveHashtag={(i) => removeHashtag(img, i)}
+                                  onTogglePlatform={(p) => togglePlatformFor(img.id, p)}
+                                  onPostNow={() => postImageNow(img, selPlatforms)}
+                                  onSchedule={(date, time) =>
+                                    scheduleImage(img, selPlatforms, date, time)
+                                  }
+                                  onCopy={() =>
+                                    copyWithFeedback(formatPost(img), `all-${img.id}`)
+                                  }
+                                  onRegen={async () => {
+                                    setPreparingPostId(img.id);
+                                    try {
+                                      await generatePostContent(img);
+                                    } finally {
+                                      setPreparingPostId(null);
+                                    }
+                                  }}
+                                  onUnready={() => patchImage(img, { isPostReady: false })}
+                                  onCancelSchedule={() => unschedulePost(img)}
+                                />
+                              </DraggableSingleWrapper>
+                            </React.Fragment>
                           );
                         })}
+                        {/* Trailing reorder slot — drop here = insert at end. */}
+                        <CarouselReorderSlot beforeGroupId={null} />
                       </div>
                       </PostReadyDndGrid>
                     )

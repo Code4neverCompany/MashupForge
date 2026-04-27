@@ -69,9 +69,8 @@ export function DndUndoToast({
         key={tick}
         className="h-px bg-[#00e6ff]"
         style={{
-          animation: paused
-            ? 'none'
-            : `dnd-undo-toast-drain ${durationMs}ms linear forwards`,
+          animation: `dnd-undo-toast-drain ${durationMs}ms linear forwards`,
+          animationPlayState: paused ? 'paused' : 'running',
         }}
       />
       <div className="px-4 py-3 flex items-center gap-3">

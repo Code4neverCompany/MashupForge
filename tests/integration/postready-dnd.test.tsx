@@ -159,9 +159,13 @@ describe('FEAT-2 — moveCarouselGroup reorder logic', () => {
     const fromIdx = next.findIndex((g) => g.id === groupId);
     if (fromIdx === -1) return groups; // auto-detected — no-op
     const [moved] = next.splice(fromIdx, 1);
-    const insertIdx = beforeGroupId === null
-      ? next.length
-      : Math.max(0, next.findIndex((g) => g.id === beforeGroupId));
+    // Mirrors MainContent: unknown beforeGroupId (e.g. slot before a
+    // single-image card whose id is not in carouselGroups) falls through
+    // to "insert at end" — never silently snaps to position 0.
+    const beforeIdx = beforeGroupId === null
+      ? -1
+      : next.findIndex((g) => g.id === beforeGroupId);
+    const insertIdx = beforeIdx === -1 ? next.length : beforeIdx;
     next.splice(insertIdx, 0, moved);
     return next;
   }
@@ -200,6 +204,19 @@ describe('FEAT-2 — moveCarouselGroup reorder logic', () => {
     const next = reorder(groups, 'B', 'A');
     expect(next.find((g) => g.id === 'B')!.imageIds).toEqual(['4', '5']);
     expect(next.find((g) => g.id === 'A')!.imageIds).toEqual(['1', '2', '3']);
+  });
+
+  it('falls through to end when beforeGroupId is not in the group list', () => {
+    // Slots rendered before single-image cards pass an image id, not a
+    // group id. Those drops should land at the end, not silently snap to
+    // position 0.
+    const groups = makeGroups(
+      ['A', ['1', '2']],
+      ['B', ['3', '4']],
+      ['C', ['5', '6']],
+    );
+    const next = reorder(groups, 'A', 'image-not-in-groups');
+    expect(next.map((g) => g.id)).toEqual(['B', 'C', 'A']);
   });
 });
 
