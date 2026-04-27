@@ -336,12 +336,21 @@ export function AutoUpdateSettings({ draft, onFieldChange, isDesktop }: AutoUpda
         />
       </div>
 
-      {/* Windows install mode */}
-      <div className="space-y-1.5">
-        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-          Windows install mode
-        </p>
-        <div role="radiogroup" aria-label="Windows install mode" className="grid grid-cols-3 gap-1.5">
+      {/* Windows install mode — persisted but not yet wired to the runtime install call */}
+      <div className="space-y-1.5 opacity-60">
+        <div className="flex items-center gap-2">
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+            Windows install mode
+          </p>
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide bg-zinc-800 text-zinc-500 border border-zinc-700/60">
+            Coming soon
+          </span>
+        </div>
+        <div
+          role="radiogroup"
+          aria-label="Windows install mode (coming soon)"
+          className="grid grid-cols-3 gap-1.5 pointer-events-none"
+        >
           {WIN_MODES.map((mode) => {
             const selected = winMode === mode;
             return (
@@ -350,12 +359,12 @@ export function AutoUpdateSettings({ draft, onFieldChange, isDesktop }: AutoUpda
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                onClick={() => onFieldChange('WIN_INSTALL_MODE', mode)}
+                disabled
                 className={[
-                  'flex items-center justify-center rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors',
+                  'flex items-center justify-center rounded-lg border px-2.5 py-2 text-xs font-medium cursor-not-allowed',
                   selected
-                    ? 'border-[#c5a062] bg-[#c5a062]/10 text-[#c5a062]'
-                    : 'border-zinc-800/60 bg-[#050505] text-zinc-400 hover:border-[#c5a062]/30 hover:text-zinc-200',
+                    ? 'border-zinc-700 bg-zinc-800/50 text-zinc-400'
+                    : 'border-zinc-800/40 bg-[#050505] text-zinc-600',
                 ].join(' ')}
               >
                 {WIN_MODE_LABELS[mode]}
@@ -363,7 +372,9 @@ export function AutoUpdateSettings({ draft, onFieldChange, isDesktop }: AutoUpda
             );
           })}
         </div>
-        <p className="text-[10px] text-zinc-600">{WIN_MODE_HINTS[winMode]}</p>
+        <p className="text-[10px] text-zinc-600">
+          {WIN_MODE_HINTS[winMode]} — runtime selection requires a future app build
+        </p>
       </div>
 
       {/* Manual check button + last-checked label */}
