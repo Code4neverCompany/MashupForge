@@ -142,3 +142,106 @@ describe('FEAT-2 — DraggableSingleWrapper rendering', () => {
     expect(container.querySelector('[aria-label="Drag to reorder"]')).not.toBeNull();
   });
 });
+
+describe('FEAT-2 — moveCarouselGroup reorder logic', () => {
+  /**
+   * Mirrors the implementation at MainContent.tsx:dndMoveHandler.moveCarouselGroup.
+   * Pulled out for unit testing; the production handler also pushes the
+   * pre-move snapshot to dndUndoStackRef and emits a toast — those are
+   * exercised by component tests, not this pure-logic unit.
+   */
+  function reorder(
+    groups: CarouselGroup[],
+    groupId: string,
+    beforeGroupId: string | null,
+  ): CarouselGroup[] {
+    const next = [...groups];
+    const fromIdx = next.findIndex((g) => g.id === groupId);
+    if (fromIdx === -1) return groups; // auto-detected — no-op
+    const [moved] = next.splice(fromIdx, 1);
+    const insertIdx = beforeGroupId === null
+      ? next.length
+      : Math.max(0, next.findIndex((g) => g.id === beforeGroupId));
+    next.splice(insertIdx, 0, moved);
+    return next;
+  }
+
+  it('moves a group to before another group', () => {
+    const groups = makeGroups(
+      ['A', ['1', '2']],
+      ['B', ['3', '4']],
+      ['C', ['5', '6']],
+    );
+    const next = reorder(groups, 'C', 'A');
+    expect(next.map((g) => g.id)).toEqual(['C', 'A', 'B']);
+  });
+
+  it('moves a group to the end when beforeGroupId is null', () => {
+    const groups = makeGroups(
+      ['A', ['1', '2']],
+      ['B', ['3', '4']],
+      ['C', ['5', '6']],
+    );
+    const next = reorder(groups, 'A', null);
+    expect(next.map((g) => g.id)).toEqual(['B', 'C', 'A']);
+  });
+
+  it('no-ops when the group is not in the explicit list', () => {
+    const groups = makeGroups(['A', ['1', '2']]);
+    const next = reorder(groups, 'auto-detected', 'A');
+    expect(next).toBe(groups); // identity — same reference
+  });
+
+  it('preserves group contents during reorder', () => {
+    const groups = makeGroups(
+      ['A', ['1', '2', '3']],
+      ['B', ['4', '5']],
+    );
+    const next = reorder(groups, 'B', 'A');
+    expect(next.find((g) => g.id === 'B')!.imageIds).toEqual(['4', '5']);
+    expect(next.find((g) => g.id === 'A')!.imageIds).toEqual(['1', '2', '3']);
+  });
+});
+
+describe('FEAT-2 — DndUndoToast', () => {
+  it('renders message + Undo button when message is non-null', async () => {
+    const { DndUndoToast } = await import('@/components/postready/DndUndoToast');
+    const { container, getByTestId } = render(
+      <DndUndoToast message="Image moved" onUndo={() => {}} onDismiss={() => {}} />,
+    );
+    expect(getByTestId('dnd-undo-toast')).toBeTruthy();
+    expect(container.textContent).toContain('Image moved');
+    expect(container.textContent).toContain('Undo');
+  });
+
+  it('renders nothing when message is null', async () => {
+    const { DndUndoToast } = await import('@/components/postready/DndUndoToast');
+    const { container } = render(
+      <DndUndoToast message={null} onUndo={() => {}} onDismiss={() => {}} />,
+    );
+    expect(container.querySelector('[data-testid="dnd-undo-toast"]')).toBeNull();
+  });
+
+  it('fires onUndo when the Undo button is clicked', async () => {
+    const { DndUndoToast } = await import('@/components/postready/DndUndoToast');
+    const { fireEvent } = await import('@testing-library/react');
+    const onUndo = vi.fn();
+    const { getByTestId } = render(
+      <DndUndoToast message="Carousel reordered" onUndo={onUndo} onDismiss={() => {}} />,
+    );
+    fireEvent.click(getByTestId('dnd-undo-toast-button'));
+    expect(onUndo).toHaveBeenCalledOnce();
+  });
+
+  it('self-dismisses after durationMs elapses', async () => {
+    const { DndUndoToast } = await import('@/components/postready/DndUndoToast');
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    render(
+      <DndUndoToast message="Image moved" onUndo={() => {}} onDismiss={onDismiss} durationMs={100} />,
+    );
+    vi.advanceTimersByTime(150);
+    expect(onDismiss).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+});

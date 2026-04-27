@@ -14,12 +14,16 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, LayoutGrid } from 'lucide-react';
 import type { PostItem } from '@/lib/carouselView';
 
 export interface DndMoveHandler {
   moveImageToCarousel: (imageId: string, sourceCarouselId: string | null, targetCarouselId: string) => void;
   moveImageToNewGroup: (imageId: string, sourceCarouselId: string | null) => void;
+  /** FEAT-2: reorder explicit carousel groups. Drops `groupId` immediately
+   *  before `beforeGroupId`; pass null to drop at the end. No-op for groups
+   *  not in settings.carouselGroups (auto-detected carousels). */
+  moveCarouselGroup?: (groupId: string, beforeGroupId: string | null) => void;
 }
 
 interface PostReadyDndGridProps {
@@ -28,10 +32,19 @@ interface PostReadyDndGridProps {
   onMove: DndMoveHandler;
 }
 
+export type DragKind = 'image' | 'carousel';
+
 export interface DragData {
-  imageId: string;
-  sourceCarouselId: string | null;
+  kind?: DragKind;
+  imageId?: string;
+  sourceCarouselId?: string | null;
   imageUrl?: string;
+  /** When kind === 'carousel', the carousel group id being dragged. */
+  carouselId?: string;
+  /** When kind === 'carousel', a few image URLs to render the preview. */
+  previewUrls?: string[];
+  /** When kind === 'carousel', the count for the preview pill. */
+  previewCount?: number;
 }
 
 export function DraggableSingleWrapper({
@@ -43,7 +56,7 @@ export function DraggableSingleWrapper({
   imageUrl?: string;
   children: React.ReactNode;
 }) {
-  const dragData: DragData = { imageId, sourceCarouselId: null, imageUrl };
+  const dragData: DragData = { kind: 'image', imageId, sourceCarouselId: null, imageUrl };
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `drag-single-${imageId}`,
     data: dragData,
@@ -98,17 +111,30 @@ export function PostReadyDndGrid({ children, postItems, onMove }: PostReadyDndGr
     const source = active.data.current as DragData | undefined;
     if (!source) return;
 
+    // ── Carousel-level drag: reorder groups ───────────────────────────────
+    if (source.kind === 'carousel' && source.carouselId) {
+      // Target must be another card-drop zone (carries beforeGroupId).
+      const beforeGroupId = over.data.current?.beforeGroupId as string | null | undefined;
+      if (beforeGroupId === undefined) return; // dropped on a non-grid target
+      if (beforeGroupId === source.carouselId) return; // dropped on self
+      onMove.moveCarouselGroup?.(source.carouselId, beforeGroupId);
+      return;
+    }
+
+    // ── Image-level drag: existing behavior ───────────────────────────────
     const targetCarouselId = over.data.current?.carouselId as string | undefined;
     if (!targetCarouselId) return;
-
     if (source.sourceCarouselId === targetCarouselId) return;
+    if (!source.imageId) return;
 
-    onMove.moveImageToCarousel(source.imageId, source.sourceCarouselId, targetCarouselId);
+    onMove.moveImageToCarousel(source.imageId, source.sourceCarouselId ?? null, targetCarouselId);
   }, [onMove]);
 
   const handleDragCancel = useCallback(() => {
     setActiveData(null);
   }, []);
+
+  const isCarouselGhost = activeData?.kind === 'carousel';
 
   return (
     <DndContext
@@ -116,20 +142,79 @@ export function PostReadyDndGrid({ children, postItems, onMove }: PostReadyDndGr
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
+      autoScroll={{ threshold: { x: 0, y: 0.2 } }}
     >
       {children}
       <DragOverlay dropAnimation={null}>
-        {activeData?.imageUrl && (
-          <div className="opacity-60 scale-95 shadow-2xl border-2 border-[#00e6ff]/60 rounded-lg overflow-hidden pointer-events-none">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={activeData.imageUrl}
-              alt="Dragging"
-              className="h-32 w-32 object-cover"
-            />
+        {isCarouselGhost ? (
+          <div
+            className="bg-zinc-900/90 backdrop-blur-md border-2 border-[#00e6ff]/60 rounded-2xl shadow-2xl shadow-[0_0_36px_rgba(0,230,255,0.40)] opacity-70 scale-90 pointer-events-none w-[320px] overflow-hidden"
+            data-testid="carousel-drag-ghost"
+          >
+            <div className="px-3 pt-3 pb-2 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#00e6ff]/15 border border-[#00e6ff]/30 text-[10px] font-medium text-[#00e6ff] rounded-full">
+                <LayoutGrid className="w-3 h-3" /> Carousel · {activeData?.previewCount ?? 0}
+              </span>
+            </div>
+            <div className="flex gap-1 p-2 bg-zinc-950">
+              {(activeData?.previewUrls ?? []).slice(0, 3).map((url, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={i}
+                  src={url}
+                  alt=""
+                  className="h-20 w-20 object-cover rounded-lg"
+                />
+              ))}
+            </div>
           </div>
+        ) : (
+          activeData?.imageUrl && (
+            <div
+              className="opacity-50 scale-95 rounded-lg overflow-hidden pointer-events-none border-2 border-[#00e6ff]/60 shadow-2xl shadow-[0_0_24px_rgba(0,230,255,0.35)]"
+              data-testid="image-drag-ghost"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={activeData.imageUrl}
+                alt="Dragging"
+                className="h-32 w-32 object-cover"
+              />
+            </div>
+          )
         )}
       </DragOverlay>
     </DndContext>
+  );
+}
+
+/**
+ * FEAT-2 §6: Whole-card drop zone that sits between cards in the grid.
+ * Carries `beforeGroupId` so the dragEnd handler knows where to insert.
+ * Renders as a thin gap that only becomes visible (insert line) when a
+ * carousel-kind drag is hovering it.
+ */
+export function CarouselReorderSlot({ beforeGroupId }: { beforeGroupId: string | null }) {
+  const { setNodeRef, isOver, active } = useDroppable({
+    id: `carousel-slot-${beforeGroupId ?? 'end'}`,
+    data: { beforeGroupId },
+  });
+  const isCarouselDrag = (active?.data.current as DragData | undefined)?.kind === 'carousel';
+
+  // Slot is invisible unless a carousel-drag is in flight; even then it's
+  // only an outlined band so the grid layout doesn't shift.
+  return (
+    <div
+      ref={setNodeRef}
+      className={`transition-all duration-200 ${
+        isCarouselDrag
+          ? isOver
+            ? 'h-2 my-2 bg-[#00e6ff] rounded-full animate-pulse opacity-100'
+            : 'h-1 my-2 bg-[#00e6ff]/20 rounded-full opacity-60'
+          : 'h-0 my-0 opacity-0'
+      }`}
+      data-testid={`carousel-reorder-slot-${beforeGroupId ?? 'end'}`}
+      aria-hidden={!isCarouselDrag}
+    />
   );
 }

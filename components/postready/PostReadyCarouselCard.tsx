@@ -117,25 +117,69 @@ function DroppableImageStrip({
   carouselId: string;
   children: React.ReactNode;
 }) {
-  const { setNodeRef, isOver } = useDroppable({
+  const { setNodeRef, isOver, active } = useDroppable({
     id: `drop-${carouselId}`,
     data: { carouselId },
   });
+  // FEAT-2 §3.5: only image-kind drags are valid drops on the strip.
+  const isImageDrag = (active?.data.current as DragData | undefined)?.kind !== 'carousel';
 
   return (
     <div
       ref={setNodeRef}
       className={`bg-zinc-950 overflow-x-auto transition-colors ${
-        isOver ? 'bg-[#00e6ff]/5 ring-1 ring-[#00e6ff]/50' : ''
+        isOver && isImageDrag ? 'bg-[#00e6ff]/5 ring-1 ring-[#00e6ff]/50' : ''
       }`}
     >
-      {isOver && (
+      {isOver && isImageDrag && (
         <div className="h-0.5 w-full bg-[#00e6ff] rounded-full animate-pulse" />
       )}
       <div className="flex gap-1 p-2" style={{ minHeight: 144 }}>
         {children}
       </div>
     </div>
+  );
+}
+
+/**
+ * FEAT-2 §6: header-level drag handle. Wraps the GripVertical icon and
+ * exposes a draggable that the parent <DndContext> picks up as a
+ * carousel-kind drag.
+ */
+function CarouselHeaderHandle({
+  carouselId,
+  previewUrls,
+  previewCount,
+}: {
+  carouselId: string;
+  previewUrls: string[];
+  previewCount: number;
+}) {
+  const dragData: DragData = {
+    kind: 'carousel',
+    carouselId,
+    previewUrls,
+    previewCount,
+  };
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `card-drag-${carouselId}`,
+    data: dragData,
+  });
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      {...listeners}
+      {...attributes}
+      aria-label={`Drag carousel ${carouselId} to reorder`}
+      onClick={(e) => e.stopPropagation()}
+      className={`shrink-0 p-1.5 rounded-md bg-zinc-800/80 hover:bg-zinc-700 text-zinc-500 hover:text-zinc-200 opacity-0 group-hover/card:opacity-100 transition-opacity cursor-grab active:cursor-grabbing ${
+        isDragging ? 'opacity-100' : ''
+      }`}
+      data-testid={`carousel-header-handle-${carouselId}`}
+    >
+      <GripVertical className="w-4 h-4" />
+    </button>
   );
 }
 
@@ -229,11 +273,19 @@ export function PostReadyCarouselCard({
   const cardKey = `carousel-${anchor.id}`;
 
   return (
-    <div
-      className={`bg-zinc-900/80 backdrop-blur-sm border-2 ${v.border} rounded-2xl overflow-visible hover:border-opacity-80 transition-all duration-300 flex flex-col`}
+    <CarouselCardShell
+      carouselId={carouselId}
+      restingBorder={v.border}
+      previewUrls={images.slice(0, 3).map((i) => i.url).filter((u): u is string => !!u)}
+      previewCount={images.length}
     >
       {/* Status pill row */}
       <div className="px-3 pt-3 pb-2 flex items-center gap-2 flex-wrap">
+        <CarouselHeaderHandle
+          carouselId={carouselId}
+          previewUrls={images.slice(0, 3).map((i) => i.url).filter((u): u is string => !!u)}
+          previewCount={images.length}
+        />
         <span
           className={`inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold rounded-full border ${v.pillBg} ${v.pillText}`}
           aria-label={`Status: ${label}`}
@@ -476,6 +528,51 @@ export function PostReadyCarouselCard({
           />
         </div>
       )}
+    </CarouselCardShell>
+  );
+}
+
+/**
+ * FEAT-2 §3.5: card-level shell that wraps the resting frame and adds
+ * Tier-2 droppable styling when an image-kind drag hovers anywhere on
+ * the card (not just inside the strip). It also acts as the draggable
+ * source for whole-carousel reordering — but the listener lives on the
+ * dedicated <CarouselHeaderHandle> button so accidental clicks on the
+ * card body don't initiate drags.
+ */
+function CarouselCardShell({
+  carouselId,
+  restingBorder,
+  previewUrls: _previewUrls,
+  previewCount: _previewCount,
+  children,
+}: {
+  carouselId: string;
+  restingBorder: string;
+  previewUrls: string[];
+  previewCount: number;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver, active } = useDroppable({
+    id: `card-${carouselId}`,
+    data: { carouselId },
+  });
+  const isImageDrag = (active?.data.current as DragData | undefined)?.kind !== 'carousel';
+  const isDifferentSource = (active?.data.current as DragData | undefined)?.sourceCarouselId !== carouselId;
+
+  // Tier 2 (hover): full Electric Blue border. Tier 1 (eligible) is implicit
+  // — drag is in flight but not over us; resting border still applies.
+  const borderClass = isOver && isImageDrag && isDifferentSource
+    ? 'border-[#00e6ff]/50'
+    : restingBorder;
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-testid={`carousel-card-${carouselId}`}
+      className={`group/card bg-zinc-900/80 backdrop-blur-sm border-2 ${borderClass} rounded-2xl overflow-visible hover:border-opacity-80 transition-all duration-300 flex flex-col`}
+    >
+      {children}
     </div>
   );
 }

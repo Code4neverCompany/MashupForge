@@ -123,6 +123,7 @@ import { AspectPreview } from './postready/AspectPreview';
 import { PostReadyCard } from './postready/PostReadyCard';
 import { PostReadyCarouselCard } from './postready/PostReadyCarouselCard';
 import { PostReadyDndGrid, DraggableSingleWrapper, type DndMoveHandler } from './postready/PostReadyDndGrid';
+import { DndUndoToast } from './postready/DndUndoToast';
 import { EmptyGalleryState } from './EmptyGalleryState';
 import { GalleryCard } from './GalleryCard';
 // V050-002 Phase 1: per-view modules under components/views. Phase 1
@@ -714,6 +715,14 @@ export function MainContent() {
   };
 
   const dndUndoStackRef = useRef<CarouselGroup[][]>([]);
+  const [dndUndoToast, setDndUndoToast] = useState<string | null>(null);
+
+  const undoLastDndMove = useCallback(() => {
+    const prev = dndUndoStackRef.current.pop();
+    if (!prev) return;
+    updateSettings({ carouselGroups: prev });
+    setDndUndoToast(null);
+  }, [updateSettings]);
 
   const dndMoveHandler: DndMoveHandler = {
     moveImageToCarousel: (imageId: string, sourceCarouselId: string | null, targetCarouselId: string) => {
@@ -746,6 +755,7 @@ export function MainContent() {
 
       const cleaned = groups.filter((g) => g.imageIds.length >= 2);
       updateSettings({ carouselGroups: cleaned });
+      setDndUndoToast('Image moved');
     },
     moveImageToNewGroup: (imageId: string, sourceCarouselId: string | null) => {
       if (!sourceCarouselId) return;
@@ -753,19 +763,38 @@ export function MainContent() {
         JSON.parse(JSON.stringify(settings.carouselGroups || [])),
       );
       removeFromCarousel(sourceCarouselId, imageId);
+      setDndUndoToast('Image separated');
+    },
+    moveCarouselGroup: (groupId: string, beforeGroupId: string | null) => {
+      const groups = [...(settings.carouselGroups || [])];
+      const fromIdx = groups.findIndex((g) => g.id === groupId);
+      if (fromIdx === -1) return; // auto-detected carousel — no-op
+
+      // Snapshot for undo BEFORE mutating.
+      dndUndoStackRef.current.push(
+        JSON.parse(JSON.stringify(settings.carouselGroups || [])),
+      );
+
+      const [moved] = groups.splice(fromIdx, 1);
+      const insertIdx = beforeGroupId === null
+        ? groups.length
+        : Math.max(0, groups.findIndex((g) => g.id === beforeGroupId));
+      groups.splice(insertIdx, 0, moved);
+      updateSettings({ carouselGroups: groups });
+      setDndUndoToast('Carousel reordered');
     },
   };
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && dndUndoStackRef.current.length > 0) {
-        const prev = dndUndoStackRef.current.pop()!;
-        updateSettings({ carouselGroups: prev });
+        e.preventDefault();
+        undoLastDndMove();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [updateSettings]);
+  }, [undoLastDndMove]);
 
   /** Open the multi-source image picker for an existing or new group. */
   const openCarouselPicker = (targetGroupId: string | null) => {
@@ -4088,6 +4117,15 @@ export function MainContent() {
                       </PostReadyDndGrid>
                     )
                     )}
+
+                    {/* FEAT-2 §7: undo affordance for DnD moves. Lives at
+                        viewport bottom-right; mounted whenever Post Ready
+                        is visible so it can react to the latest move. */}
+                    <DndUndoToast
+                      message={dndUndoToast}
+                      onUndo={undoLastDndMove}
+                      onDismiss={() => setDndUndoToast(null)}
+                    />
 
                     {/* History view — posts where every ScheduledPost is
                         'posted'. Read-only thumbnail grid so users can
