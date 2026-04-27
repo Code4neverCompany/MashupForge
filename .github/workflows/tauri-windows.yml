@@ -34,15 +34,21 @@ jobs:
           echo "value=$TAG" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG"
 
-      - name: Check version parity
+      - name: Check version parity with tag
         shell: bash
         run: |
+          TAG="${{ steps.tag.outputs.value }}"
+          EXPECTED="${TAG#v}"
           pkg=$(grep '"version"' package.json | sed 's/.*"version": "\(.*\)".*/\1/')
           tauri=$(grep '"version"' src-tauri/tauri.conf.json | sed 's/.*"version": "\(.*\)".*/\1/')
           cargo=$(grep '^version' src-tauri/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
-          echo "package.json=$pkg  tauri.conf.json=$tauri  Cargo.toml=$cargo"
+          echo "tag=$TAG expected=$EXPECTED package.json=$pkg tauri.conf.json=$tauri Cargo.toml=$cargo"
           if [ "$pkg" != "$tauri" ] || [ "$pkg" != "$cargo" ]; then
-            echo "::error::Version mismatch! All three files must agree."
+            echo "::error::Internal version mismatch — files don't agree with each other."
+            exit 1
+          fi
+          if [ "$pkg" != "$EXPECTED" ]; then
+            echo "::error::Version/tag mismatch — package.json ($pkg) != tag ($EXPECTED). Run scripts/release.sh before tagging."
             exit 1
           fi
 
