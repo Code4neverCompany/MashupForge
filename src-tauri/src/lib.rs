@@ -479,6 +479,7 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_store::Builder::default().build())
         // BUG-002: tauri_plugin_process exposes the JS `relaunch()` API.
         // Frontend calls it after `update.downloadAndInstall(...)` so the
         // OLD app exits cleanly — firing WindowEvent::CloseRequested

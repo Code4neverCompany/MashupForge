@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, Loader2, X, CheckCircle2, AlertTriangle, RotateCw, Clock } from 'lucide-react';
 import { useDesktopConfig } from '../hooks/useDesktopConfig';
 import { isPipelineBusy, subscribePipelineBusy } from '@/lib/pipeline-busy';
-import { UPDATE_BEHAVIOR_DEFAULT, type UpdateBehavior } from '@/lib/desktop-config-keys';
 import {
   PIPELINE_POSTPONE_POLL_MS,
   computePostponeDeadline,
@@ -108,27 +107,37 @@ export function UpdateChecker() {
         } catch { /* storage quota / private mode — silent */ }
       }
 
-      // FEAT-006: respect user preference. UPDATE_BEHAVIOR is one of
-      // 'auto' / 'notify' / 'off', stored in config.json via
-      // /api/desktop/config. Default = 'notify' (safe — user is informed
-      // before any download). Manual checks from the Settings panel
-      // always run regardless of this flag.
-      let behavior: UpdateBehavior = UPDATE_BEHAVIOR_DEFAULT;
+      // FEAT-006: respect granular per-step toggles stored in config.json
+      // via /api/desktop/config. Defaults: check=on, download=on, install=off.
+      // Falls back to legacy UPDATE_BEHAVIOR for backwards compat.
+      let checkOnStartup = true;
+      let shouldAutoDownload = true;
+      let shouldAutoInstall = false;
       try {
         const cfgRes = await fetch('/api/desktop/config');
         const cfg = (await cfgRes.json()) as { keys?: Record<string, string> };
-        const raw = cfg.keys?.UPDATE_BEHAVIOR;
-        if (raw === 'auto' || raw === 'notify' || raw === 'off') behavior = raw;
-        traceUpdater('run:resolved-behavior', { behavior, raw });
+
+        const hasGranular = cfg.keys?.AUTO_CHECK_ON_STARTUP !== undefined;
+        if (hasGranular) {
+          checkOnStartup = cfg.keys!.AUTO_CHECK_ON_STARTUP !== '0';
+          shouldAutoDownload = cfg.keys!.AUTO_DOWNLOAD !== '0';
+          shouldAutoInstall = cfg.keys!.AUTO_INSTALL === '1';
+        } else {
+          const raw = cfg.keys?.UPDATE_BEHAVIOR;
+          if (raw === 'off') checkOnStartup = false;
+          else if (raw === 'auto') { shouldAutoDownload = true; shouldAutoInstall = true; }
+        }
+        traceUpdater('run:resolved-config', {
+          checkOnStartup, shouldAutoDownload, shouldAutoInstall, hasGranular,
+        });
       } catch (e) {
         traceUpdater('run:config-fetch-failed', {
           error: e instanceof Error ? e.message : String(e),
-          fallbackBehavior: behavior,
         });
       }
 
-      if (behavior === 'off') {
-        traceUpdater('exit:behavior-off');
+      if (!checkOnStartup) {
+        traceUpdater('exit:auto-check-disabled');
         return;
       }
 
@@ -167,15 +176,12 @@ export function UpdateChecker() {
           }
         } catch { /* ignore */ }
 
-        traceUpdater('run:setting-available-state', { version: update.version, behavior });
-        if (behavior === 'auto') {
-          // Silent path — the install gate (handleUpdate) handles the
-          // pipeline-busy postponement before downloadAndInstall fires.
-          setState({ kind: 'available', update });
+        traceUpdater('run:setting-available-state', {
+          version: update.version, shouldAutoDownload, shouldAutoInstall,
+        });
+        setState({ kind: 'available', update });
+        if (shouldAutoDownload && shouldAutoInstall) {
           autoInstallRef.current = true;
-        } else {
-          // 'notify' — show the banner, user clicks Update Now.
-          setState({ kind: 'available', update });
         }
       } catch (e: unknown) {
         // Plugin unavailable, network failure, manifest missing, or ACL

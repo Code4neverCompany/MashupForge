@@ -19,6 +19,7 @@
     "updater:allow-download",
     "updater:allow-download-and-install",
     "updater:allow-install",
+    "store:default",
     "process:default",
     "process:allow-restart"
   ]
