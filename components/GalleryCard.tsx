@@ -18,6 +18,7 @@ import {
   Bookmark,
   BookmarkCheck,
   Download,
+  FolderOpen,
   FolderPlus,
   ImageOff,
   Loader2,
@@ -292,6 +293,21 @@ export function GalleryCard({
             />
           </>
         )}
+
+        {/* QOL-FE01: collection membership badge — bottom-left, above model chips. */}
+        {img.collectionId && (() => {
+          const col = collections.find(c => c.id === img.collectionId);
+          if (!col) return null;
+          const label = col.name.length > 12 ? col.name.slice(0, 12) + '…' : col.name;
+          return (
+            <div className="absolute bottom-9 left-2 z-[5] pointer-events-none select-none opacity-80 group-hover:opacity-100 transition-opacity">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-[#c5a062]/15 text-[#c5a062] border border-[#c5a062]/40 rounded-full backdrop-blur-md">
+                <FolderOpen className="w-2.5 h-2.5" />
+                {label}
+              </span>
+            </div>
+          );
+        })()}
 
         {/* DESIGN-002 §3: permanent model chip (bottom-left).
             Replaces the bottom-left "Approved" pill — the inset

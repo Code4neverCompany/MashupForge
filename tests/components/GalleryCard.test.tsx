@@ -150,3 +150,48 @@ describe('V080-DEV-001 — Gallery batch checkbox', () => {
     expect(wrapper!.className).not.toMatch(/\bz-30\b/);
   });
 });
+
+describe('QOL-FE01 — Collection badge', () => {
+  it('renders collection badge when image has a valid collectionId', () => {
+    const { container } = render(
+      <GalleryCard {...makeProps({
+        image: makeImage({ collectionId: 'col-1' }),
+        collections: [{ id: 'col-1', name: 'Favorites', createdAt: 0 }],
+      })} />,
+    );
+    expect(container.textContent).toContain('Favorites');
+  });
+
+  it('does not render badge when collectionId is absent', () => {
+    const { container } = render(
+      <GalleryCard {...makeProps({
+        image: makeImage({ collectionId: undefined }),
+        collections: [{ id: 'col-1', name: 'Favorites', createdAt: 0 }],
+      })} />,
+    );
+    expect(container.textContent).not.toContain('Favorites');
+  });
+
+  it('does not render badge for orphan collectionId (collection deleted)', () => {
+    const { container } = render(
+      <GalleryCard {...makeProps({
+        image: makeImage({ collectionId: 'deleted-col' }),
+        collections: [],
+      })} />,
+    );
+    const folderIcons = container.querySelectorAll('[class*="w-2.5"][class*="h-2.5"]');
+    const hasBadgeWrapper = container.querySelector('.bottom-9');
+    expect(hasBadgeWrapper).toBeNull();
+  });
+
+  it('truncates long collection names to 12 chars', () => {
+    const { container } = render(
+      <GalleryCard {...makeProps({
+        image: makeImage({ collectionId: 'col-long' }),
+        collections: [{ id: 'col-long', name: 'Extraordinarily Long Name', createdAt: 0 }],
+      })} />,
+    );
+    expect(container.textContent).toContain('Extraordinar…');
+    expect(container.textContent).not.toContain('Extraordinarily');
+  });
+});
