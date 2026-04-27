@@ -255,10 +255,17 @@ export async function POST(req: Request) {
         // Carousel post
         const childrenIds: string[] = [];
         for (const url of igMediaUrls) {
+          // FIX-IG-CAROUSEL-CHILD: Graph API rejects carousel children
+          // without an explicit `media_type` ("Only photo or video can
+          // be accepted as media type"). is_carousel_item alone does
+          // not let the API infer the type. We only handle image
+          // carousels in this branch (igMediaUrls filters above) so
+          // IMAGE is correct; reels/video carousels would need VIDEO +
+          // a separate upload flow we don't support yet.
           const childRes = await fetch(`https://${hostUrl}/${IG_GRAPH_API_VERSION}/${igAccountId}/media`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${igAccessToken}` },
-            body: JSON.stringify({ image_url: url, is_carousel_item: true }),
+            body: JSON.stringify({ media_type: 'IMAGE', image_url: url, is_carousel_item: true }),
             signal: AbortSignal.timeout(15000),
           });
           const childData = await parseJsonOrThrow(childRes, 'IG Carousel Item');
