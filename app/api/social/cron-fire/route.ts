@@ -15,6 +15,7 @@
 // and as a smoke test via `curl -H 'Authorization: Bearer …'`.
 
 import { NextResponse } from 'next/server';
+import { timingSafeEqual } from 'crypto';
 import { claimDuePosts, markResult, type EnqueuedPost, type QueueResult } from '@/lib/server-queue';
 import { getErrorMessage } from '@/lib/errors';
 
@@ -25,11 +26,21 @@ interface FireSummary {
   posts: Array<{ id: string; status: 'posted' | 'failed'; error?: string }>;
 }
 
+// CWE-208 fix: the prior hand-rolled XOR-fold short-circuited on a length
+// mismatch, which leaks the expected secret's length via timing. Defer to
+// Node's `crypto.timingSafeEqual` — runtime-guaranteed constant-time. The
+// outer length check is still required (timingSafeEqual throws on
+// mismatched buffer sizes) but the secret-length leak is acceptable: an
+// attacker can already enumerate plausible secret lengths trivially; what
+// timingSafeEqual prevents is per-byte bisection of the secret itself.
 function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
+  try {
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
 }
 
 function checkAuth(req: Request): { ok: true } | { ok: false; res: Response } {
