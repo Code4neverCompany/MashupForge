@@ -163,6 +163,16 @@ async function runMmxJson<T>(args: string[], opts: MmxRunOptions = {}): Promise<
     );
   }
 
+  // QA-W1: empty stdout + exit 0 fell through to `parsed as T` and silently
+  // returned undefined. Callers that destructure (e.g. const { url } = ...)
+  // hit a TypeError far from the source. Surface it as a parse error here.
+  if (parsed === undefined) {
+    throw new MmxError(
+      'PARSE',
+      `mmx returned empty output (exit ${result.exitCode})`,
+    );
+  }
+
   return parsed as T;
 }
 
