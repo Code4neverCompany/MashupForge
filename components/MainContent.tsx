@@ -343,6 +343,21 @@ export function MainContent() {
     isAvailable: boolean;
   } | null>(null);
   const heatmapHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Fix 4 (mmx brief): the calendar's inline edit popover renders above
+  // the week grid, so opening a chip near the bottom would force the user
+  // to scroll up to see it. Scroll the popover into view whenever the
+  // selection changes so the image + edit form is always reachable in one
+  // step. block:'nearest' avoids a janky jump when the popover is already
+  // visible.
+  const editPopoverRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!editingPostId) return;
+    // rAF gives the popover one paint cycle to mount before we measure it.
+    const raf = requestAnimationFrame(() => {
+      editPopoverRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [editingPostId]);
   // Click-to-schedule: when the user clicks an empty calendar cell, open
   // a modal with an image picker + platform toggles + time. `time` is a
   // full HH:MM string so picking e.g. 14:30 doesn't silently truncate to
@@ -592,13 +607,24 @@ export function MainContent() {
     const caption = formatPost(img);
     updateSettings((prev) => {
       const existingPosts = prev.scheduledPosts || [];
+      // RESCHED-FIX: only reuse the entry if it's still active. A 'posted'
+      // or 'rejected' entry is terminal — patching it would silently
+      // rewrite history and the Post Ready card would keep showing the
+      // terminal status for the new schedule. Treat 'failed' as active so
+      // the user can retry by re-scheduling.
       const editableIdx = existingPosts.findIndex(
-        (p) => p.imageId === img.id && !p.carouselGroupId
+        (p) =>
+          p.imageId === img.id &&
+          !p.carouselGroupId &&
+          p.status !== 'posted' &&
+          p.status !== 'rejected',
       );
       if (editableIdx !== -1) {
         return {
           scheduledPosts: existingPosts.map((p, i) =>
-            i === editableIdx ? { ...p, date, time, platforms, caption } : p
+            i === editableIdx
+              ? { ...p, date, time, platforms, caption, status: 'scheduled' }
+              : p
           ),
         };
       }
@@ -713,13 +739,22 @@ export function MainContent() {
   /** 24-hour labels 00..23 used by the week-view row header. */
   const HOUR_LABELS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`);
 
-  /** Look up the most recent scheduled post for an image id. */
+  /** Look up the most relevant scheduled post for an image id.
+   *  RESCHED-FIX: prefer an active (non-terminal) post over older
+   *  posted/rejected entries so the Post Ready card reflects the
+   *  user's most recent reschedule, not a stale terminal entry. */
   const latestScheduleFor = (imageId: string): ScheduledPost | undefined => {
     const all = settings.scheduledPosts || [];
+    let active: ScheduledPost | undefined;
+    let fallback: ScheduledPost | undefined;
     for (let i = all.length - 1; i >= 0; i--) {
-      if (all[i].imageId === imageId) return all[i];
+      const p = all[i];
+      if (p.imageId !== imageId) continue;
+      const isTerminal = p.status === 'posted' || p.status === 'rejected';
+      if (!isTerminal && !active) active = p;
+      else if (!fallback) fallback = p;
     }
-    return undefined;
+    return active ?? fallback;
   };
 
   // ── Carousel grouping (Post Ready tab) ─────────────────────────────
@@ -3473,15 +3508,49 @@ export function MainContent() {
                                 }));
                               };
                               return (
-                                <div className="m-4 bg-zinc-950/90 backdrop-blur border border-emerald-500/30 rounded-2xl p-4 space-y-3">
-                                  <div className="flex items-center justify-between">
-                                    <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-                                      <Clock className="w-4 h-4 text-emerald-400" />
-                                      Edit scheduled post
-                                    </h4>
+                                <div
+                                  ref={editPopoverRef}
+                                  className="m-4 bg-zinc-950/90 backdrop-blur border border-emerald-500/30 rounded-2xl p-4 space-y-3"
+                                >
+                                  {/* Fix 4 (mmx brief): show the post's image
+                                      directly in the popover header so the
+                                      "View Image" round-trip isn't required
+                                      to know what's being scheduled. */}
+                                  <div className="flex items-start gap-3">
+                                    {editingImg?.url ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedImage(editingImg)}
+                                        title="Open full image"
+                                        className="shrink-0 group relative w-16 h-16 rounded-xl overflow-hidden border border-[#c5a062]/30 hover:border-[#c5a062]/70 transition-colors"
+                                      >
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                          src={editingImg.url}
+                                          alt=""
+                                          className="w-full h-full object-cover"
+                                        />
+                                        <span className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <Maximize2 className="w-4 h-4 text-white" />
+                                        </span>
+                                      </button>
+                                    ) : (
+                                      <div className="shrink-0 w-16 h-16 rounded-xl bg-zinc-900 border border-zinc-800/60 flex items-center justify-center">
+                                        <ImageOff className="w-5 h-5 text-zinc-600" />
+                                      </div>
+                                    )}
+                                    <div className="min-w-0 flex-1 space-y-1">
+                                      <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                                        <Clock className="w-4 h-4 text-emerald-400" />
+                                        Edit scheduled post
+                                      </h4>
+                                      <p className="text-[11px] text-zinc-500 line-clamp-2">
+                                        {editing.caption || '(no caption)'}
+                                      </p>
+                                    </div>
                                     <button
                                       onClick={() => setEditingPostId(null)}
-                                      className="p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full"
+                                      className="shrink-0 p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full"
                                     >
                                       <X className="w-4 h-4" />
                                     </button>
@@ -3539,15 +3608,9 @@ export function MainContent() {
                                   </div>
 
                                   <div className="flex items-center gap-2">
-                                    <button
-                                      onClick={() => {
-                                        if (editingImg) setSelectedImage(editingImg);
-                                      }}
-                                      disabled={!editingImg}
-                                      className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white rounded-xl flex items-center gap-1.5"
-                                    >
-                                      <ImageIcon className="w-3.5 h-3.5" /> View Image
-                                    </button>
+                                    {/* Fix 4: image preview is in the header
+                                        thumbnail now — the redundant "View
+                                        Image" button used to live here. */}
                                     <button
                                       onClick={() => {
                                         updateSettings((prev) => ({
@@ -3686,6 +3749,13 @@ export function MainContent() {
                                           <TopSlotStar rank={heatmapRank} />
                                         )}
                                         {postsAtSlot.map((p) => {
+                                          // Fix 4 (mmx brief): chip-level
+                                          // thumbnail so users can see what's
+                                          // scheduled without opening the
+                                          // edit popover. Falls back to a
+                                          // muted square when the source
+                                          // image has been pruned/expired.
+                                          const chipImg = imgById.get(p.imageId);
                                           return (
                                             <button
                                               key={p.id}
@@ -3700,12 +3770,25 @@ export function MainContent() {
                                                 e.stopPropagation();
                                                 setEditingPostId((current) => (current === p.id ? null : p.id));
                                               }}
-                                              className={`relative z-20 w-full text-left px-2 py-1 rounded-xl border text-[10px] truncate cursor-grab active:cursor-grabbing ${calendarColorFor(p.status)} ${
+                                              className={`relative z-20 w-full text-left px-1.5 py-1 rounded-xl border text-[10px] cursor-grab active:cursor-grabbing flex items-center gap-1.5 ${calendarColorFor(p.status)} ${
                                                 dragPostId === p.id ? 'opacity-50' : ''
                                               }`}
                                               title={`${p.time} · ${p.platforms.join(', ')}\n${p.caption}`}
                                             >
-                                              {p.time} · {p.platforms.join(',')}
+                                              {chipImg?.url ? (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img
+                                                  src={chipImg.url}
+                                                  alt=""
+                                                  className="w-4 h-4 rounded object-cover shrink-0 border border-black/40"
+                                                  loading="lazy"
+                                                />
+                                              ) : (
+                                                <span className="w-4 h-4 rounded bg-zinc-800/80 border border-black/40 shrink-0" />
+                                              )}
+                                              <span className="truncate tabular-nums">
+                                                {p.time} · {p.platforms.map((pl) => pl[0].toUpperCase()).join('')}
+                                              </span>
                                             </button>
                                           );
                                         })}
