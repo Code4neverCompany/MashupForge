@@ -143,6 +143,12 @@ function dimsFromSpec(
  * Both `result.mmx` and `result.leonardo` are always populated. Callers
  * pluck the slice they need based on the user-selected provider; the
  * shared `result.prompt` ensures both providers see the same intent.
+ *
+ * QA-W3 — wiring follow-up: production callers (e.g. `useImageGeneration.ts`,
+ * `/api/leonardo`, `/api/mmx/image`) still hand-build the Leonardo body
+ * and bypass this helper. The library is tested and ready; the wiring
+ * is tracked in `docs/bmad/stories/STORY-MMX-PROMPT-WIRE.md` so a
+ * future commit can replace the ad-hoc path in one go.
  */
 export function buildEnhancedPrompt(
   basePrompt: string,
