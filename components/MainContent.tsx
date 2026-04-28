@@ -620,6 +620,23 @@ export function MainContent() {
           p.status !== 'rejected',
       );
       if (editableIdx !== -1) {
+        const reusedId = existingPosts[editableIdx].id;
+        // RESCHED-FIX: mirror the in-place reschedule to the server
+        // queue too. Re-pushing the same id is the contract for "this
+        // post moved" — the queue replaces its entry so the cron fires
+        // at the new time. Without this the auto-poster kept publishing
+        // at the previous (stale) time even though the UI updated.
+        if (img.url) {
+          void pushScheduleToServer({
+            id: reusedId,
+            date,
+            time,
+            platforms,
+            caption,
+            mediaUrl: img.url,
+            imageId: img.id,
+          });
+        }
         return {
           scheduledPosts: existingPosts.map((p, i) =>
             i === editableIdx
