@@ -4314,8 +4314,20 @@ export function MainContent() {
                       };
                       return (
                         <div
-                          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+                          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 outline-none"
                           onClick={close}
+                          onKeyDown={(e) => {
+                            // QA-W4: Escape was the only common modal-dismiss
+                            // gesture left unhandled (backdrop + Cancel were
+                            // already wired). Listen on the dialog root so
+                            // bubbling from the autofocused Cancel button
+                            // (or anywhere inside) reaches us.
+                            if (e.key === 'Escape') {
+                              e.stopPropagation();
+                              close();
+                            }
+                          }}
+                          tabIndex={-1}
                           role="dialog"
                           aria-modal="true"
                           aria-label="Confirm delete scheduled post"
