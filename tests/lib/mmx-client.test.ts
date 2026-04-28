@@ -238,6 +238,18 @@ describe('mmx-client error handling', () => {
       code: 2,
     });
   });
+
+  // QA-W1: empty stdout + exit 0 used to fall through and silently
+  // return undefined cast to T. Now surfaced as a PARSE error so callers
+  // that destructure (e.g. `const { path } = await generateMusic(...)`)
+  // get an actionable failure at the call site.
+  it('empty stdout + exit 0 surfaces a PARSE error', async () => {
+    spawnMock.mockReturnValue(makeChild('', 0) as never);
+    await expect(generateMusic('p')).rejects.toMatchObject({
+      name: 'MmxError',
+      code: 'PARSE',
+    });
+  });
 });
 
 describe('mmx-client isAvailable', () => {
