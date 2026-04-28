@@ -3413,7 +3413,15 @@ export function MainContent() {
 
                     {/* Calendar view */}
                     {postReadyView === 'calendar' && (() => {
-                      const scheduled = settings.scheduledPosts || [];
+                      // Fix 2 (mmx brief): the calendar grid is for
+                      // upcoming + actionable work only. 'posted' entries
+                      // are done (history view owns those) and 'rejected'
+                      // entries are user-cancelled and shouldn't ghost the
+                      // grid. 'failed' stays visible so the user can spot
+                      // retry-able slots without leaving the calendar.
+                      const scheduled = (settings.scheduledPosts || []).filter(
+                        (p) => p.status !== 'posted' && p.status !== 'rejected',
+                      );
                       const imgById = new Map(savedImages.map((i) => [i.id, i]));
                       const today = startOfDay(new Date());
 
