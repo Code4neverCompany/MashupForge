@@ -24,3 +24,6 @@ dist/
 
 # Claude Code session files
 .claude/
+
+# Hermes Agent source (cloned for reference)
+hermes-agent/
