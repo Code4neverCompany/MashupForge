@@ -325,6 +325,11 @@ export function MainContent() {
   // Drag state for rescheduling scheduled posts via HTML5 DnD.
   const [dragPostId, setDragPostId] = useState<string | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
+  // Fix 3 (mmx brief): drop-to-delete trash zone at the foot of the week
+  // calendar. `dragOverTrash` drives the highlight; `pendingTrashId` opens
+  // a confirmation dialog before the post is removed from settings.
+  const [dragOverTrash, setDragOverTrash] = useState(false);
+  const [pendingTrashId, setPendingTrashId] = useState<string | null>(null);
   // V040-001: engagement heatmap overlay. Persisted to settings on toggle
   // so the user's choice survives reloads.
   const [heatmapEnabled, setHeatmapEnabled] = useState<boolean>(
@@ -3711,6 +3716,49 @@ export function MainContent() {
                               ))}
                             </div>
                             <HeatmapLegend heatmapEnabled={heatmapEnabled} />
+
+                            {/* Fix 3 (mmx brief) — drop-to-delete trash zone.
+                                Always visible at the foot of the calendar so
+                                users can find it; understated when no drag is
+                                in progress, lights red on dragover. */}
+                            <div
+                              data-testid="calendar-trash-zone"
+                              role="button"
+                              aria-label="Drop a scheduled post here to delete it"
+                              onDragOver={(e) => {
+                                if (!dragPostId) return;
+                                e.preventDefault();
+                                if (!dragOverTrash) setDragOverTrash(true);
+                              }}
+                              onDragLeave={() => {
+                                if (dragOverTrash) setDragOverTrash(false);
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                setDragOverTrash(false);
+                                const postId = e.dataTransfer.getData('postId');
+                                setDragPostId(null);
+                                if (!postId) return;
+                                setPendingTrashId(postId);
+                              }}
+                              className={`mx-3 my-3 flex items-center justify-center gap-2 rounded-xl border-2 border-dashed py-2.5 text-xs select-none transition-all duration-200 ${
+                                dragPostId
+                                  ? dragOverTrash
+                                    ? 'border-red-500 bg-red-500/15 text-red-200 shadow-[0_0_16px_rgba(239,68,68,0.25)] scale-[1.01]'
+                                    : 'border-red-500/40 bg-red-500/5 text-red-300/80'
+                                  : 'border-zinc-800/60 bg-zinc-950/40 text-zinc-600'
+                              }`}
+                            >
+                              <Trash2 className={`w-3.5 h-3.5 ${dragPostId ? '' : 'opacity-60'}`} />
+                              <span className="font-medium tracking-wide">
+                                {dragPostId
+                                  ? dragOverTrash
+                                    ? 'Release to delete'
+                                    : 'Drop here to delete'
+                                  : 'Drag a scheduled post here to delete'}
+                              </span>
+                            </div>
+
                             {heatmapEnabled && heatmapHover && (() => {
                               const bd = heatmapWeekScores.get(heatmapHover.cellKey);
                               const eng = heatmapEngagement;
@@ -4072,6 +4120,99 @@ export function MainContent() {
                                 className="btn-gold-sm"
                               >
                                 <Clock className="w-3.5 h-3.5" /> Schedule
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Fix 3 (mmx brief) — delete-confirmation dialog after a
+                        post is dropped onto the calendar trash zone. Cancel
+                        is the safer default; Delete is destructive red. */}
+                    {pendingTrashId && (() => {
+                      const target = (settings.scheduledPosts || []).find(
+                        (sp) => sp.id === pendingTrashId,
+                      );
+                      if (!target) {
+                        // Post vanished out from under us (rescheduled away,
+                        // posted, etc.) — silently dismiss.
+                        setPendingTrashId(null);
+                        return null;
+                      }
+                      const targetImg = savedImages.find((i) => i.id === target.imageId);
+                      const close = () => setPendingTrashId(null);
+                      const confirmDelete = () => {
+                        updateSettings((prev) => ({
+                          scheduledPosts: (prev.scheduledPosts || []).filter(
+                            (sp) => sp.id !== pendingTrashId,
+                          ),
+                        }));
+                        setPendingTrashId(null);
+                      };
+                      return (
+                        <div
+                          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+                          onClick={close}
+                          role="dialog"
+                          aria-modal="true"
+                          aria-label="Confirm delete scheduled post"
+                        >
+                          <div
+                            className="bg-[#050505]/95 backdrop-blur-xl border border-red-500/40 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-[0_0_36px_rgba(239,68,68,0.15)]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/40 flex items-center justify-center shrink-0">
+                                <Trash2 className="w-5 h-5 text-red-400" />
+                              </div>
+                              <div className="min-w-0">
+                                <h3 className="type-title">Delete scheduled post?</h3>
+                                <p className="text-xs text-zinc-500">
+                                  This removes the schedule. The image stays in your gallery.
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-start gap-3 p-3 rounded-xl bg-zinc-900/60 border border-[#c5a062]/15">
+                              {targetImg?.url && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={targetImg.url}
+                                  alt=""
+                                  className="w-14 h-14 rounded-lg object-cover shrink-0 border border-[#c5a062]/15"
+                                />
+                              )}
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-center gap-2 text-xs">
+                                  <span className="font-mono tabular-nums text-zinc-200">
+                                    {target.date} · {target.time}
+                                  </span>
+                                  <span className="text-zinc-600">·</span>
+                                  <span className="text-zinc-400">
+                                    {target.platforms.join(', ') || 'no platform'}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-zinc-500 line-clamp-2">
+                                  {target.caption || '(no caption)'}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2 pt-1">
+                              <button
+                                onClick={close}
+                                className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl transition-colors"
+                                autoFocus
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={confirmDelete}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-red-600 hover:bg-red-500 text-white rounded-xl transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                Delete
                               </button>
                             </div>
                           </div>
