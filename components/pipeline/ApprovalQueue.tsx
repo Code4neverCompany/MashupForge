@@ -387,13 +387,13 @@ export function ApprovalQueue({
           return (
             <div
               key={post.id}
-              className={`relative bg-zinc-900/60 rounded-xl border p-3 space-y-2 transition-all ${
+              className={`relative bg-[#050505]/70 rounded-xl border p-3 space-y-2 transition-all duration-200 ${
                 isSelected
-                  ? 'border-[#c5a062]/60 shadow-[0_0_12px_rgba(197,160,98,0.18)]'
-                  : 'border-[#c5a062]/20 hover:border-[#c5a062]/40'
+                  ? 'border-[#c5a062]/60 shadow-[0_0_14px_rgba(197,160,98,0.22)]'
+                  : 'border-[#c5a062]/20 hover:border-[#c5a062]/45 hover:shadow-[0_0_10px_rgba(197,160,98,0.10)]'
               }`}
             >
-              <label className="absolute top-2 left-2 z-10 flex items-center justify-center w-5 h-5 bg-zinc-900/80 rounded cursor-pointer">
+              <label className="absolute top-2 left-2 z-10 flex items-center justify-center w-5 h-5 bg-[#050505]/85 border border-[#c5a062]/25 rounded cursor-pointer">
                 <input
                   type="checkbox"
                   checked={isSelected}
@@ -441,7 +441,7 @@ export function ApprovalQueue({
                   {post.platforms.map((pl) => (
                     <span
                       key={pl}
-                      className="text-[9px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded"
+                      className="text-[9px] px-1.5 py-0.5 bg-[#050505]/80 border border-[#c5a062]/20 text-zinc-300 rounded"
                     >
                       {pl}
                     </span>

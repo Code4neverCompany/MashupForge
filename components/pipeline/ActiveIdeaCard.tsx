@@ -84,8 +84,8 @@ export function ActiveIdeaCard({
                 isActive
                   ? 'bg-[#00e6ff]/15 text-[#00e6ff] border-[#00e6ff]/40'
                   : isCompleted
-                    ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                    : 'bg-zinc-900 text-zinc-500 border-zinc-700'
+                    ? 'bg-[#00e6ff]/8 text-[#00e6ff]/80 border-[#00e6ff]/25'
+                    : 'bg-[#050505]/80 text-zinc-500 border-[#c5a062]/15'
               }`}
             >
               <Icon className="w-2.5 h-2.5" />

@@ -260,8 +260,8 @@ export function PipelinePanel() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: idx * 0.05 }}
                 className={`relative p-3 sm:p-4 rounded-xl border overflow-hidden transition-colors duration-200 ${
-                  isActive ? 'border-[#00e6ff]/30' :
-                  isCompleted ? 'bg-zinc-900/60 border-[#c5a062]/25' : 'bg-[#050505]/80 border-[#c5a062]/12'
+                  isActive ? 'bg-[#050505]/90 border-[#00e6ff]/40 shadow-[0_0_18px_rgba(0,230,255,0.10)]' :
+                  isCompleted ? 'bg-[#050505]/70 border-[#c5a062]/30' : 'bg-[#050505]/80 border-[#c5a062]/15'
                 }`}
               >
                 {/* Shared-layout glow — spring-animates between active stages */}
@@ -750,7 +750,7 @@ export function PipelinePanel() {
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.18, ease: 'easeOut' }}
-                    className="flex items-start gap-3 px-4 py-2.5 border-b border-zinc-800/40 last:border-0"
+                    className="flex items-start gap-3 px-4 py-2.5 border-b border-[#c5a062]/10 last:border-0"
                   >
                     {entry.status === 'success' ? (
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
