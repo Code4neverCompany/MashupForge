@@ -52,7 +52,7 @@ export function WeekProgressMeter() {
           <div
             role="list"
             aria-label={`Next ${targetDays} days — ${postsPerDay} posts/day target`}
-            className="grid gap-1"
+            className="grid gap-0.5 sm:gap-1"
             style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}
           >
             {days.map((d, i) => {
@@ -69,23 +69,23 @@ export function WeekProgressMeter() {
                 <div
                   key={d.date}
                   role="listitem"
-                  className="flex flex-col items-center gap-1"
+                  className="flex flex-col items-center gap-0.5 sm:gap-1 min-w-0"
                   title={`${d.dayLabel} ${d.date} — ${d.scheduledCount}/${d.target}${
                     d.gap > 0 ? ` (${d.gap} gap)` : ''
                   }`}
                 >
                   <div
-                    className={`w-full h-6 rounded-sm transition-[background-color] duration-300 ease-out ${barColor}`}
+                    className={`w-full h-5 sm:h-6 rounded-sm transition-[background-color] duration-300 ease-out ${barColor}`}
                     aria-hidden="true"
                   />
                   <span
-                    className={`text-[9px] font-mono uppercase tracking-wider ${
+                    className={`text-[9px] font-mono uppercase tracking-wider truncate ${
                       i === 0 ? 'text-[#c5a062]' : 'text-zinc-600'
                     }`}
                   >
                     {d.dayLabel}
                   </span>
-                  <span className="text-[9px] font-mono text-zinc-500">
+                  <span className="text-[9px] font-mono text-zinc-500 tabular-nums">
                     {d.scheduledCount}/{d.target}
                   </span>
                 </div>

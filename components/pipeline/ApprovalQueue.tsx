@@ -166,7 +166,7 @@ export function ApprovalQueue({
   }
 
   return (
-    <div className="bg-[#00e6ff]/5 rounded-2xl border border-[#00e6ff]/25 p-4 sm:p-5 space-y-4">
+    <div className="bg-[#00e6ff]/5 rounded-2xl border border-[#00e6ff]/25 p-3 sm:p-5 space-y-3 sm:space-y-4">
       {flash && (
         <div
           role="status"
@@ -189,17 +189,17 @@ export function ApprovalQueue({
           </span>
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-[#00e6ff]" />
-          <span className="text-sm font-medium text-[#00e6ff]">
+      <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <CheckCircle2 className="w-4 h-4 text-[#00e6ff] shrink-0" />
+          <span className="text-sm font-medium text-[#00e6ff] truncate">
             Pipeline Approval ({posts.length})
             {filtered.length !== posts.length && (
               <span className="text-[#00e6ff]/70"> · {filtered.length} shown</span>
             )}
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           <button
             onClick={handleApproveAllFiltered}
             disabled={filtered.length === 0}

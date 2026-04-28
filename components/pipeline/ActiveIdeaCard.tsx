@@ -28,7 +28,7 @@ export function ActiveIdeaCard({
   const pct = Math.round((progress.current / total) * 100);
 
   return (
-    <div className="card p-4 sm:p-5 space-y-4 border-[#00e6ff]/25 shadow-[0_0_24px_rgba(0,230,255,0.06)]">
+    <div className="card p-3 sm:p-5 space-y-3 sm:space-y-4 border-[#00e6ff]/25 shadow-[0_0_24px_rgba(0,230,255,0.06)]">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -46,11 +46,13 @@ export function ActiveIdeaCard({
         </div>
         <button
           onClick={onSkip}
-          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/40 border border-amber-500/40 text-amber-300 text-xs rounded-xl transition-colors"
+          className="shrink-0 flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/40 border border-amber-500/40 text-amber-300 text-xs rounded-xl transition-colors"
           title="Skip this idea — keep the pipeline running"
+          aria-label="Skip this idea"
         >
           <SkipForward className="w-3.5 h-3.5" />
-          Skip Idea
+          <span className="hidden sm:inline">Skip Idea</span>
+          <span className="sm:hidden">Skip</span>
         </button>
       </div>
 

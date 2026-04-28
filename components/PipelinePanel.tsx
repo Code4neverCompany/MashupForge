@@ -233,23 +233,23 @@ export function PipelinePanel() {
   })();
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-[#00e6ff]/10 border border-[#00e6ff]/25 flex items-center justify-center shrink-0">
-          <Zap className="w-5 h-5 text-[#00e6ff]" />
+        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#00e6ff]/10 border border-[#00e6ff]/25 flex items-center justify-center shrink-0">
+          <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-[#00e6ff]" />
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="type-title truncate">Ideas-to-Content Pipeline</h2>
-          <p className="text-xs sm:text-sm text-zinc-400">
+          <p className="text-[11px] sm:text-sm text-zinc-400 leading-snug">
             Automatically process ideas into images, captions, and scheduled posts
           </p>
         </div>
       </div>
 
       {/* Stage flow visualization */}
-      <div className="card p-4 sm:p-5 overflow-x-auto">
-        <div className="space-y-3 sm:space-y-4">
+      <div className="card p-3 sm:p-5">
+        <div className="space-y-2 sm:space-y-4">
           {STAGES.map((stage, idx) => {
             const isActive = activeStageKey === stage.key;
             const isCompleted = idx < STAGES.findIndex(s => s.key === activeStageKey);
@@ -259,7 +259,7 @@ export function PipelinePanel() {
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: idx * 0.05 }}
-                className={`relative p-3 sm:p-4 rounded-xl border overflow-hidden transition-colors duration-200 ${
+                className={`relative p-2.5 sm:p-4 rounded-xl border overflow-hidden transition-colors duration-200 ${
                   isActive ? 'bg-[#050505]/90 border-[#00e6ff]/40 shadow-[0_0_18px_rgba(0,230,255,0.10)]' :
                   isCompleted ? 'bg-[#050505]/70 border-[#c5a062]/30' : 'bg-[#050505]/80 border-[#c5a062]/15'
                 }`}

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { isAllowedUrl, getCacheEntry, setCacheEntry, clearCache, getCacheSize } from '@/app/api/proxy-image/route';
+import { isAllowedUrl, getCacheEntry, getStaleEntry, setCacheEntry, clearCache, getCacheSize } from '@/app/api/proxy-image/route';
 
 describe('proxy-image isAllowedUrl', () => {
   it('allows cdn.leonardo.ai', () => {
@@ -92,7 +92,7 @@ describe('proxy-image LRU cache', () => {
     expect(getCacheSize()).toBe(0);
   });
 
-  it('returns undefined and evicts after TTL expires', () => {
+  it('returns undefined from getCacheEntry after fresh TTL expires', () => {
     vi.useFakeTimers();
     setCacheEntry(url, buf, 'image/png');
     vi.advanceTimersByTime(60 * 60 * 1000 + 1);
@@ -120,5 +120,44 @@ describe('proxy-image LRU cache', () => {
     clearCache();
     expect(getCacheSize()).toBe(0);
     expect(getCacheEntry(url)).toBeUndefined();
+  });
+});
+
+describe('proxy-image stale-while-error', () => {
+  const buf = new ArrayBuffer(8);
+  const url = 'https://cdn.leonardo.ai/stale.png';
+
+  beforeEach(() => clearCache());
+  afterEach(() => vi.useRealTimers());
+
+  it('getStaleEntry returns a fresh entry', () => {
+    setCacheEntry(url, buf, 'image/png');
+    expect(getStaleEntry(url)?.contentType).toBe('image/png');
+  });
+
+  it('getStaleEntry returns the entry past fresh TTL but within stale window', () => {
+    vi.useFakeTimers();
+    setCacheEntry(url, buf, 'image/png');
+    vi.advanceTimersByTime(2 * 60 * 60 * 1000); // 2 hours: stale, but well within 7d
+    expect(getCacheEntry(url)).toBeUndefined();
+    expect(getStaleEntry(url)?.contentType).toBe('image/png');
+  });
+
+  it('getStaleEntry returns undefined past max stale window and evicts', () => {
+    vi.useFakeTimers();
+    setCacheEntry(url, buf, 'image/png');
+    vi.advanceTimersByTime(7 * 24 * 60 * 60 * 1000 + 1); // > 7 days
+    expect(getStaleEntry(url)).toBeUndefined();
+    expect(getCacheSize()).toBe(0);
+  });
+
+  it('stale entry persists in cache across the fresh→stale boundary', () => {
+    vi.useFakeTimers();
+    setCacheEntry(url, buf, 'image/png');
+    vi.advanceTimersByTime(60 * 60 * 1000 + 1); // just past fresh TTL
+    // getCacheEntry must NOT delete a still-usable stale entry
+    expect(getCacheEntry(url)).toBeUndefined();
+    expect(getCacheSize()).toBe(1);
+    expect(getStaleEntry(url)).toBeDefined();
   });
 });
