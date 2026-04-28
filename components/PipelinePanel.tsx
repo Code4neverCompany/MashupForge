@@ -275,7 +275,7 @@ export function PipelinePanel() {
                 <div className="relative flex items-center gap-3">
                   {isActive ? (
                     <div className="relative w-3 h-3">
-                      <div className={`absolute inset-0 ${stage.dotColor} rounded-full animate-ping`} />
+                      <div className={`absolute inset-0 ${stage.dotColor} rounded-full animate-ping motion-reduce:animate-none`} />
                       <div className={`relative ${stage.dotColor} w-3 h-3 rounded-full`} />
                     </div>
                   ) : (
@@ -646,7 +646,7 @@ export function PipelinePanel() {
           </div>
           {pipelineRunning && (
             <div className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 text-[#00e6ff] animate-spin" />
+              <Loader2 className="w-4 h-4 text-[#00e6ff] animate-spin motion-reduce:animate-none" />
               <span className="text-sm text-[#00e6ff] font-medium">Running</span>
             </div>
           )}

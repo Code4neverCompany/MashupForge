@@ -33,7 +33,7 @@ export function ActiveIdeaCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <Loader2 className="w-3.5 h-3.5 text-[#00e6ff] animate-spin shrink-0" />
+            <Loader2 className="w-3.5 h-3.5 text-[#00e6ff] animate-spin motion-reduce:animate-none shrink-0" />
             <span className="text-sm font-medium text-white">
               Processing idea {progress.current} of {progress.total}
             </span>
@@ -65,9 +65,9 @@ export function ActiveIdeaCard({
       </div>
 
       {/* Current step */}
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] uppercase tracking-wide text-zinc-500">Current step</span>
-        <span className="text-xs text-zinc-300">{progress.currentStep}</span>
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className="text-[10px] uppercase tracking-wide text-zinc-500 shrink-0">Current step</span>
+        <span className="text-xs text-zinc-300 break-words min-w-0">{progress.currentStep}</span>
       </div>
 
       {/* Stage chips */}
@@ -127,7 +127,7 @@ export function ActiveIdeaCard({
                       {isError ? (
                         <XCircle className="w-4 h-4 text-red-500" />
                       ) : (
-                        <Loader2 className="w-4 h-4 text-[#00e6ff] animate-spin" />
+                        <Loader2 className="w-4 h-4 text-[#00e6ff] animate-spin motion-reduce:animate-none" />
                       )}
                       <span className="text-[9px] text-zinc-500 px-1 text-center line-clamp-1">
                         {img.modelInfo?.modelName || 'model'}
