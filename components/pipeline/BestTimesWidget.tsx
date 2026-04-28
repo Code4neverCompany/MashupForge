@@ -69,9 +69,16 @@ export function BestTimesWidget({ settings }: { settings: UserSettings }) {
                 className="flex flex-col items-center px-1.5 sm:px-2 py-1 sm:py-1.5 bg-zinc-800/50 border border-[#c5a062]/15 rounded-lg"
               >
                 <span className="text-[11px] sm:text-xs font-mono text-white">{String(t.hour).padStart(2, '0')}:00</span>
-                <div className="w-full h-1 bg-zinc-700/80 rounded-full mt-1 overflow-hidden">
+                <div
+                  className="w-full h-1 bg-zinc-800/80 rounded-full mt-1 overflow-hidden"
+                  role="progressbar"
+                  aria-valuenow={Math.round((t.weight || 0) * 100)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={`Engagement weight ${String(t.hour).padStart(2, '0')}:00`}
+                >
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-[#00b8cc] to-[#00e6ff]"
+                    className="h-full rounded-full bg-gradient-to-r from-[#00b8cc] to-[#00e6ff] shadow-[0_0_6px_rgba(0,230,255,0.45)] transition-[width] duration-700 ease-out motion-reduce:transition-none"
                     style={{ width: `${Math.round((t.weight || 0) * 100)}%` }}
                   />
                 </div>

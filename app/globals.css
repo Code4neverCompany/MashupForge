@@ -396,6 +396,14 @@
   100% { background-position: -100% center; }
 }
 
+/* STORY-011 — honour reduced-motion: kill the shimmer + width tween. */
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 /* ── Toast animations ──────────────────────────────────────────────── */
 @keyframes toast-enter {
   from { opacity: 0; transform: translateX(110%) scale(0.96); }
