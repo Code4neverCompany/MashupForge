@@ -115,6 +115,15 @@ export async function POST(req: Request): Promise<Response> {
       outDir: tempDir,
       signal: req.signal,
     });
+    // QA-W2: artifacts.musicPath / voiceoverPath / videoPath are
+    // RUNNER-LOCAL paths under `tempDir`. The `finally` block below
+    // rmSyncs `tempDir` after this response is serialised, so by the
+    // time a caller receives the JSON the files are already deleted.
+    // The fields are kept in the response for workflow-log breadcrumbs
+    // (handy when a stage fails partway through) — they are NOT
+    // persistent URLs and callers must not try to fetch them. A future
+    // commit will upload artifacts to durable storage and replace these
+    // paths with hosted URLs before unlink.
     return NextResponse.json({ plan, artifacts });
   } catch (e) {
     return NextResponse.json(

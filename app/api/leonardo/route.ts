@@ -32,17 +32,23 @@ function extractLeonardoError(parsed: unknown): string | null {
 
 /**
  * Leonardo AI Image Generation API Route
- * 
+ *
  * Supports 4 API-documented models:
  * - Nano Banana (nano-banana): 20 styles, 10 aspect ratios, max 8 images
- * - Nano Banana 2 (nano-banana-2): 20 styles, 10 aspect ratios, max 8 images  
- * - Nano Banana Pro (gemini-image-2): 20 styles, 3 aspect ratios, max 8 images  
+ * - Nano Banana 2 (nano-banana-2): 20 styles, 10 aspect ratios, max 8 images
+ * - Nano Banana Pro (gemini-image-2): 20 styles, 3 aspect ratios, max 8 images
  * - GPT Image-1.5 (gpt-image-1.5): no styles, quality param, 3 aspect ratios, max 4 images
- * 
+ *
  * All use v2 endpoint: https://cloud.leonardo.ai/api/rest/v2/generations
- * 
+ *
  * Client sends internal model id (e.g. 'nano-banana-pro').
  * Route maps to apiModelId (e.g. 'gemini-image-2') for Leonardo API.
+ *
+ * QA-W3 — wiring follow-up: this route's body shape (prompt, modelId,
+ * width/height, styleIds, quality) is already compatible with the
+ * `result.leonardo` slice emitted by `lib/image-prompt-builder.ts`.
+ * Today the upstream caller (`hooks/useImageGeneration.ts`) hand-rolls
+ * those fields. Tracked in `docs/bmad/stories/STORY-MMX-PROMPT-WIRE.md`.
  */
 
 // Map internal id → Leonardo API model id (exact strings required by
