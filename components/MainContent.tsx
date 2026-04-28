@@ -3686,22 +3686,7 @@ export function MainContent() {
                                     </p>
                                   </div>
 
-                                  <div className="flex items-center gap-2">
-                                    {/* Fix 4: image preview is in the header
-                                        thumbnail now — the redundant "View
-                                        Image" button used to live here. */}
-                                    <button
-                                      onClick={() => {
-                                        updateSettings((prev) => ({
-                                          scheduledPosts: (prev.scheduledPosts || []).filter((sp) => sp.id !== editing.id),
-                                        }));
-                                        setEditingPostId(null);
-                                      }}
-                                      className="px-3 py-1.5 text-xs bg-red-600/80 hover:bg-red-500 text-white rounded-xl flex items-center gap-1.5"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" /> Delete
-                                    </button>
-                                    <div className="flex-1" />
+                                  <div className="flex justify-end">
                                     <button
                                       onClick={() => setEditingPostId(null)}
                                       className="btn-blue-sm"
