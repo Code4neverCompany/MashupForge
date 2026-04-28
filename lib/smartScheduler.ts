@@ -309,24 +309,18 @@ function buildPerDayCounts(posts: ExistingPost[]): Record<string, number> {
  * If `caps` and `platforms` are supplied, also skips any day where any
  * of the requested platforms has already hit its cap.
  *
- * BUG-CRIT-002: each candidate's score is divided by `(1 + posts
- * already on that day)` so successive picks naturally spread across
- * the week. Without this penalty, the top 12 slots in a single
- * `findBestSlots(N)` call (or 12 sequential `findBestSlot` calls
- * during pipeline auto-schedule) all land on the highest-scoring day,
- * because the next-best-on-Saturday always beats the best-on-Friday
- * by a wide margin under raw engagement weights. The divisor turns
- * the second post on a day into half-score, third into a third, etc.
- * Once a day is saturated, lower-engagement days outrank further
- * picks on it; once the entire 14-day window is uniformly saturated,
- * the algorithm naturally wraps onto the next week (offset 7..13)
- * with a fresh penalty.
+ * ALGORITHM: greedy selection (not sort-then-slice). After each pick,
+ * `dayCounts[dateStr]` is incremented so subsequent picks on the same
+ * day pay an increasing penalty. This solves the bunching problem where
+ * all N posts land on Saturday — even with a static divisor, Saturday's
+ * raw scores are so high that every top-N slot is on the same day. With
+ * greedy, once Saturday 20:00 is picked, Sat 19:00 gets divisor=2,
+ * Sat 18:00 gets divisor=3, and Friday 20:00 (divisor=1, no penalty)
+ * beats Saturday 18:00 (raw 0.81 / 3 = 0.27) even though Friday's
+ * raw score (0.95) is lower. Result: natural spread across the week,
+ * at least one post per day when count >= 7.
  *
- * The penalty is applied per-day (any platform), not per-platform —
- * if Saturday already has an Instagram post, scheduling a Twitter
- * post on Saturday still pays the penalty because we want
- * cross-platform distribution too. Per-platform hard caps via
- * `options.caps` still take precedence.
+ * Per-platform hard caps via `options.caps` still take precedence.
  */
 export function findBestSlots(
   existingPosts: ExistingPost[],
@@ -367,43 +361,62 @@ export function findBestSlots(
     return false;
   };
 
-  const candidates: SlotScore[] = [];
+  // `dayCounts` is mutated during selection so each pick on the same day
+  // pays an increasing penalty (1 + count_so_far). `taken` is mutated for
+  // the same reason — to prevent picking the same (date, time) twice
+  // within one call.
+  const dayCountsLocal = { ...dayCounts };
+
   const now = new Date();
   const startDate = new Date(now);
   startDate.setDate(startDate.getDate() + 1);
 
+  // Pre-build the candidate (date, hour) grid so each round only re-scores
+  // — the grid itself is fixed.
+  type Cand = { date: string; hour: number; checkDate: Date; raw: number };
+  const candidates: Cand[] = [];
   for (let dayOffset = 0; dayOffset < horizonDays; dayOffset++) {
     const checkDate = new Date(startDate);
     checkDate.setDate(checkDate.getDate() + dayOffset);
-    // Local date — must match weekly-fill.ts so daemon's "filled?" check
-    // and slot-pick agree on day boundaries for non-UTC timezones.
     const dateStr = formatLocalDate(checkDate);
-
-    // Skip whole day if any target platform is at cap.
     if (dayWouldExceedCap(dateStr)) continue;
-
-    const dayDivisor = 1 + (dayCounts[dateStr] || 0);
-
-    // Only consider hours with significant engagement weight
     for (const { hour } of eng.hours) {
       if (hour < 6 || hour > 23) continue;
-
-      const time = `${String(hour).padStart(2, '0')}:00`;
-      if (taken.has(`${dateStr}T${time}`)) continue;
-
-      const rawScore = scoreSlot(checkDate, hour, eng);
-      const score = rawScore / dayDivisor;
-      const hourEng = eng.hours.find(h => h.hour === hour);
-      const dayEng = eng.days.find(d => d.day === checkDate.getDay());
-      const reason = `${hourEng?.weight || 0}h weight, ${dayEng?.multiplier || 0}x day${eng.source === 'instagram' ? ' (IG data)' : ' (research)'}`;
-
-      candidates.push({ date: dateStr, time, score, reason });
+      candidates.push({
+        date: dateStr,
+        hour,
+        checkDate,
+        raw: scoreSlot(checkDate, hour, eng),
+      });
     }
   }
 
-  // Sort by score descending, pick top N
-  candidates.sort((a, b) => b.score - a.score);
-  return candidates.slice(0, count);
+  const selected: SlotScore[] = [];
+  for (let round = 0; round < count; round++) {
+    let bestIdx = -1;
+    let bestScore = -Infinity;
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      const time = `${String(c.hour).padStart(2, '0')}:00`;
+      if (taken.has(`${c.date}T${time}`)) continue;
+      const score = c.raw / (1 + (dayCountsLocal[c.date] || 0));
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx === -1) break;
+    const c = candidates[bestIdx];
+    const time = `${String(c.hour).padStart(2, '0')}:00`;
+    const hourEng = eng.hours.find(h => h.hour === c.hour);
+    const dayEng = eng.days.find(d => d.day === c.checkDate.getDay());
+    const reason = `${hourEng?.weight || 0}h weight, ${dayEng?.multiplier || 0}x day${eng.source === 'instagram' ? ' (IG data)' : ' (research)'}`;
+    selected.push({ date: c.date, time, score: bestScore, reason });
+    taken.add(`${c.date}T${time}`);
+    dayCountsLocal[c.date] = (dayCountsLocal[c.date] || 0) + 1;
+  }
+
+  return selected;
 }
 
 /**
