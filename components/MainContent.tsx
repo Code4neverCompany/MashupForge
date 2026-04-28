@@ -1628,6 +1628,15 @@ export function MainContent() {
 
           try {
             const mediaUrls = groupImages.map((i) => i.url).filter(Boolean) as string[];
+            // Fix 5 (mmx brief): old content sometimes lands here with
+            // every Leonardo URL expired AND no base64 fallback. Bail
+            // early with an actionable error instead of letting the
+            // server try to fetch dead URLs.
+            if (mediaUrls.length === 0) {
+              throw new Error(
+                'No usable image source — every carousel member is missing both url and base64 (Leonardo URL likely expired)'
+              );
+            }
             const res = await fetch('/api/social/post', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1647,12 +1656,28 @@ export function MainContent() {
               statusPatches.set(gp.id, 'posted');
               processedIds.add(gp.id);
             });
-          } catch {
+          } catch (e: unknown) {
+            const reason = e instanceof Error ? e.message : String(e);
+            // Fix 5: surface the failure reason on every member's chip
+            // and log structured context so old-content failures are
+            // diagnosable instead of mysteriously red.
+            console.error('[auto-poster] carousel publish failed', {
+              postId: post.id,
+              carouselGroupId: post.carouselGroupId,
+              date: post.date,
+              time: post.time,
+              platforms: post.platforms,
+              memberCount: groupPosts.length,
+              reason,
+            });
+            const groupKey = `carousel-${post.carouselGroupId ?? post.id}`;
+            setPostStatus((prev) => ({ ...prev, [groupKey]: `Error: ${reason}` }));
             groupPosts.forEach((gp) => {
               statusPatches.set(gp.id, 'failed');
               processedIds.add(gp.id);
+              setPostStatus((prev) => ({ ...prev, [gp.imageId]: `Error: ${reason}` }));
             });
-            showToast('Scheduled carousel post failed — check Post Ready for details', 'error');
+            showToast(`Scheduled carousel post failed: ${reason}`, 'error');
           }
           continue;
         }
@@ -1660,6 +1685,11 @@ export function MainContent() {
         // ── Single-image branch (existing behaviour) ─────────────
         const image = savedImages.find((img) => img.id === post.imageId);
         if (!image) {
+          // Fix 5: explain the missing-image case so users understand
+          // why an old post failed (image was pruned from gallery).
+          const reason = `Source image ${post.imageId} no longer exists in gallery`;
+          console.error('[auto-poster] image missing', { postId: post.id, imageId: post.imageId });
+          setPostStatus((prev) => ({ ...prev, [post.imageId]: `Error: ${reason}` }));
           statusPatches.set(post.id, 'failed');
           continue;
         }
@@ -1673,6 +1703,18 @@ export function MainContent() {
         }
 
         try {
+          // Fix 5 (mmx brief): old content fails when both image.url is
+          // a stale Leonardo signed URL AND no base64 fallback survives.
+          // Pre-flight the missing-source case so the failure reason is
+          // user-actionable instead of a generic "Failed to post".
+          if (!image.url && !image.base64) {
+            throw new Error(
+              'No usable image source — both url and base64 are missing (Leonardo URL likely expired and image was never re-hosted)'
+            );
+          }
+          if (!post.platforms || post.platforms.length === 0) {
+            throw new Error('No platforms selected on the scheduled post');
+          }
           const res = await fetch('/api/social/post', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1691,9 +1733,21 @@ export function MainContent() {
           if (!res.ok) throw new Error(data.error || 'Failed to post');
 
           statusPatches.set(post.id, 'posted');
-        } catch {
+        } catch (e: unknown) {
+          const reason = e instanceof Error ? e.message : String(e);
+          console.error('[auto-poster] single publish failed', {
+            postId: post.id,
+            imageId: post.imageId,
+            date: post.date,
+            time: post.time,
+            platforms: post.platforms,
+            hasUrl: !!image.url,
+            hasBase64: !!image.base64,
+            reason,
+          });
+          setPostStatus((prev) => ({ ...prev, [post.imageId]: `Error: ${reason}` }));
           statusPatches.set(post.id, 'failed');
-          showToast('Scheduled post failed to publish — check Post Ready for details', 'error');
+          showToast(`Scheduled post failed: ${reason}`, 'error');
         }
       }
 

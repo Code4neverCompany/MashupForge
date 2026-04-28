@@ -136,17 +136,25 @@ export async function POST(req: Request) {
   try {
     const { caption, platforms, mediaUrl, mediaUrls, mediaBase64, credentials } = await req.json();
 
+    // Fix 5 (mmx brief): old scheduled content arrived here with empty
+    // mediaUrl AND no base64, then silently produced a 0-image post that
+    // exploded later inside the platform branches with a cryptic Graph
+    // API error. Validate the contract up front.
+    if (!Array.isArray(platforms) || platforms.length === 0) {
+      return NextResponse.json({ error: 'platforms is required and must be a non-empty array' }, { status: 400 });
+    }
+
     const results: Record<string, unknown> = {};
 
     // Helper to get image buffers
     const imageItems: { buffer: Buffer, mimeType: string, url?: string }[] = [];
-    
+
     const urlsToProcess = mediaUrls && mediaUrls.length > 0 ? mediaUrls : (mediaUrl ? [mediaUrl] : []);
 
     for (const url of urlsToProcess) {
       let buffer: Buffer | null = null;
       let mimeType = 'image/jpeg';
-      
+
       if (url.startsWith('data:')) {
         const base64Data = url.split(',')[1];
         if (base64Data) {
@@ -154,12 +162,32 @@ export async function POST(req: Request) {
           mimeType = url.split(';')[0].split(':')[1] || 'image/jpeg';
         }
       } else {
-        const imgRes = await fetch(url, { signal: AbortSignal.timeout(15000) });
+        // Fix 5: Leonardo signed URLs expire after ~24h. Without an
+        // ok-check, the route was reading the JSON error body as if it
+        // were the image and forwarding the bytes downstream, where IG
+        // / uguu would reject them with confusing errors. Refuse early
+        // with a host- and status-aware message instead.
+        let imgRes: Response;
+        try {
+          imgRes = await fetch(url, { signal: AbortSignal.timeout(15000) });
+        } catch (e) {
+          throw new Error(`Failed to fetch media URL (${getErrorMessage(e)}): ${url}`);
+        }
+        if (!imgRes.ok) {
+          const isLeonardo = url.includes('leonardo.ai') || url.includes('storage.googleapis.com');
+          const hint = isLeonardo
+            ? ' (Leonardo signed URLs expire ~24h after generation; the image needs to be re-hosted or the post was generated too long ago)'
+            : '';
+          throw new Error(`Media URL returned HTTP ${imgRes.status} ${imgRes.statusText}${hint}: ${url}`);
+        }
         const arrayBuffer = await imgRes.arrayBuffer();
+        if (arrayBuffer.byteLength === 0) {
+          throw new Error(`Media URL returned an empty response body: ${url}`);
+        }
         buffer = Buffer.from(arrayBuffer);
         mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
       }
-      
+
       if (buffer) {
         imageItems.push({ buffer, mimeType, url: url.startsWith('http') ? url : undefined });
       }
@@ -168,6 +196,17 @@ export async function POST(req: Request) {
     // Fallback for mediaBase64 (single image)
     if (imageItems.length === 0 && mediaBase64) {
       imageItems.push({ buffer: Buffer.from(mediaBase64, 'base64'), mimeType: 'image/jpeg' });
+    }
+
+    // Fix 5: every platform branch below assumes at least one image.
+    // Bail with a clear error if neither mediaUrl(s) nor mediaBase64
+    // produced a usable buffer (covers the "old content with expired
+    // Leonardo URL and no base64 backup" case the brief flagged).
+    if (imageItems.length === 0) {
+      return NextResponse.json(
+        { error: 'No image to post — mediaUrl(s) failed to fetch and no mediaBase64 fallback was provided' },
+        { status: 400 }
+      );
     }
 
     if (platforms.includes('instagram')) {
