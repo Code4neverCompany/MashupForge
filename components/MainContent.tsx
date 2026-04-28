@@ -102,6 +102,8 @@ import {
   computeWeekScores,
   findBestSlots,
   type SlotScoreBreakdown,
+  type SlotScore,
+  type ExistingPost,
 } from '@/lib/smartScheduler';
 import {
   HeatmapTint,
@@ -550,6 +552,27 @@ export function MainContent() {
       if (pPlatforms.some((pl) => wanted.has(pl))) return p;
     }
     return null;
+  };
+
+  /**
+   * BUG-FIX: when smart schedule has fewer slots than posts, find the
+   * next-best unconsumed slots so remaining posts spread rather than
+   * piling onto the same form.{date,time}. `consumedKeys` tracks slots
+   * already allocated in the same confirm pass.
+   */
+  const findExtraSlots = (
+    needed: number,
+    existingPosts: ScheduledPost[],
+    consumedKeys: Set<string>,
+  ): SlotScore[] => {
+    const allScheduled: ExistingPost[] = [
+      ...existingPosts.map((p) => ({ date: p.date, time: p.time, status: p.status })),
+      ...[...consumedKeys].map((key) => {
+        const [date, time] = key.split('T');
+        return { date, time, status: 'scheduled' as const };
+      }),
+    ];
+    return findBestSlots(allScheduled, needed);
   };
 
   const scheduleImage = (img: GeneratedImage, platforms: PostPlatform[], date: string, time: string) => {
@@ -4284,13 +4307,36 @@ export function MainContent() {
                               scheduleImage(item.img, form.platforms, date, time);
                             }
                           };
-                          if (slots.length >= postItems.length) {
-                            for (let i = 0; i < postItems.length; i++) {
-                              dispatch(postItems[i], slots[i].date, slots[i].time);
-                            }
-                          } else {
-                            for (const item of postItems) {
-                              dispatch(item, form.date, form.time);
+
+                          // Slots to consume: use all computed slots, then find
+                          // additional unconsumed slots for any overflow posts.
+                          // Previously the fallback scheduled ALL remaining posts
+                          // at the same form.{date,time}, causing bunching.
+                          // The primary slots seed `consumedKeys` so the overflow
+                          // call to findBestSlots treats them as taken — without
+                          // this, the second findBestSlots call returns the same
+                          // top-N picks and two posts collide on identical slots.
+                          const consumedKeys = new Set<string>(
+                            slots.map((s) => `${s.date}T${s.time}`),
+                          );
+                          const extraSlots = smartScheduler.slots.length < postItems.length
+                            ? findExtraSlots(postItems.length - smartScheduler.slots.length, settings.scheduledPosts || [], consumedKeys)
+                            : [];
+
+                          let slotIdx = 0;
+                          for (let i = 0; i < postItems.length; i++) {
+                            const item = postItems[i];
+                            if (slotIdx < slots.length) {
+                              consumedKeys.add(`${slots[slotIdx].date}T${slots[slotIdx].time}`);
+                              dispatch(item, slots[slotIdx].date, slots[slotIdx].time);
+                              slotIdx++;
+                            } else {
+                              const extra = extraSlots[slotIdx - slots.length];
+                              const date = extra ? extra.date : form.date;
+                              const time = extra ? extra.time : form.time;
+                              if (extra) consumedKeys.add(`${extra.date}T${extra.time}`);
+                              dispatch(item, date, time);
+                              slotIdx++;
                             }
                           }
                           setShowScheduleAll(false);
