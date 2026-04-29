@@ -1,7 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { motion } from 'motion/react';
+
+// MMX-TERMINAL: dynamic-imported so xterm.js (DOM-only) never lands in
+// the SSR bundle and so the >100 KB terminal payload is fetched only
+// when the user opens the AI Agent CLI launcher.
+const AiTerminalModal = dynamic(() => import('./AiTerminalModal'), { ssr: false });
 import {
   Settings as SettingsIcon,
   X,
@@ -1373,6 +1379,17 @@ export function SettingsModal({
           </button>
         </div>
       </motion.div>
+
+      {/* MMX-TERMINAL: lazy-mounted xterm.js terminal modal. Stays
+          rendered above the Settings modal (z-[60]) so the user can
+          interact with the CLI without losing settings context. */}
+      {aiTerminalOpen && (
+        <AiTerminalModal
+          provider={activeAiAgent}
+          piApiKey={settings.piDevApiKey}
+          onClose={() => setAiTerminalOpen(false)}
+        />
+      )}
     </div>
   );
 }
