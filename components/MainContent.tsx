@@ -3800,6 +3800,28 @@ export function MainContent() {
                                           // pinned to HH:00 — finer resolution
                                           // needs the edit popover.
                                           const newTime = `${String(hour).padStart(2, '0')}:00`;
+                                          // RESCHED-DROP-FIX: mirror the move
+                                          // to the server queue. Without this
+                                          // the GitHub Actions cron kept
+                                          // firing the post at the original
+                                          // time even though the calendar UI
+                                          // had updated locally. Fire-and-
+                                          // forget on both calls — local
+                                          // state always wins.
+                                          const oldPost = (settings.scheduledPosts || []).find((sp) => sp.id === postId);
+                                          if (oldPost) {
+                                            void cancelScheduleOnServer(oldPost.id);
+                                            const img = savedImages.find((i) => i.id === oldPost.imageId);
+                                            void pushScheduleToServer({
+                                              id: postId,
+                                              date: dateStr,
+                                              time: newTime,
+                                              platforms: oldPost.platforms,
+                                              caption: img ? formatPost(img) : oldPost.caption,
+                                              mediaUrl: img?.url,
+                                              imageId: oldPost.imageId,
+                                            });
+                                          }
                                           updateSettings((prev) => ({
                                             scheduledPosts: (prev.scheduledPosts || []).map((sp) =>
                                               sp.id === postId ? { ...sp, date: dateStr, time: newTime } : sp
