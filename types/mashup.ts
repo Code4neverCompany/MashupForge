@@ -299,8 +299,25 @@ export interface UserSettings {
    *   'pi'  — pi.dev sidecar (default)
    *   'mmx' — MiniMax mmx CLI
    * Configured from the Settings → AI Agent tab.
+   *
+   * @deprecated Use {@link aiAgentProvider} instead — kept on the type
+   * for one release so persisted user-settings payloads still validate;
+   * read sites should fall back to it for back-compat.
    */
   activeAiAgent?: 'mmx' | 'pi';
+  /**
+   * MMX-SCHEMA: canonical name for the AI agent CLI provider used by the
+   * AI Agent CLI section (Story 2) and the in-app xterm.js terminal
+   * modal (Story 3). Same semantics as the deprecated `activeAiAgent`.
+   */
+  aiAgentProvider?: 'mmx' | 'pi';
+  /**
+   * MMX-SCHEMA: pi.dev API key used by `pi chat --api-key … --no-browser`
+   * when the AI Agent CLI terminal launches the pi provider. Stored in
+   * the same IDB blob as the rest of UserSettings — desktop users can
+   * also set it via config.json.
+   */
+  piDevApiKey?: string;
 }
 
 export type ViewType = 'studio' | 'gallery' | 'compare' | 'captioning' | 'post-ready' | 'ideas' | 'pipeline';
@@ -820,6 +837,7 @@ PROMPT QUALITY:
   channelName: 'MultiverseMashupAI',
   savedPersonalities: [],
   activeAiAgent: 'pi',
+  aiAgentProvider: 'pi',
 };
 
 // ── Context Type ────────────────────────────────────────────────────────────
