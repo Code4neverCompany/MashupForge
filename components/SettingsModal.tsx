@@ -98,6 +98,8 @@ interface SettingsModalProps {
   piError: string | null;
   piSetupMsg: string | null;
   handlePiSetup: () => void;
+  mmxSetupMsg: string | null;
+  onMmxSetupComplete: (message: string | null) => void;
   refreshPiStatus: () => void;
   collections: Collection[];
   savedImages: GeneratedImage[];
@@ -116,6 +118,8 @@ export function SettingsModal({
   piError,
   piSetupMsg,
   handlePiSetup,
+  mmxSetupMsg,
+  onMmxSetupComplete,
   refreshPiStatus,
   collections,
   savedImages,
@@ -155,13 +159,40 @@ export function SettingsModal({
       () => showToast('Failed to copy', 'error'),
     );
 
-  // AI Agent tab — MMX availability comes from the shared cached probe;
+  // MMX setup handler — opens `mmx auth login --no-browser` in a tmux
+  // session so the user can authenticate via OAuth or paste an API key.
+  const handleMmxSetup = async () => {
+    setMmxBusy(true);
+    setMmxError(null);
+    try {
+      const res = await fetch('/api/mmx/setup', { method: 'POST' });
+      const data = (await res.json()) as {
+        success?: boolean;
+        error?: string;
+        tmuxSession?: string;
+        message?: string;
+      };
+      if (!res.ok || data.success === false) {
+        setMmxError(data.error || 'Setup failed');
+      } else {
+        onMmxSetupComplete(data.message || null);
+      }
+    } catch {
+      setMmxError('Network error — could not reach the setup endpoint.');
+    } finally {
+      setMmxBusy(false);
+    }
+  };
+
+  // MMX status polling — runs once when the AI Agent tab is opened.
   // /api/mmx/status fills in version + auth detail when this tab is open.
-  // mmx hosts its own LLM agent in-process (no tmux/sidecar) so there is
-  // no interactive setup flow — auth is just MMX_API_KEY / MINIMAX_API_KEY
-  // in the env (config.json on desktop).
+  // When MMX is selected but not authenticated, the "Launch MMX Setup"
+  // button opens `mmx auth login --no-browser` in a tmux session so the
+  // user can OAuth or paste an API key interactively.
   const mmxAvailable = useMmxAvailability();
   const [mmxStatus, setMmxStatus] = useState<MmxStatus | null>(null);
+  const [mmxBusy, setMmxBusy] = useState(false);
+  const [mmxError, setMmxError] = useState<string | null>(null);
   useEffect(() => {
     if (activeTab !== 'aiAgent') return;
     let cancelled = false;
@@ -574,20 +605,27 @@ export function SettingsModal({
                       mmx binary not found on PATH. Install the MiniMax mmx CLI and relaunch.
                     </p>
                   ) : !mmxStatus.authenticated ? (
-                    <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 space-y-1">
-                      <p className="text-[11px] text-amber-300 font-medium">MMX API key required</p>
-                      <p className="text-[11px] text-zinc-300">
-                        mmx hosts its own agent in-process — no terminal flow needed. Set one of these in your environment (or the desktop <code className="text-zinc-200">config.json</code>) and refresh:
-                      </p>
-                      <code className="block text-[11px] text-emerald-400 bg-zinc-950 px-2 py-1 rounded">
-                        MMX_API_KEY=&lt;your-key&gt;
-                      </code>
-                      <p className="text-[10px] text-zinc-500">
-                        <code className="text-zinc-300">MINIMAX_API_KEY</code> is also accepted.
-                      </p>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={handleMmxSetup}
+                        disabled={mmxBusy}
+                        className="btn-gold-sm rounded-lg"
+                      >
+                        {mmxBusy ? 'Opening…' : 'Launch MMX Setup'}
+                      </button>
+                      {mmxError && (
+                        <p className="text-[11px] text-red-400">{mmxError}</p>
+                      )}
                     </div>
                   ) : (
                     <p className="text-[11px] text-emerald-400">MMX CLI authenticated and ready.</p>
+                  )}
+                  {mmxSetupMsg && (
+                    <div className="mt-3 bg-zinc-900 border border-zinc-700 rounded-lg p-3 space-y-1">
+                      <p className="text-[11px] text-amber-300 font-medium">MMX Setup</p>
+                      <pre className="text-[11px] text-emerald-400 bg-zinc-950 px-2 py-1 rounded whitespace-pre-wrap">{mmxSetupMsg}</pre>
+                    </div>
                   )}
                 </>
               ) : (

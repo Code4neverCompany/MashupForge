@@ -1308,6 +1308,7 @@ export function MainContent() {
   const [piBusy, setPiBusy] = useState<PiBusy>(null);
   const [piError, setPiError] = useState<string | null>(null);
   const [piSetupMsg, setPiSetupMsg] = useState<string | null>(null);
+  const [mmxSetupMsg, setMmxSetupMsg] = useState<string | null>(null);
   const piAutoBootRef = useRef(false);
 
   const refreshPiStatus = async (): Promise<PiStatus | null> => {
@@ -4964,6 +4965,8 @@ export function MainContent() {
           piError={piError}
           piSetupMsg={piSetupMsg}
           handlePiSetup={handlePiSetup}
+          mmxSetupMsg={mmxSetupMsg}
+          onMmxSetupComplete={setMmxSetupMsg}
           refreshPiStatus={refreshPiStatus}
           collections={collections}
           savedImages={savedImages}
