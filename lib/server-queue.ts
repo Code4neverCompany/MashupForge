@@ -102,6 +102,28 @@ export async function enqueuePost(post: EnqueuedPost): Promise<void> {
   await pipe.exec();
 }
 
+// QUEUE-REPLACE-FIX: explicit remove-then-add for reschedules. enqueuePost
+// already overwrites by id (zadd updates the score, hset overwrites the
+// payload), but callers that need to know whether they displaced an
+// existing entry — e.g. the schedule route's "this was a reschedule"
+// telemetry — use this helper instead.
+export async function replacePost(post: EnqueuedPost): Promise<{ replaced: boolean }> {
+  const r = getRedis();
+  // Probe whether an entry exists for this id BEFORE we touch it. zscore
+  // is the cheapest existence check on the ZSET (returns null if absent)
+  // and avoids an extra round-trip vs hexists.
+  const existing = await r.zscore(KEY_SCHEDULED, post.id);
+  const replaced = existing !== null && existing !== undefined;
+
+  const pipe = r.pipeline();
+  pipe.zrem(KEY_SCHEDULED, post.id);
+  pipe.hdel(KEY_POSTS, post.id);
+  pipe.zadd(KEY_SCHEDULED, { score: post.fireAt, member: post.id });
+  pipe.hset(KEY_POSTS, { [post.id]: JSON.stringify(post) });
+  await pipe.exec();
+  return { replaced };
+}
+
 /** Remove a post from the queue. Used by the browser when the user
  *  cancels or rejects a scheduled post before fire-time. */
 export async function cancelPost(id: string): Promise<void> {

@@ -4,7 +4,10 @@
 // (the server has no IDB so it can't dereference imageId on its own).
 
 import { NextResponse } from 'next/server';
-import { computeFireAt, enqueuePost, type EnqueuedPost } from '@/lib/server-queue';
+// QUEUE-REPLACE-FIX: switched from enqueuePost to replacePost so that
+// reschedules update the existing entry in-place instead of leaving a
+// stale-time duplicate that would fire on the cron's next sweep.
+import { computeFireAt, replacePost, type EnqueuedPost } from '@/lib/server-queue';
 import { getErrorMessage } from '@/lib/errors';
 
 export async function POST(req: Request): Promise<Response> {
@@ -56,10 +59,13 @@ export async function POST(req: Request): Promise<Response> {
     ...(imageId ? { imageId } : {}),
   };
 
+  let replaced = false;
   try {
-    await enqueuePost(post);
+    // QUEUE-REPLACE-FIX: replaced=true when this id already had an entry,
+    // i.e. the request was a reschedule rather than a fresh enqueue.
+    ({ replaced } = await replacePost(post));
   } catch (e) {
     return NextResponse.json({ error: getErrorMessage(e) }, { status: 503 });
   }
-  return NextResponse.json({ ok: true, id, fireAt });
+  return NextResponse.json({ ok: true, id, fireAt, replaced });
 }
