@@ -306,18 +306,11 @@ export interface UserSettings {
    */
   activeAiAgent?: 'mmx' | 'pi';
   /**
-   * MMX-SCHEMA: canonical name for the AI agent CLI provider used by the
-   * AI Agent CLI section (Story 2) and the in-app xterm.js terminal
-   * modal (Story 3). Same semantics as the deprecated `activeAiAgent`.
+   * MMX-SCHEMA: canonical name for the AI agent CLI provider. Same
+   * semantics as the deprecated `activeAiAgent` (kept on the type
+   * one release for back-compat with persisted IDB payloads).
    */
   aiAgentProvider?: 'mmx' | 'pi';
-  /**
-   * MMX-SCHEMA: pi.dev API key used by `pi chat --api-key … --no-browser`
-   * when the AI Agent CLI terminal launches the pi provider. Stored in
-   * the same IDB blob as the rest of UserSettings — desktop users can
-   * also set it via config.json.
-   */
-  piDevApiKey?: string;
 }
 
 export type ViewType = 'studio' | 'gallery' | 'compare' | 'captioning' | 'post-ready' | 'ideas' | 'pipeline';
