@@ -587,7 +587,7 @@ export function SettingsModal({
                       </p>
                     </div>
                   ) : (
-                    <p className="text-[11px] text-emerald-400">MMX CLI authenticated and ready.</p>
+                    <p className="text-[11px] text-emerald-400">MMX authenticated and ready.</p>
                   )}
                 </>
               ) : (
