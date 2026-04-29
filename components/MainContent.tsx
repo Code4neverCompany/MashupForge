@@ -3274,6 +3274,19 @@ export function MainContent() {
                   }
                 };
 
+                // CLEAR-ALL-SCHEDULED-FIX: nuke every scheduled post in
+                // one shot. Cancels each entry in the server queue
+                // best-effort, then drops the whole array from settings.
+                const handleClearAllScheduled = () => {
+                  if (allPosts.length === 0) return;
+                  if (!window.confirm(`Clear all ${allPosts.length} scheduled posts? This cannot be undone.`)) return;
+                  for (const p of allPosts) {
+                    void cancelScheduleOnServer(p.id);
+                  }
+                  updateSettings({ scheduledPosts: [] });
+                  showToast('All scheduled posts cleared', 'success');
+                };
+
                 const platformBadgeClass = (p: PostPlatform) => {
                   if (p === 'instagram') return 'bg-pink-600/90';
                   if (p === 'pinterest') return 'bg-red-600/90';
@@ -3341,6 +3354,18 @@ export function MainContent() {
                             </span>
                           ))}
                         </div>
+
+                        {/* CLEAR-ALL-SCHEDULED-FIX: nuke every scheduled
+                            post (server queue + local state). Only
+                            shown when there's something to clear. */}
+                        {allPosts.length > 0 && (
+                          <button
+                            onClick={handleClearAllScheduled}
+                            className="px-3 py-1.5 text-xs bg-red-600/20 hover:bg-red-600/60 text-red-400 hover:text-white rounded-xl border border-red-600/30 transition-colors"
+                          >
+                            Clear All ({allPosts.length})
+                          </button>
+                        )}
                       </div>
 
                       {/* Row 2 — display controls + actions. On wide
