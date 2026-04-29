@@ -157,11 +157,11 @@ export function SettingsModal({
 
   // AI Agent tab — MMX availability comes from the shared cached probe;
   // /api/mmx/status fills in version + auth detail when this tab is open.
+  // mmx hosts its own LLM agent in-process (no tmux/sidecar) so there is
+  // no interactive setup flow — auth is just MMX_API_KEY / MINIMAX_API_KEY
+  // in the env (config.json on desktop).
   const mmxAvailable = useMmxAvailability();
   const [mmxStatus, setMmxStatus] = useState<MmxStatus | null>(null);
-  const [mmxSetupMsg, setMmxSetupMsg] = useState<string | null>(null);
-  const [mmxSetupBusy, setMmxSetupBusy] = useState(false);
-  const [mmxSetupError, setMmxSetupError] = useState<string | null>(null);
   useEffect(() => {
     if (activeTab !== 'aiAgent') return;
     let cancelled = false;
@@ -180,28 +180,6 @@ export function SettingsModal({
   }, [activeTab]);
 
   const activeAiAgent: 'mmx' | 'pi' = settings.activeAiAgent ?? 'pi';
-
-  const handleMmxSetup = async () => {
-    setMmxSetupBusy(true);
-    setMmxSetupError(null);
-    try {
-      const res = await fetch('/api/mmx/setup', { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((data && data.error) || `Setup failed (HTTP ${res.status})`);
-      }
-      setMmxSetupMsg(
-        (data && typeof data.message === 'string' && data.message) ||
-          'Run: tmux attach -t mmx-setup',
-      );
-    } catch (e: unknown) {
-      // /api/mmx/setup may not exist — show the manual instruction.
-      setMmxSetupMsg('Run: tmux attach -t mmx-setup');
-      setMmxSetupError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setMmxSetupBusy(false);
-    }
-  };
 
   // FEAT-002b S1: drive the saved/saving/error pill from the real lifecycle
   // exposed by useSettings instead of an ephemeral local timer. The "Saved"
@@ -583,33 +561,27 @@ export function SettingsModal({
             <div className="pt-2">
               {activeAiAgent === 'mmx' ? (
                 <>
-                  {mmxStatus && !mmxStatus.authenticated ? (
-                    <button
-                      type="button"
-                      onClick={handleMmxSetup}
-                      disabled={mmxSetupBusy}
-                      className="btn-gold-sm rounded-lg"
-                    >
-                      {mmxSetupBusy ? 'Opening…' : 'Launch MMX Setup'}
-                    </button>
-                  ) : mmxStatus && mmxStatus.authenticated ? (
-                    <p className="text-[11px] text-emerald-400">MMX CLI authenticated and ready.</p>
-                  ) : (
+                  {mmxStatus == null ? (
                     <p className="text-[11px] text-zinc-500">Checking MMX status…</p>
-                  )}
-                  {mmxSetupMsg && (
-                    <div className="mt-3 bg-zinc-900 border border-zinc-700 rounded-lg p-3 space-y-1">
-                      <p className="text-[11px] text-amber-300 font-medium">MMX Setup</p>
+                  ) : !mmxStatus.available ? (
+                    <p className="text-[11px] text-red-400">
+                      mmx binary not found on PATH. Install the MiniMax mmx CLI and relaunch.
+                    </p>
+                  ) : !mmxStatus.authenticated ? (
+                    <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 space-y-1">
+                      <p className="text-[11px] text-amber-300 font-medium">MMX API key required</p>
+                      <p className="text-[11px] text-zinc-300">
+                        mmx hosts its own agent in-process — no terminal flow needed. Set one of these in your environment (or the desktop <code className="text-zinc-200">config.json</code>) and refresh:
+                      </p>
                       <code className="block text-[11px] text-emerald-400 bg-zinc-950 px-2 py-1 rounded">
-                        {mmxSetupMsg}
+                        MMX_API_KEY=&lt;your-key&gt;
                       </code>
                       <p className="text-[10px] text-zinc-500">
-                        Attach to the tmux session and follow the mmx login flow. Refresh this tab when done.
+                        <code className="text-zinc-300">MINIMAX_API_KEY</code> is also accepted.
                       </p>
                     </div>
-                  )}
-                  {mmxSetupError && (
-                    <p className="mt-2 text-[11px] text-red-400 whitespace-pre-wrap">{mmxSetupError}</p>
+                  ) : (
+                    <p className="text-[11px] text-emerald-400">MMX CLI authenticated and ready.</p>
                   )}
                 </>
               ) : (
