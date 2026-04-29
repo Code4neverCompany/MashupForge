@@ -6,6 +6,7 @@ import { Send, Search, MessageSquare, Loader2, ExternalLink, Image as ImageIcon,
 import { useMashup, LEONARDO_MODELS } from './MashupContext';
 import { streamAI } from '@/lib/aiClient';
 import { HealthStrip } from './platform/HealthStrip';
+import { ReadAloudButton } from './mmx/ReadAloudButton';
 
 type Tab = 'chat' | 'content' | 'history';
 
@@ -339,9 +340,16 @@ Return ONLY the JSON array, no prose.`;
                 </div>
               )}
             </div>
-            <span className="text-[10px] text-zinc-600 mt-0.5 select-none">
-              {new Date(parseInt(msg.id)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-[10px] text-zinc-600 select-none">
+                {new Date(parseInt(msg.id)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+              {/* FEAT-MMX-MUSIC-UI: read-aloud only on model messages with
+                  finished text — skip empty placeholders and user echoes. */}
+              {msg.role === 'model' && msg.text.trim().length > 0 && (
+                <ReadAloudButton text={msg.text} />
+              )}
+            </div>
             {msg.groundingChunks && msg.groundingChunks.length > 0 && (
               <div className="mt-2 space-y-1 w-full pl-2 border-l-2 border-zinc-700">
                 <p className="text-xs text-zinc-500 font-medium">Sources:</p>

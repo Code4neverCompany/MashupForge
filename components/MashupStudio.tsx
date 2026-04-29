@@ -21,6 +21,13 @@ const MainContent = dynamic(
   { ssr: false },
 );
 
+// FEAT-MMX-MUSIC-UI: floating Music + Video action group. Hides itself
+// when the mmx CLI is unavailable on the server.
+const MmxStudioPanel = dynamic(
+  () => import('./mmx/MmxStudioPanel').then((m) => m.MmxStudioPanel),
+  { ssr: false },
+);
+
 /** V050-DES-002 — first-run + pill state machine.
  *  Reads localStorage flags only (schema field is PROP). */
 type OnboardingState =
@@ -89,6 +96,9 @@ function MashupApp() {
       </ErrorBoundary>
       <ErrorBoundary section="MainContent">
         <MainContent />
+      </ErrorBoundary>
+      <ErrorBoundary section="MmxStudioPanel">
+        <MmxStudioPanel />
       </ErrorBoundary>
       <PipelineResumePrompt />
 

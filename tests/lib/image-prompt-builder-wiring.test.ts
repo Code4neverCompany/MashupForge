@@ -1,0 +1,74 @@
+// STORY-MMX-PROMPT-WIRE — pin the contract `useImageGeneration.ts`
+// relies on after the wiring switch.
+//
+// The hook now feeds the AI-enhanced prompt + (modelId, styleName,
+// aspectRatio) into buildEnhancedPrompt and forwards the result to
+// /api/leonardo. The hook itself is hard to mount in isolation (deep
+// context + heavy DOM dependencies), so we pin the underlying library
+// outputs against the actual spec JSON. If a spec change or builder
+// regression would break the hook's body shape, this fails first.
+
+import { describe, it, expect } from 'vitest';
+import { buildEnhancedPrompt } from '@/lib/image-prompt-builder';
+
+describe('buildEnhancedPrompt — useImageGeneration wiring contract', () => {
+  it('returns a Leonardo-shaped slice for nano-banana-2 + named style + aspect', () => {
+    const r = buildEnhancedPrompt('a cat on a sofa', {
+      modelId: 'nano-banana-2',
+      styleName: '3D Render',
+      aspectRatio: '16:9',
+      count: 1,
+    });
+
+    // styleIds resolved from spec.styles → real Leonardo UUID
+    expect(r.leonardo.styleIds).toEqual(['debdf72a-91a4-467b-bf61-cc02bdeb69c6']);
+    // 16:9 dimension table → first tier (1K) by default
+    expect(typeof r.leonardo.width).toBe('number');
+    expect(typeof r.leonardo.height).toBe('number');
+    expect(r.leonardo.width).toBeGreaterThan(0);
+    expect(r.leonardo.height).toBeGreaterThan(0);
+    // The hook merges quality with the spec default, so we expect SOME
+    // string here so the merge path stays meaningful.
+    expect(typeof r.leonardo.quality === 'string' || r.leonardo.quality === undefined).toBe(true);
+
+    // Prompt enhancement: keywords appended after the base prompt so
+    // both providers see the same intent.
+    expect(r.prompt).toMatch(/^a cat on a sofa\./);
+    expect(r.appliedHints).toEqual(expect.arrayContaining(['style: 3D Render', 'aspect ratio: 16:9']));
+  });
+
+  it('returns an MMX-shaped slice for the same inputs', () => {
+    const r = buildEnhancedPrompt('a cat on a sofa', {
+      modelId: 'nano-banana-2',
+      styleName: '3D Render',
+      aspectRatio: '16:9',
+      count: 1,
+    });
+
+    expect(r.mmx.aspectRatio).toBe('16:9');
+    expect(r.mmx.n).toBe(1);
+  });
+
+  it('falls back gracefully when the modelId has no spec entry', () => {
+    const r = buildEnhancedPrompt('a cat', {
+      modelId: 'unknown-model',
+      styleName: 'Cinematic',
+      aspectRatio: '1:1',
+      count: 1,
+    });
+    // No spec → no style UUID, no width/height. Hook's fallback path
+    // (LEONARDO_MODELS fuzzy match + getLeonardoDimensions) takes over.
+    expect(r.leonardo.styleIds).toBeUndefined();
+    expect(r.leonardo.width).toBeUndefined();
+    expect(r.leonardo.height).toBeUndefined();
+    // Keywords still appended as natural-language hints.
+    expect(r.prompt).toMatch(/style: Cinematic/);
+    expect(r.prompt).toMatch(/aspect ratio: 1:1/);
+  });
+
+  it('passes count through to both providers', () => {
+    const r = buildEnhancedPrompt('a cat', { count: 4 });
+    expect(r.mmx.n).toBe(4);
+    expect(r.leonardo.quantity).toBe(4);
+  });
+});

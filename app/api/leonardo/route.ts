@@ -44,11 +44,10 @@ function extractLeonardoError(parsed: unknown): string | null {
  * Client sends internal model id (e.g. 'nano-banana-pro').
  * Route maps to apiModelId (e.g. 'gemini-image-2') for Leonardo API.
  *
- * QA-W3 — wiring follow-up: this route's body shape (prompt, modelId,
- * width/height, styleIds, quality) is already compatible with the
- * `result.leonardo` slice emitted by `lib/image-prompt-builder.ts`.
- * Today the upstream caller (`hooks/useImageGeneration.ts`) hand-rolls
- * those fields. Tracked in `docs/bmad/stories/STORY-MMX-PROMPT-WIRE.md`.
+ * Upstream: `hooks/useImageGeneration.ts` builds the body via
+ * `lib/image-prompt-builder.ts`'s `result.leonardo` slice so this route
+ * receives spec-validated style UUIDs / dimensions / quality defaults.
+ * Wiring history: STORY-MMX-PROMPT-WIRE.md.
  */
 
 // Map internal id → Leonardo API model id (exact strings required by

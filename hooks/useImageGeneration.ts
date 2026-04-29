@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { streamAIToString, extractJsonArrayFromLLM } from '@/lib/aiClient';
 import { enhancePromptForModel } from '@/lib/modelOptimizer';
+import { buildEnhancedPrompt } from '@/lib/image-prompt-builder';
 import { MASTERPROMPT_INSTRUCTIONS } from '@/lib/masterpromptTemplate';
 import { getErrorMessage } from '@/lib/errors';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
@@ -508,11 +509,19 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
         try {
           const generatedNegativePrompt = modelNegPrompt;
 
-          const dims = getLeonardoDimensions(selectedModel, currentAspectRatio);
+          // STORY-MMX-PROMPT-WIRE: route the per-spec details (style UUID,
+          // dimensions, quality default) through buildEnhancedPrompt so MMX
+          // and Leonardo see the same shape of inputs. Old logic — fuzzy
+          // style→UUID match against LEONARDO_MODELS + getLeonardoDimensions
+          // — stays as the fallback for un-spec'd legacy entries.
+          const enhanced = buildEnhancedPrompt(modelPrompt, {
+            modelId: selectedModel,
+            styleName: modelStyle,
+            aspectRatio: currentAspectRatio,
+            count: 1,
+          });
 
-          // Map art style name to Leonardo UUID. ART_STYLES are display names
-          // like "Cinematic"; Leonardo needs UUIDs. Best-effort fuzzy match.
-          const leonardoStyleUuids = (() => {
+          const fallbackStyleUuids = (() => {
             if (!modelStyle) return undefined;
             const modelConfig = LEONARDO_MODELS.find(m => m.id === selectedModel);
             if (!modelConfig?.styles) return undefined;
@@ -523,18 +532,22 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
             return match ? [match.uuid] : undefined;
           })();
 
+          const fallbackDims = getLeonardoDimensions(selectedModel, currentAspectRatio);
+
           const leonardoBaseParams = {
             negativePrompt: generatedNegativePrompt,
             modelId: selectedModel,
-            width: dims.width,
-            height: dims.height,
-            styleIds: leonardoStyleUuids,
+            width: enhanced.leonardo.width ?? fallbackDims.width,
+            height: enhanced.leonardo.height ?? fallbackDims.height,
+            styleIds: enhanced.leonardo.styleIds ?? fallbackStyleUuids,
             apiKey: settings.apiKeys.leonardo,
-            quality: options?.quality || 'HIGH',
+            // User UI selection (options.quality) wins, then spec default,
+            // then HIGH baseline.
+            quality: options?.quality || enhanced.leonardo.quality || 'HIGH',
           };
 
           const { success, finalPrompt: activePrompt, retried } = await submitWithOneRetry(
-            modelPrompt,
+            enhanced.prompt,
             leonardoBaseParams,
             {
               onRetry: (classifications) => {
@@ -683,11 +696,18 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
       try {
         const currentAspectRatio =
           rerollEnhancement.aspectRatio || options?.aspectRatio || '1:1';
-        const dims = getLeonardoDimensions(selectedModel, currentAspectRatio);
 
-        // Map art style name to Leonardo UUID (same fix as generate path).
-        // Uses the model-optimised style when pi suggested one.
-        const leonardoStyleUuids = (() => {
+        // STORY-MMX-PROMPT-WIRE: same wiring as the generate path so
+        // rerolls pick up spec-driven style UUIDs / dimensions /
+        // quality defaults instead of recomputing them inline.
+        const enhanced = buildEnhancedPrompt(modelPrompt, {
+          modelId: selectedModel,
+          styleName: modelStyle,
+          aspectRatio: currentAspectRatio,
+          count: 1,
+        });
+
+        const fallbackStyleUuids = (() => {
           if (!modelStyle) return undefined;
           const modelConfig = LEONARDO_MODELS.find(m => m.id === selectedModel);
           if (!modelConfig?.styles) return undefined;
@@ -698,18 +718,20 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
           return match ? [match.uuid] : undefined;
         })();
 
+        const fallbackDims = getLeonardoDimensions(selectedModel, currentAspectRatio);
+
         const leonardoBaseParams = {
           negativePrompt: modelNegPrompt,
           modelId: selectedModel,
-          width: dims.width,
-          height: dims.height,
-          styleIds: leonardoStyleUuids,
+          width: enhanced.leonardo.width ?? fallbackDims.width,
+          height: enhanced.leonardo.height ?? fallbackDims.height,
+          styleIds: enhanced.leonardo.styleIds ?? fallbackStyleUuids,
           apiKey: settings.apiKeys.leonardo,
-          quality: options?.quality || 'HIGH',
+          quality: options?.quality || enhanced.leonardo.quality || 'HIGH',
         };
 
         const { success, finalPrompt: activePrompt, retried } = await submitWithOneRetry(
-          modelPrompt,
+          enhanced.prompt,
           leonardoBaseParams,
           {
             onRetry: (classifications) => {

@@ -1,9 +1,28 @@
 # STORY-MMX-PROMPT-WIRE — wire `buildEnhancedPrompt` into image-generation callers
 
 **Date opened:** 2026-04-29
+**Date closed:** 2026-04-29
 **Origin:** QA-W3 (MMX integration QA, CONCERNS 0.85)
-**Status:** open — follow-up to v0.9.11
-**Touches:** `lib/image-prompt-builder.ts`, `hooks/useImageGeneration.ts`, `app/api/leonardo/route.ts`, `app/api/mmx/image/route.ts` (when added)
+**Status:** done — shipped on branch `feat/mmx-prompt-wire`
+**Touches:** `lib/image-prompt-builder.ts`, `hooks/useImageGeneration.ts`, `app/api/leonardo/route.ts`, `app/api/mmx/image/route.ts` (added)
+
+## Resolution
+
+- `hooks/useImageGeneration.ts` (both the generate loop and `rerollImage`)
+  now calls `buildEnhancedPrompt(modelPrompt, { modelId, styleName,
+  aspectRatio, count: 1 })` and forwards `result.leonardo` plus
+  `result.prompt` to `/api/leonardo`. Existing
+  `getLeonardoDimensions` + `LEONARDO_MODELS` style fuzzy-match remain
+  as the fallback path for un-spec'd models.
+- `app/api/mmx/image/route.ts` shipped as a thin wrapper that consumes
+  `result.mmx` + `result.prompt` from `buildEnhancedPrompt` and forwards
+  to `mmx-client.generateImage`. Mirrors the auth/availability/error
+  shape of `/api/mmx/music` and `/api/mmx/describe`.
+- Tests: `tests/api/mmx-image-route.test.ts` (8 cases) and
+  `tests/lib/image-prompt-builder-wiring.test.ts` (4 cases) pin the
+  contract.
+- `streamAIToString` (the pi.dev re-imagine step) is preserved per
+  the original out-of-scope note.
 
 ---
 
