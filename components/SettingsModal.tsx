@@ -179,7 +179,17 @@ export function SettingsModal({
     return () => { cancelled = true; };
   }, [activeTab]);
 
-  const activeAiAgent: 'mmx' | 'pi' = settings.activeAiAgent ?? 'pi';
+  // MMX-SETTINGS-UI: read the canonical aiAgentProvider but fall back to
+  // the legacy activeAiAgent so users with older persisted settings keep
+  // their selection. Writes go to both fields below until activeAiAgent
+  // is fully retired (see types/mashup.ts deprecation note).
+  const activeAiAgent: 'mmx' | 'pi' =
+    settings.aiAgentProvider ?? settings.activeAiAgent ?? 'pi';
+
+  // MMX-SETTINGS-UI: drives the AI Agent CLI Launch button. The actual
+  // xterm.js terminal modal is mounted in MMX-TERMINAL (Story 3); this
+  // commit only sets up the state so the wiring is visible end-to-end.
+  const [aiTerminalOpen, setAiTerminalOpen] = useState(false);
 
   // FEAT-002b S1: drive the saved/saving/error pill from the real lifecycle
   // exposed by useSettings instead of an ephemeral local timer. The "Saved"
@@ -465,7 +475,7 @@ export function SettingsModal({
                 return (
                   <button
                     type="button"
-                    onClick={() => updateSettings({ activeAiAgent: 'mmx' })}
+                    onClick={() => updateSettings({ activeAiAgent: 'mmx', aiAgentProvider: 'mmx' })}
                     aria-pressed={selected}
                     className={`text-left rounded-xl border p-4 transition-all ${
                       selected
@@ -525,7 +535,7 @@ export function SettingsModal({
                 return (
                   <button
                     type="button"
-                    onClick={() => updateSettings({ activeAiAgent: 'pi' })}
+                    onClick={() => updateSettings({ activeAiAgent: 'pi', aiAgentProvider: 'pi' })}
                     aria-pressed={selected}
                     className={`text-left rounded-xl border p-4 transition-all ${
                       selected
@@ -617,6 +627,43 @@ export function SettingsModal({
                   )}
                 </>
               )}
+            </div>
+
+            {/* MMX-SETTINGS-UI: AI Agent CLI section. Same provider toggle
+                as the cards above (kept to avoid duplicating the radio
+                UX), plus a pi.dev API key input and a Launch button that
+                opens the in-app xterm.js terminal. The terminal modal is
+                mounted in Story 3 (MMX-TERMINAL) — this commit wires the
+                state so the button is functional once the next commit
+                lands. */}
+            <div className="pt-4 mt-2 border-t border-zinc-800/60 space-y-3">
+              <div className="flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-[#c5a062]" />
+                <h5 className="text-xs font-bold text-white uppercase tracking-wider">AI Agent CLI</h5>
+              </div>
+              <p className="text-[11px] text-zinc-500">
+                Launch an interactive chat with the active provider in an in-app terminal. mmx auths via <code>MMX_API_KEY</code> in env; pi.dev uses the key below.
+              </p>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">pi.dev API Key</label>
+                <input
+                  type="password"
+                  value={settings.piDevApiKey || ''}
+                  onChange={(e) => updateSettings({ piDevApiKey: e.target.value })}
+                  placeholder="pi-…"
+                  className="w-full bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#c5a062]/30"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setAiTerminalOpen(true)}
+                className="btn-gold-sm rounded-lg inline-flex items-center gap-2"
+              >
+                <Terminal className="w-3.5 h-3.5" />
+                Launch CLI Terminal ({activeAiAgent})
+              </button>
             </div>
 
             <p className="text-[10px] text-zinc-500 pt-2 border-t border-zinc-800/60">
