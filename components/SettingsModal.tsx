@@ -24,7 +24,10 @@ import {
   Cpu,
   Monitor,
   Sliders,
+  Bot,
+  Terminal,
 } from 'lucide-react';
+import { useMmxAvailability } from '@/lib/useMmxAvailability';
 import { showToast } from '@/components/Toast';
 import {
   LEONARDO_MODELS,
@@ -40,14 +43,21 @@ import { APP_VERSION, getAppVersion } from '@/lib/app-version';
 // image/video defaults, watermark), API Keys (web-only inputs + a desktop hint),
 // AI Engine (pi.dev + system prompt + niches/genres + personalities), and
 // Desktop (auto-update + Tauri-native config panel).
-type TabId = 'general' | 'apiKeys' | 'aiEngine' | 'desktop';
+type TabId = 'general' | 'apiKeys' | 'aiAgent' | 'aiEngine' | 'desktop';
 
 const TABS: ReadonlyArray<{ id: TabId; label: string; icon: typeof SettingsIcon }> = [
   { id: 'general', label: 'General', icon: Sliders },
   { id: 'apiKeys', label: 'API Keys', icon: KeyRound },
+  { id: 'aiAgent', label: 'AI Agent', icon: Bot },
   { id: 'aiEngine', label: 'AI Engine', icon: Cpu },
   { id: 'desktop', label: 'Desktop', icon: Monitor },
 ];
+
+interface MmxStatus {
+  available: boolean;
+  authenticated: boolean;
+  version: string;
+}
 
 // FIX-100 slice A: extracted from MainContent.tsx (~714 LOC).
 // PiStatus shape lifted from the inline declaration that lived inside
@@ -144,6 +154,54 @@ export function SettingsModal({
       () => showToast('Copied to clipboard', 'success'),
       () => showToast('Failed to copy', 'error'),
     );
+
+  // AI Agent tab — MMX availability comes from the shared cached probe;
+  // /api/mmx/status fills in version + auth detail when this tab is open.
+  const mmxAvailable = useMmxAvailability();
+  const [mmxStatus, setMmxStatus] = useState<MmxStatus | null>(null);
+  const [mmxSetupMsg, setMmxSetupMsg] = useState<string | null>(null);
+  const [mmxSetupBusy, setMmxSetupBusy] = useState(false);
+  const [mmxSetupError, setMmxSetupError] = useState<string | null>(null);
+  useEffect(() => {
+    if (activeTab !== 'aiAgent') return;
+    let cancelled = false;
+    fetch('/api/mmx/status', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setMmxStatus({
+          available: !!data.available,
+          authenticated: !!data.authenticated,
+          version: typeof data.version === 'string' ? data.version : '',
+        });
+      })
+      .catch(() => { /* leave null — card will fall back to mmxAvailable */ });
+    return () => { cancelled = true; };
+  }, [activeTab]);
+
+  const activeAiAgent: 'mmx' | 'pi' = settings.activeAiAgent ?? 'pi';
+
+  const handleMmxSetup = async () => {
+    setMmxSetupBusy(true);
+    setMmxSetupError(null);
+    try {
+      const res = await fetch('/api/mmx/setup', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data && data.error) || `Setup failed (HTTP ${res.status})`);
+      }
+      setMmxSetupMsg(
+        (data && typeof data.message === 'string' && data.message) ||
+          'Run: tmux attach -t mmx-setup',
+      );
+    } catch (e: unknown) {
+      // /api/mmx/setup may not exist — show the manual instruction.
+      setMmxSetupMsg('Run: tmux attach -t mmx-setup');
+      setMmxSetupError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMmxSetupBusy(false);
+    }
+  };
 
   // FEAT-002b S1: drive the saved/saving/error pill from the real lifecycle
   // exposed by useSettings instead of an ephemeral local timer. The "Saved"
@@ -386,6 +444,212 @@ export function SettingsModal({
               </div>
               )}
             </div>
+          </div>
+          </>
+          )}
+
+          {activeTab === 'aiAgent' && (
+          <>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="p-1.5 bg-[#c5a062]/10 rounded-lg">
+                <Bot className="w-4 h-4 text-[#c5a062]" />
+              </div>
+              <h4 className="text-sm font-bold text-white uppercase tracking-wider">Active AI Agent</h4>
+            </div>
+            <p className="text-[11px] text-zinc-500 -mt-2">
+              Pick the backend that handles ideas, captions, prompt enhancement, and tagging. The active agent is used for every text-AI call across the app.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* MMX CLI card */}
+              {(() => {
+                const selected = activeAiAgent === 'mmx';
+                const available = mmxStatus?.available ?? mmxAvailable;
+                let dot = 'bg-zinc-600';
+                let label = 'Checking…';
+                let labelColor = 'text-zinc-400';
+                if (available === true) {
+                  if (mmxStatus?.authenticated === false) {
+                    dot = 'bg-amber-400';
+                    label = 'Not Authenticated';
+                    labelColor = 'text-amber-300';
+                  } else {
+                    dot = 'bg-emerald-400';
+                    label = 'Available';
+                    labelColor = 'text-emerald-300';
+                  }
+                } else if (available === false) {
+                  dot = 'bg-red-500';
+                  label = 'Not Installed';
+                  labelColor = 'text-red-300';
+                }
+                return (
+                  <button
+                    type="button"
+                    onClick={() => updateSettings({ activeAiAgent: 'mmx' })}
+                    aria-pressed={selected}
+                    className={`text-left rounded-xl border p-4 transition-all ${
+                      selected
+                        ? 'border-[#c5a062] bg-[#c5a062]/10 shadow-[0_0_0_1px_rgba(197,160,98,0.3)]'
+                        : 'border-zinc-800/60 bg-zinc-950/40 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Terminal className="w-4 h-4 text-[#c5a062]" />
+                        <span className="text-sm font-bold text-white">MMX CLI</span>
+                      </div>
+                      <span className={`text-[10px] font-semibold uppercase tracking-wider ${selected ? 'text-[#c5a062]' : 'text-zinc-500'}`}>
+                        {selected ? '● Selected' : '○ Select'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+                      <span className={`text-[11px] ${labelColor}`}>{label}</span>
+                      {mmxStatus?.version && (
+                        <span className="text-[10px] text-zinc-500 ml-1 truncate">{mmxStatus.version}</span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-zinc-500 leading-relaxed">
+                      MiniMax mmx — text, image, music, video, speech, vision, web search.
+                    </p>
+                  </button>
+                );
+              })()}
+
+              {/* Pi.dev card */}
+              {(() => {
+                const selected = activeAiAgent === 'pi';
+                const s = piStatus;
+                let dot = 'bg-zinc-600';
+                let label = 'Checking…';
+                let labelColor = 'text-zinc-400';
+                if (s) {
+                  if (!s.installed) {
+                    dot = 'bg-red-500';
+                    label = 'Not Installed';
+                    labelColor = 'text-red-300';
+                  } else if (!s.authenticated) {
+                    dot = 'bg-amber-400';
+                    label = 'Not Authenticated';
+                    labelColor = 'text-amber-300';
+                  } else if (s.running) {
+                    dot = 'bg-emerald-400';
+                    label = 'Running';
+                    labelColor = 'text-emerald-300';
+                  } else {
+                    dot = 'bg-[#00e6ff]';
+                    label = 'Ready';
+                    labelColor = 'text-[#00e6ff]';
+                  }
+                }
+                return (
+                  <button
+                    type="button"
+                    onClick={() => updateSettings({ activeAiAgent: 'pi' })}
+                    aria-pressed={selected}
+                    className={`text-left rounded-xl border p-4 transition-all ${
+                      selected
+                        ? 'border-[#c5a062] bg-[#c5a062]/10 shadow-[0_0_0_1px_rgba(197,160,98,0.3)]'
+                        : 'border-zinc-800/60 bg-zinc-950/40 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Cpu className="w-4 h-4 text-[#c5a062]" />
+                        <span className="text-sm font-bold text-white">Pi.dev</span>
+                      </div>
+                      <span className={`text-[10px] font-semibold uppercase tracking-wider ${selected ? 'text-[#c5a062]' : 'text-zinc-500'}`}>
+                        {selected ? '● Selected' : '○ Select'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+                      <span className={`text-[11px] ${labelColor}`}>{label}</span>
+                      {s?.provider && s?.model && (
+                        <span className="text-[10px] text-zinc-500 ml-1 truncate">{s.provider}/{s.model}</span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-zinc-500 leading-relaxed">
+                      pi.dev sidecar — text generation, ideas, captions, tags, vision.
+                    </p>
+                  </button>
+                );
+              })()}
+            </div>
+
+            {/* Launch Setup */}
+            <div className="pt-2">
+              {activeAiAgent === 'mmx' ? (
+                <>
+                  {mmxStatus && !mmxStatus.authenticated ? (
+                    <button
+                      type="button"
+                      onClick={handleMmxSetup}
+                      disabled={mmxSetupBusy}
+                      className="btn-gold-sm rounded-lg"
+                    >
+                      {mmxSetupBusy ? 'Opening…' : 'Launch MMX Setup'}
+                    </button>
+                  ) : mmxStatus && mmxStatus.authenticated ? (
+                    <p className="text-[11px] text-emerald-400">MMX CLI authenticated and ready.</p>
+                  ) : (
+                    <p className="text-[11px] text-zinc-500">Checking MMX status…</p>
+                  )}
+                  {mmxSetupMsg && (
+                    <div className="mt-3 bg-zinc-900 border border-zinc-700 rounded-lg p-3 space-y-1">
+                      <p className="text-[11px] text-amber-300 font-medium">MMX Setup</p>
+                      <code className="block text-[11px] text-emerald-400 bg-zinc-950 px-2 py-1 rounded">
+                        {mmxSetupMsg}
+                      </code>
+                      <p className="text-[10px] text-zinc-500">
+                        Attach to the tmux session and follow the mmx login flow. Refresh this tab when done.
+                      </p>
+                    </div>
+                  )}
+                  {mmxSetupError && (
+                    <p className="mt-2 text-[11px] text-red-400 whitespace-pre-wrap">{mmxSetupError}</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  {piStatus && !piStatus.authenticated && piStatus.installed ? (
+                    <button
+                      type="button"
+                      onClick={handlePiSetup}
+                      disabled={piBusy !== null}
+                      className="btn-gold-sm rounded-lg"
+                    >
+                      {piBusy === 'setup' ? 'Opening…' : 'Launch Pi.dev Setup'}
+                    </button>
+                  ) : piStatus?.authenticated ? (
+                    <p className="text-[11px] text-emerald-400">pi.dev authenticated and ready.</p>
+                  ) : (
+                    <p className="text-[11px] text-zinc-500">
+                      {piStatus && !piStatus.installed
+                        ? 'pi.dev not installed — will auto-install on next check.'
+                        : 'Checking pi.dev status…'}
+                    </p>
+                  )}
+                  {piSetupMsg && (
+                    <div className="mt-3 bg-zinc-900 border border-zinc-700 rounded-lg p-3 space-y-1">
+                      <p className="text-[11px] text-amber-300 font-medium">Pi Setup</p>
+                      <code className="block text-[11px] text-emerald-400 bg-zinc-950 px-2 py-1 rounded">
+                        tmux attach -t pi-setup
+                      </code>
+                    </div>
+                  )}
+                  {piError && (
+                    <p className="mt-2 text-[11px] text-red-400 whitespace-pre-wrap">{piError}</p>
+                  )}
+                </>
+              )}
+            </div>
+
+            <p className="text-[10px] text-zinc-500 pt-2 border-t border-zinc-800/60">
+              The active agent handles all AI tasks. Engine details (system prompt, niches, genres) live in the AI Engine tab.
+            </p>
           </div>
           </>
           )}

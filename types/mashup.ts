@@ -294,6 +294,13 @@ export interface UserSettings {
    * breakdown). Off by default — opt-in via the header toggle.
    */
   heatmapEnabled?: boolean;
+  /**
+   * Which AI agent backend handles text/idea/caption work.
+   *   'pi'  — pi.dev sidecar (default)
+   *   'mmx' — MiniMax mmx CLI
+   * Configured from the Settings → AI Agent tab.
+   */
+  activeAiAgent?: 'mmx' | 'pi';
 }
 
 export type ViewType = 'studio' | 'gallery' | 'compare' | 'captioning' | 'post-ready' | 'ideas' | 'pipeline';
@@ -811,7 +818,8 @@ PROMPT QUALITY:
 - Maximum variety across a batch — no repeated characters, different settings, different moods.`,
   serverCronEnabled: false,
   channelName: 'MultiverseMashupAI',
-  savedPersonalities: []
+  savedPersonalities: [],
+  activeAiAgent: 'pi',
 };
 
 // ── Context Type ────────────────────────────────────────────────────────────
