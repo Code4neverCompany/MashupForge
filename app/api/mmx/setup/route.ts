@@ -58,7 +58,22 @@ export async function POST() {
 
     // POSIX desktop: use tmux so the setup session is persistent and visible.
     // Run `mmx auth login --no-browser` in a detached tmux session named
-    // "mmx-setup". The user is told to attach with: tmux attach -t mmx-setup
+    // "mmx-setup". Only kill the existing session if one is already running —
+    // belt-and-suspenders guard alongside the mmxBusyRef double-click guard
+    // in the UI, because the API is also callable via curl/scripts.
+    const hasSession = spawnSync('tmux', ['has-session', '-t', 'mmx-setup'], {
+      stdio: 'ignore',
+    });
+    if (hasSession.status === 0) {
+      return NextResponse.json({
+        success: true,
+        message:
+          'An MMX setup session is already running.\n\nAttach to it with:\n  tmux attach -t mmx-setup\n\nIf you need to start fresh, close that tmux session first:\n  tmux kill-session -t mmx-setup',
+        tmuxSession: 'mmx-setup',
+        platform: 'posix',
+        alreadyRunning: true,
+      });
+    }
     spawnSync('tmux', ['kill-session', '-t', 'mmx-setup'], { stdio: 'ignore' });
     const tmuxResult = spawnSync(
       'tmux',

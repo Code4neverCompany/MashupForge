@@ -161,7 +161,13 @@ export function SettingsModal({
 
   // MMX setup handler — opens `mmx auth login --no-browser` in a tmux
   // session so the user can authenticate via OAuth or paste an API key.
+  // mmxBusyRef gates double-click: once the user clicks Launch, the button
+  // stays disabled until the POST completes (success or error), preventing
+  // a second click from silently killing the first tmux session.
+  const mmxBusyRef = useRef(false);
   const handleMmxSetup = async () => {
+    if (mmxBusyRef.current) return;
+    mmxBusyRef.current = true;
     setMmxBusy(true);
     setMmxError(null);
     try {
@@ -181,6 +187,7 @@ export function SettingsModal({
       setMmxError('Network error — could not reach the setup endpoint.');
     } finally {
       setMmxBusy(false);
+      mmxBusyRef.current = false;
     }
   };
 
