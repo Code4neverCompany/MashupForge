@@ -63,9 +63,14 @@ export function ImageDetailModal({
   const [origin, setOrigin] = useState('50% 50%');
   const imgAreaRef = useRef<HTMLDivElement>(null);
 
+  // MMX-VISION-ANALYZE: image analysis via mmx vision describe
+  const [visionResult, setVisionResult] = useState<string | null>(null);
+  const [analyzingVision, setAnalyzingVision] = useState(false);
+
   useEffect(() => {
     setZoom(1);
     setOrigin('50% 50%');
+    setVisionResult(null); // MMX-VISION-ANALYZE
   }, [image.id]);
 
   useEffect(() => {
@@ -183,6 +188,32 @@ export function ImageDetailModal({
                   </span>
                 )}
               </div>
+              {/* MMX-VISION-ANALYZE: analyze button */}
+              <button
+                onClick={async () => {
+                  if (!image.url && !image.base64) return;
+                  setAnalyzingVision(true);
+                  try {
+                    const imgSrc = image.url || `data:image/jpeg;base64,${image.base64}`;
+                    const res = await fetch('/api/mmx/describe', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ image: imgSrc }),
+                    });
+                    const data = await res.json();
+                    setVisionResult(data.description || data.error || 'Analysis failed');
+                  } catch {
+                    setVisionResult('Network error — could not analyze image.');
+                  } finally {
+                    setAnalyzingVision(false);
+                  }
+                }}
+                disabled={analyzingVision || (!image.url && !image.base64)}
+                className="absolute bottom-4 left-4 z-50 px-3 py-1.5 bg-[#00e6ff]/20 hover:bg-[#00e6ff]/40 border border-[#00e6ff]/40 text-[#00e6ff] text-xs rounded-full backdrop-blur-sm transition-all flex items-center gap-1.5"
+              >
+                {analyzingVision ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                {analyzingVision ? 'Analyzing…' : 'Analyze with MMX'}
+              </button>
             </div>
           )}
         </div>
@@ -258,6 +289,19 @@ export function ImageDetailModal({
                 </button>
               </div>
             </div>
+
+            {/* MMX-VISION-ANALYZE: show result */}
+            {visionResult && (
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-[#00e6ff] uppercase tracking-widest flex items-center gap-2">
+                  <Sparkles className="w-3 h-3" />
+                  MMX Vision Analysis
+                </h4>
+                <div className="bg-zinc-950 border border-[#00e6ff]/20 rounded-2xl p-4 text-sm text-zinc-300 leading-relaxed">
+                  {visionResult}
+                </div>
+              </div>
+            )}
 
             {/* Tags */}
             <div className="space-y-3">
