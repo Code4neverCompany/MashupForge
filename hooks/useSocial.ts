@@ -27,6 +27,7 @@ Return ONLY a JSON object with exactly two keys: "caption" (string) and "hashtag
           systemPrompt: settings.agentPrompt,
           niches: settings.agentNiches,
           genres: settings.agentGenres,
+          provider: settings.activeAiAgent,
         }
       );
 

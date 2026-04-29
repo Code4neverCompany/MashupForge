@@ -256,7 +256,8 @@ interface SubmitResult {
 async function submitWithOneRetry(
   initialPrompt: string,
   baseParams: Omit<LeonardoSubmitParams, 'prompt'>,
-  callbacks: ModerationRetryCallback
+  callbacks: ModerationRetryCallback,
+  provider?: 'mmx' | 'pi',
 ): Promise<SubmitResult> {
   try {
     const success = await submitLeonardoAndPoll({ prompt: initialPrompt, ...baseParams });
@@ -270,7 +271,7 @@ async function submitWithOneRetry(
 
     const rewritten = await streamAIToString(
       buildModerationRewriteInstruction(lErr.failedPrompt || initialPrompt),
-      { mode: 'enhance' }
+      { mode: 'enhance', provider },
     );
     const activePrompt = (rewritten || '').trim() || initialPrompt;
 
@@ -315,7 +316,7 @@ Generate a set of 5-8 fitting tags for a gallery. Include:
 - Style (e.g., "Cinematic", "Cyberpunk", "Grimdark")
 - Themes (e.g., "Battle", "Portrait", "Landscape")
 Return ONLY a JSON array of strings, nothing else.`,
-        { mode: 'tag' }
+        { mode: 'tag', provider: settings.activeAiAgent }
       );
       let tags: unknown[] = [];
       try {
@@ -345,7 +346,7 @@ Return ONLY a JSON array of strings, nothing else.`,
 Generate a concise negative prompt that would help avoid common issues in AI image generation.
 Focus on: blurry, low quality, deformed, extra limbs, bad anatomy, watermark, text overlay.
 Keep it under 100 words. Return ONLY the negative prompt text, nothing else.`,
-        { mode: 'negative-prompt' }
+        { mode: 'negative-prompt', provider: settings.activeAiAgent }
       );
       return text.trim();
     } catch {
@@ -385,7 +386,7 @@ Keep it under 100 words. Return ONLY the negative prompt text, nothing else.`,
         try {
           const text = await streamAIToString(
             `Analyze this image prompt: "${prompt}". Generate 5-8 fitting tags (universe, character, style, theme). Return ONLY a JSON array of strings.`,
-            { mode: 'tag' }
+            { mode: 'tag', provider: settings.activeAiAgent }
           );
           const parsed = extractJsonArrayFromLLM(text);
           const strTags = parsed.filter((t): t is string => typeof t === 'string');
@@ -425,7 +426,7 @@ Return ONLY a JSON array of 4 objects, each with:
 - "negativePrompt": string — 15 words max, CONTEXT-AWARE to the prompt's subject. Pick from: character art → "bad anatomy, wrong proportions, extra fingers, mutated hands"; landscapes → "overexposed, washed out, text, watermark, signature"; action scenes → "motion blur, static pose, flat lighting"; dark/grimdark → "bright colors, cartoon style, flat shading". Always include the core technical defects (blurry, low quality, deformed).
 
 Random Seed: ${Math.random()}`,
-          { mode: 'idea' }
+          { mode: 'idea', provider: settings.activeAiAgent, niches: settings.agentNiches, genres: settings.agentGenres }
         );
 
         try {
@@ -464,7 +465,7 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
 - "selectedNiches": array of strings
 - "selectedGenres": array of strings
 - "negativePrompt": string — 15 words max, CONTEXT-AWARE to the prompt's subject. Pick from: character art → "bad anatomy, wrong proportions, extra fingers, mutated hands"; landscapes → "overexposed, washed out, text, watermark, signature"; action scenes → "motion blur, static pose, flat lighting"; dark/grimdark → "bright colors, cartoon style, flat shading". Always include the core technical defects (blurry, low quality, deformed).`,
-          { mode: 'idea' }
+          { mode: 'idea', provider: settings.activeAiAgent, niches: settings.agentNiches, genres: settings.agentGenres }
         );
 
         try {
@@ -565,7 +566,8 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
                 ));
                 setProgress(`Image ${i + 1}: ${stageMsg}`);
               },
-            }
+            },
+            settings.activeAiAgent,
           );
 
           let finalUrl = success.url;
@@ -651,7 +653,7 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
         try {
           const text = await streamAIToString(
             `Analyze this image prompt: "${prompt}". Generate 5-8 fitting tags (universe, character, style, theme). Return ONLY a JSON array of strings.`,
-            { mode: 'tag' }
+            { mode: 'tag', provider: settings.activeAiAgent }
           );
           const parsed = extractJsonArrayFromLLM(text);
           const strTags = parsed.filter((t): t is string => typeof t === 'string');
@@ -667,7 +669,7 @@ Return ONLY a JSON array of objects (one per input idea, in the same order), eac
           `Platform Niches: ${settings.agentNiches?.join(', ') || 'None'}.
 Target Genres: ${settings.agentGenres?.join(', ') || 'None'}.
 The user wants to re-roll an image based on this idea: "${prompt}". Enhance this idea into a highly detailed, cinematic image generation prompt. You MUST strictly limit the content to ONLY these franchises: Star Wars, Marvel, DC, and Warhammer 40k. Focus heavily on "what if" scenarios, alternative universes, different timelines, and epic crossovers. Return ONLY the enhanced prompt as a single string.`,
-          { mode: 'enhance' }
+          { mode: 'enhance', provider: settings.activeAiAgent }
         );
       } catch {
         // enhancement failed — proceed with original prompt
@@ -749,7 +751,8 @@ The user wants to re-roll an image based on this idea: "${prompt}". Enhance this
               ));
               setProgress(stageMsg);
             },
-          }
+          },
+          settings.activeAiAgent,
         );
 
         let finalUrl = success.url;

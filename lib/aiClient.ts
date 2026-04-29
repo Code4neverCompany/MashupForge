@@ -1,15 +1,15 @@
 /**
- * Client-side helpers for talking to /api/pi/prompt. The server returns
- * text/event-stream:
+ * Client-side helpers for streaming AI text. Both /api/pi/prompt and
+ * /api/mmx/prompt expose the same text/event-stream contract:
  *
  *   data: {"text":"<delta>"}\n\n
  *   ...
  *   data: {"error":"..."}\n\n   (on failure)
  *   data: [DONE]\n\n
  *
- * All AI text in the studio flows through pi.dev via /api/pi/prompt. The
- * legacy /api/ai/* routes were removed — provider / model selection now
- * lives inside pi itself and is configured via `pi config` in the terminal.
+ * MMX-ROUTING: callers pass `provider: settings.activeAiAgent` to pick
+ * which backend handles the request. Default is pi for back-compat
+ * with installs that haven't toggled the AI Agent setting yet.
  */
 
 export type PiMode =
@@ -34,6 +34,12 @@ export interface StreamAIOptions {
    */
   niches?: string[];
   genres?: string[];
+  /**
+   * MMX-ROUTING: which AI agent backend handles this call. Mirrors
+   * UserSettings.activeAiAgent. Default 'pi' so callers that don't yet
+   * thread the user setting through stay on the pre-MMX behavior.
+   */
+  provider?: 'mmx' | 'pi';
 }
 
 /**
@@ -51,7 +57,12 @@ export async function* streamAI(
   message: string,
   options?: StreamAIOptions
 ): AsyncGenerator<string, void, void> {
-  const res = await fetch('/api/pi/prompt', {
+  // MMX-ROUTING: pick the route based on the caller's provider hint.
+  // Both routes expose the same SSE contract, so the rest of the
+  // streaming/parsing loop is provider-agnostic.
+  const provider = options?.provider ?? 'pi';
+  const url = provider === 'mmx' ? '/api/mmx/prompt' : '/api/pi/prompt';
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
     body: JSON.stringify({
@@ -65,7 +76,7 @@ export async function* streamAI(
   });
 
   if (!res.ok || !res.body) {
-    let errMsg = `pi request failed (${res.status})`;
+    let errMsg = `${provider} request failed (${res.status})`;
     try {
       const err = await res.json() as Record<string, unknown>;
       if (typeof err?.error === 'string') errMsg = err.error;

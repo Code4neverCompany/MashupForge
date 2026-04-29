@@ -126,7 +126,7 @@ Return ONLY the prompt text, nothing else.`;
 
       const text = await streamAIToString(
         `${systemContext}\n\nIdea concept: ${idea.concept}\n${idea.context ? `Additional context: ${idea.context}` : ''}\n\nGenerate a single detailed image prompt for this idea.`,
-        { mode: 'enhance' },
+        { mode: 'enhance', provider: s.activeAiAgent },
       );
       return text.trim() || idea.concept;
     },

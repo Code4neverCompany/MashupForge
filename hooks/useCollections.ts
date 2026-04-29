@@ -54,6 +54,7 @@ Return a JSON object with "name" and "description" keys.`,
           systemPrompt: settings.agentPrompt,
           niches: settings.agentNiches,
           genres: settings.agentGenres,
+          provider: settings.activeAiAgent,
         }
       );
       const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();

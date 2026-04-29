@@ -293,6 +293,7 @@ Return ONLY a JSON array of objects with "concept" and "context" fields. Example
       mode: 'idea',
       niches: s.agentNiches,
       genres: s.agentGenres,
+      provider: s.activeAiAgent,
     });
 
     const nowStamp = Date.now();
