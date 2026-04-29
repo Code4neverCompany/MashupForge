@@ -626,7 +626,7 @@ export function SettingsModal({
                       )}
                     </div>
                   ) : (
-                    <p className="text-[11px] text-emerald-400">MMX CLI authenticated and ready.</p>
+                    <p className="text-[11px] text-emerald-400">MMX authenticated and ready.</p>
                   )}
                   {mmxSetupMsg && (
                     <div className="mt-3 bg-zinc-900 border border-zinc-700 rounded-lg p-3 space-y-1">
