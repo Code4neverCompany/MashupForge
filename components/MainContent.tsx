@@ -4418,7 +4418,7 @@ export function MainContent() {
                     ) : (
                       <PostReadyDndGrid postItems={sortedPostItems} onMove={dndMoveHandler}>
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {sortedPostItems.map((item) => {
+                        {sortedPostItems.map((item, i) => {
                           // ── Carousel card branch — V060-001 ─────────────
                           if (item.kind === 'carousel') {
                             const key = `carousel-${item.id}`;
@@ -4430,7 +4430,8 @@ export function MainContent() {
                             const isCarouselRegen = preparingPostId === anchor.id;
                             const carouselScheduled = latestScheduleFor(anchor.id);
                             return (
-                              <React.Fragment key={item.id}>
+                              // GRID-COLUMN-FIX: wrap slot+card so each iteration is one grid cell.
+                              <div key={item.id} className={i % 2 === 1 ? 'lg:col-start-2' : ''}>
                                 <CarouselReorderSlot beforeGroupId={item.id} />
                                 <PostReadyCarouselCard
                                   images={item.images}
@@ -4475,7 +4476,7 @@ export function MainContent() {
                                   }
                                   onCancelSchedule={() => unscheduleCarousel(item.images, key)}
                                 />
-                              </React.Fragment>
+                              </div>
                             );
                           }
 
@@ -4487,7 +4488,8 @@ export function MainContent() {
                           const status = postStatus[img.id];
                           const scheduled = latestScheduleFor(img.id);
                           return (
-                            <React.Fragment key={img.id}>
+                            // GRID-COLUMN-FIX: wrap slot+card so each iteration is one grid cell.
+                            <div key={img.id} className={i % 2 === 1 ? 'lg:col-start-2' : ''}>
                               <CarouselReorderSlot beforeGroupId={img.id} />
                               <DraggableSingleWrapper imageId={img.id} imageUrl={img.url}>
                                 <PostReadyCard
@@ -4530,7 +4532,7 @@ export function MainContent() {
                                   onCancelSchedule={() => unschedulePost(img)}
                                 />
                               </DraggableSingleWrapper>
-                            </React.Fragment>
+                            </div>
                           );
                         })}
                         {/* Trailing reorder slot — drop here = insert at end. */}
