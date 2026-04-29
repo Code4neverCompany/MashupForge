@@ -495,6 +495,204 @@ export async function isAvailable(): Promise<boolean> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Text prompt (drop-in replacement for pi-client.prompt)
+// ---------------------------------------------------------------------------
+//
+// MMX-PROMPT-FN: spawn-per-call wrapper around `mmx text chat
+// --messages-file - --stream`. Same shape as pi-client.prompt — message
+// in, async generator yielding text deltas — so /api/mmx/prompt and the
+// client-side streamAI router can swap providers without per-callsite
+// branching. Unlike pi (long-lived RPC subprocess), mmx's text chat
+// command is one-shot: read messages JSON from stdin, EOF, stream
+// tokens to stdout, exit. Each prompt() call therefore spawns a fresh
+// child — fine because mmx is fast to start and stateless per call.
+//
+// Output parsing is intentionally permissive: each newline-separated
+// line from stdout is tried as JSON first (looking for a delta string
+// under any of `delta`, `content`, `text`, OpenAI-style choices array),
+// and falls back to the raw line if it isn't JSON. That way the
+// implementation works whether mmx emits SSE-shaped deltas, OpenAI-
+// compatible chunks, or plain streamed text — the format isn't
+// stable across mmx versions and we don't want a tiny upstream change
+// to break every caller.
+
+export interface MmxPromptOptions {
+  /** Per-request system instruction. Prepended as a `system` message
+   *  in the messages array so mmx applies it to this turn only. */
+  systemPrompt?: string;
+  /** Aborting kills the in-flight mmx subprocess. */
+  signal?: AbortSignal;
+}
+
+interface MmxMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+function parseStreamLine(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  // Tolerate SSE-style "data:" prefixes mmx might emit when its --stream
+  // mode is wired through an SSE adapter.
+  const payload = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed;
+  if (!payload || payload === '[DONE]') return null;
+  try {
+    const obj = JSON.parse(payload) as unknown;
+    if (typeof obj === 'string') return obj;
+    if (obj && typeof obj === 'object') {
+      const o = obj as Record<string, unknown>;
+      if (typeof o.delta === 'string') return o.delta;
+      if (typeof o.text === 'string') return o.text;
+      if (typeof o.content === 'string') return o.content;
+      // OpenAI-compatible chunk: { choices: [{ delta: { content: '…' } }] }
+      const choices = o.choices;
+      if (Array.isArray(choices) && choices[0] && typeof choices[0] === 'object') {
+        const c0 = choices[0] as Record<string, unknown>;
+        const d = c0.delta as Record<string, unknown> | undefined;
+        if (d && typeof d.content === 'string') return d.content;
+        const m = c0.message as Record<string, unknown> | undefined;
+        if (m && typeof m.content === 'string') return m.content;
+      }
+      // Pi-shaped relay (some mmx builds proxy through pi's event shape).
+      const evt = o.assistantMessageEvent as Record<string, unknown> | undefined;
+      if (evt && evt.type === 'text_delta' && typeof evt.delta === 'string') {
+        return evt.delta;
+      }
+    }
+    return null;
+  } catch {
+    // Not JSON — treat as raw streamed text.
+    return payload;
+  }
+}
+
+/**
+ * Send `message` to mmx and yield each text delta as it arrives. The
+ * iterator terminates when mmx closes stdout (one prompt = one process,
+ * so closure is the natural end signal). Throws {@link MmxSpawnError}
+ * if the binary can't be launched and {@link MmxError} on a non-zero
+ * exit with no parsed output.
+ */
+export async function* prompt(
+  message: string,
+  options?: MmxPromptOptions,
+): AsyncGenerator<string, void, void> {
+  const messages: MmxMessage[] = [];
+  if (options?.systemPrompt && options.systemPrompt.trim()) {
+    messages.push({ role: 'system', content: options.systemPrompt });
+  }
+  messages.push({ role: 'user', content: message });
+
+  let child;
+  try {
+    child = _spawn(
+      MMX_BIN,
+      ['text', 'chat', '--messages-file', '-', '--stream'],
+      { stdio: ['pipe', 'pipe', 'pipe'], signal: options?.signal },
+    );
+  } catch (e) {
+    throw new MmxSpawnError(`failed to spawn ${MMX_BIN}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // Stream-feed the messages array. mmx's --messages-file - reads from
+  // stdin until EOF, so we write once and close.
+  try {
+    child.stdin?.end(JSON.stringify({ messages }));
+  } catch {
+    // ENOENT on the binary itself fires via the 'error' event below
+    // before stdin is writable; swallow the synchronous variant.
+  }
+
+  child.stdout?.setEncoding('utf8');
+  child.stderr?.setEncoding('utf8');
+
+  let buffer = '';
+  let stderrTail = '';
+  const queue: string[] = [];
+  let resolveNext: (() => void) | null = null;
+  let finished = false;
+  let streamError: Error | null = null;
+
+  const wakeConsumer = () => {
+    if (resolveNext) {
+      const r = resolveNext;
+      resolveNext = null;
+      r();
+    }
+  };
+
+  child.stdout?.on('data', (chunk: string) => {
+    buffer += chunk;
+    let nl: number;
+    while ((nl = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      const delta = parseStreamLine(line);
+      if (delta) {
+        queue.push(delta);
+        wakeConsumer();
+      }
+    }
+  });
+
+  child.stderr?.on('data', (chunk: string) => {
+    stderrTail += chunk;
+    // Cap so a runaway error log doesn't OOM us.
+    if (stderrTail.length > 8192) stderrTail = stderrTail.slice(-4096);
+  });
+
+  child.once('error', (err) => {
+    streamError = new MmxSpawnError(`mmx spawn error: ${err.message}`);
+    finished = true;
+    wakeConsumer();
+  });
+
+  child.once('close', (code) => {
+    // Drain any unterminated tail line.
+    if (buffer.trim()) {
+      const delta = parseStreamLine(buffer);
+      if (delta) queue.push(delta);
+      buffer = '';
+    }
+    if (code !== 0 && !streamError) {
+      streamError = new MmxError(
+        code ?? -1,
+        `mmx exited code ${code}: ${stderrTail.trim() || 'no stderr'}`,
+      );
+    }
+    finished = true;
+    wakeConsumer();
+  });
+
+  try {
+    while (!finished || queue.length > 0) {
+      if (queue.length === 0 && !finished) {
+        await new Promise<void>((resolve) => { resolveNext = resolve; });
+      }
+      while (queue.length > 0) yield queue.shift()!;
+    }
+    if (streamError) throw streamError;
+  } finally {
+    if (!child.killed && child.exitCode === null) {
+      try { child.kill('SIGTERM'); } catch { /* already gone */ }
+    }
+  }
+}
+
+/**
+ * MMX-AVAILABILITY: cheap auth check used by the AI Agent settings tab
+ * and the streamAI router. mmx itself reads MMX_API_KEY / MINIMAX_API_KEY
+ * from env (the desktop wrapper hydrates them from config.json), so
+ * the presence of either is a reasonable proxy for "mmx can call out".
+ */
+export function isAuthenticated(): boolean {
+  return Boolean(
+    (process.env.MMX_API_KEY && process.env.MMX_API_KEY.trim()) ||
+      (process.env.MINIMAX_API_KEY && process.env.MINIMAX_API_KEY.trim()),
+  );
+}
+
 // Test-only: replace the spawn implementation. Pass `null` to restore the
 // default `node:child_process.spawn`. Not part of the public API.
 export function __setSpawnForTests(fn: typeof SpawnFn | null): void {
