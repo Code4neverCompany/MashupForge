@@ -849,6 +849,17 @@ export function MainContent() {
         const targetImageId = targetCarouselId.replace('new-group-', '');
         if (targetImageId === imageId) { dndUndoStackRef.current.pop(); return; }
         groups.push({ id: `manual-${targetImageId}`, imageIds: [targetImageId, imageId], status: 'draft' as const });
+      } else if (targetCarouselId.startsWith('auto-')) {
+        const anchorId = targetCarouselId.slice('auto-'.length);
+        const currentItems = computeCarouselViewPure(postReadyImages, settings.carouselGroups || []);
+        const autoItem = currentItems.find(
+          (item): item is Extract<typeof item, { kind: 'carousel' }> =>
+            item.kind === 'carousel' && item.id === targetCarouselId,
+        );
+        if (!autoItem) { dndUndoStackRef.current.pop(); return; }
+        const existingIds = autoItem.images.map((i) => i.id);
+        if (existingIds.includes(imageId)) { dndUndoStackRef.current.pop(); return; }
+        groups.push({ id: `manual-${anchorId}`, imageIds: [...existingIds, imageId], status: 'draft' as const });
       } else {
         const tgt = groups.find((g) => g.id === targetCarouselId);
         if (tgt) {

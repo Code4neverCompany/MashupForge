@@ -48,7 +48,8 @@ export function getPostItemSortKey(
       (p) =>
         p.imageId === img.id &&
         p.status !== 'posted' &&
-        p.status !== 'rejected',
+        p.status !== 'rejected' &&
+        p.status !== 'failed',
     );
     if (!post) continue;
     const ts = new Date(`${post.date}T${post.time}`).getTime();
