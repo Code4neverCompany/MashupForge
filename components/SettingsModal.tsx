@@ -381,7 +381,7 @@ export function SettingsModal({
           disabled={mmxBusy}
           className="text-[11px] text-zinc-400 hover:text-[#c5a062] underline underline-offset-2 disabled:opacity-50"
         >
-          {mmxBusy ? 'Opening…' : `or ${mmxOauthLabel.toLowerCase()}`}
+          {mmxBusy ? 'Opening…' : `or ${mmxOauthLabel.charAt(0).toLowerCase()}${mmxOauthLabel.slice(1)}`}
         </button>
       </div>
 
