@@ -4,6 +4,24 @@ All notable changes to MashupForge are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.17] — 2026-04-30
+
+### Added
+- **mmx:** paste API key in Settings to authenticate without tmux
+- **mmx:** card click opens full MMX CLI for provider/model setup
+
+### Fixed
+- **settings:** preserve OAuth casing in MMX terminal-link copy
+- **settings:** MMX install button visible + clickable during loading
+- **settings:** show MMX install button regardless of active agent
+
+### Changed
+- **settings:** MMX card UX visual pass (MMX-CARD-VPASS-001)
+
+### Docs
+- **briefs:** MMX-CARD-VPASS-QA brief for visual-pass review
+- **briefs:** MMX-AGENT-CARD-UX-VISUAL-PASS brief from Hermes
+
 ## [0.9.16] — 2026-04-30
 
 ### Added
