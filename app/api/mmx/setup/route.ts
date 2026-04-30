@@ -100,26 +100,51 @@ function installMmxCli(): InstallResult {
 
 /**
  * POST /api/mmx/setup
- * Opens mmx's interactive OAuth login + config flow in a new terminal
- * (tmux on POSIX, spawn cmd window on Windows) so the user can authenticate
- * and pick model/provider through mmx's native CLI.
  *
- * Desktop-only: this route spawns tmux via execSync and is incompatible
- * with serverless runtimes. If we detect a serverless environment we
- * short-circuit with 503 so the caller sees a clear error instead of
- * a raw shell failure.
+ * Two flows:
+ *
+ * 1. **Non-interactive** — body contains `{ apiKey: "sk-..." }`. The route
+ *    auto-installs mmx-cli if missing, then runs
+ *    `mmx auth login --method api-key --api-key <key>`, which writes the
+ *    credential into the user's local mmx config. No terminal opens.
+ *    This is the canonical path documented at
+ *    https://platform.minimax.io/docs/token-plan/minimax-cli — it is the
+ *    fastest setup for users who already have an API key in hand.
+ *
+ * 2. **Interactive** — empty body. The route auto-installs if missing,
+ *    then spawns a tmux session (POSIX) or new cmd window (Windows)
+ *    that runs the OAuth/device-code flow followed by an interactive
+ *    shell, so users without an API key can authenticate via OAuth and
+ *    configure provider/model afterwards.
+ *
+ * Desktop-only: this route spawns subprocesses and is incompatible with
+ * serverless runtimes. If we detect a serverless environment we
+ * short-circuit with 503 so the caller sees a clear error instead of a
+ * raw shell failure.
  */
 
-export async function POST() {
+export async function POST(req: Request) {
   if (isServerless()) {
     return NextResponse.json(
       {
         success: false,
         error:
-          'MMX setup is desktop-only. This feature requires tmux and local subprocess execution — it cannot run on serverless platforms. Use the Tauri desktop build instead.',
+          'MMX setup is desktop-only. This feature requires local subprocess execution — it cannot run on serverless platforms. Use the Tauri desktop build instead.',
       },
       { status: 503 },
     );
+  }
+
+  // Optional non-interactive flow. JSON-parse errors fall through to the
+  // interactive flow below — empty body / invalid JSON is fine, just no key.
+  let apiKey: string | null = null;
+  try {
+    const body = (await req.json()) as { apiKey?: unknown };
+    if (typeof body?.apiKey === 'string' && body.apiKey.trim()) {
+      apiKey = body.apiKey.trim();
+    }
+  } catch {
+    // No body / non-JSON body — interactive flow.
   }
 
   let available = await isAvailable();
@@ -160,6 +185,68 @@ export async function POST() {
         { status: 500 },
       );
     }
+  }
+
+  // Non-interactive auth path: caller supplied an API key, so write it into
+  // mmx's local config via `mmx auth login --method api-key --api-key <key>`.
+  // `mmx auth status` afterwards confirms the credential was accepted.
+  if (apiKey) {
+    const authResult = spawnSync(
+      'mmx',
+      ['auth', 'login', '--method', 'api-key', '--api-key', apiKey],
+      { encoding: 'utf8', timeout: 30_000 },
+    );
+
+    // Redact the API key from anything we echo back to the client. mmx
+    // generally doesn't include the key in its own output, but defence in
+    // depth — the route's response is also written to browser console / dev
+    // logs, and we never want the secret to land there.
+    const redact = (s: string | undefined): string => {
+      if (!s) return '';
+      return s.replace(apiKey, '<api-key-redacted>').trim();
+    };
+
+    if ((authResult.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
+      return NextResponse.json(
+        { success: false, error: 'mmx not found on PATH after install. Try `which mmx` and `npm prefix -g`.' },
+        { status: 500 },
+      );
+    }
+    if (authResult.status !== 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            `mmx auth login --api-key failed (exit ${authResult.status}).\n\n` +
+            (redact(authResult.stderr) || redact(authResult.stdout) || 'No output from mmx.'),
+        },
+        { status: 500 },
+      );
+    }
+
+    // Verify with `mmx auth status` so we don't claim success on a no-op.
+    const statusResult = spawnSync('mmx', ['auth', 'status'], {
+      encoding: 'utf8',
+      timeout: 10_000,
+    });
+    if (statusResult.status !== 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            `API key accepted but mmx auth status reports unauthenticated (exit ${statusResult.status}). The key may be invalid or expired.\n\n` +
+            (redact(statusResult.stderr) || redact(statusResult.stdout) || ''),
+        },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message:
+        'MMX authenticated with API key. You can now select MMX as the active agent. To pick a provider/model, click "Open MMX CLI" and run `mmx config set provider <name>` / `mmx config set model <name>`.',
+      method: 'api-key',
+    });
   }
 
   try {

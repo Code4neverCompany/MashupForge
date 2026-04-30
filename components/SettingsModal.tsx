@@ -165,13 +165,38 @@ export function SettingsModal({
   // stays disabled until the POST completes (success or error), preventing
   // a second click from silently killing the first tmux session.
   const mmxBusyRef = useRef(false);
-  const handleMmxSetup = async () => {
+  const [mmxApiKey, setMmxApiKey] = useState('');
+
+  // Refresh `mmxStatus` from the server. Called after a successful setup so
+  // the UI flips from "Not Authenticated" → "Available" without a tab toggle.
+  const refreshMmxStatus = async () => {
+    try {
+      const r = await fetch('/api/mmx/status', { cache: 'no-store' });
+      if (!r.ok) return;
+      const d = (await r.json()) as { available?: unknown; authenticated?: unknown; version?: unknown };
+      setMmxStatus({
+        available: !!d.available,
+        authenticated: !!d.authenticated,
+        version: typeof d.version === 'string' ? d.version : '',
+      });
+    } catch {
+      // Best-effort; the existing tab-mount probe will retry on next open.
+    }
+  };
+
+  // Internal POST helper. `apiKey` undefined → interactive (tmux) flow;
+  // `apiKey` set → non-interactive `mmx auth login --api-key` on the server.
+  const postMmxSetup = async (apiKey?: string): Promise<void> => {
     if (mmxBusyRef.current) return;
     mmxBusyRef.current = true;
     setMmxBusy(true);
     setMmxError(null);
     try {
-      const res = await fetch('/api/mmx/setup', { method: 'POST' });
+      const res = await fetch('/api/mmx/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: apiKey ? JSON.stringify({ apiKey }) : undefined,
+      });
       const data = (await res.json()) as {
         success?: boolean;
         error?: string;
@@ -182,6 +207,12 @@ export function SettingsModal({
         setMmxError(data.error || 'Setup failed');
       } else {
         onMmxSetupComplete(data.message || null);
+        if (apiKey) {
+          // Non-interactive path: clear the field + re-probe status so the
+          // card flips to Authenticated without the user reopening the tab.
+          setMmxApiKey('');
+          await refreshMmxStatus();
+        }
       }
     } catch {
       setMmxError('Network error — could not reach the setup endpoint.');
@@ -189,6 +220,13 @@ export function SettingsModal({
       setMmxBusy(false);
       mmxBusyRef.current = false;
     }
+  };
+
+  const handleMmxSetup = () => { void postMmxSetup(); };
+  const handleMmxApiKeySave = () => {
+    const key = mmxApiKey.trim();
+    if (!key) return;
+    void postMmxSetup(key);
   };
 
   // MMX status polling — runs once when the AI Agent tab is opened.
@@ -631,7 +669,7 @@ export function SettingsModal({
                 rather show the button optimistically than make the user wait. */}
             {activeAiAgent !== 'mmx'
               && (mmxStatus == null || !mmxStatus.available || !mmxStatus.authenticated) && (
-              <div className="pt-2 space-y-2">
+              <div className="pt-2 space-y-3">
                 <p className="text-[11px] text-zinc-400">
                   {mmxStatus == null
                     ? 'Checking MMX CLI status…'
@@ -639,18 +677,63 @@ export function SettingsModal({
                       ? 'MMX CLI is not installed yet.'
                       : 'MMX CLI is installed but not authenticated.'}
                 </p>
-                <button
-                  type="button"
-                  onClick={handleMmxSetup}
-                  disabled={mmxBusy}
-                  className="btn-gold-sm rounded-lg"
-                >
-                  {mmxBusy
-                    ? 'Opening…'
-                    : mmxStatus != null && !mmxStatus.available
-                      ? 'Install + Set Up MMX'
-                      : 'Launch MMX Setup'}
-                </button>
+
+                {/* Primary path: paste an API key. Server-side runs
+                    `mmx auth login --method api-key --api-key <key>` after
+                    auto-installing mmx-cli if needed, so the user never
+                    leaves the Settings tab to authenticate. */}
+                <div className="space-y-1">
+                  <label htmlFor="mmx-api-key" className="block text-[10px] uppercase tracking-wider text-zinc-500">
+                    MiniMax API key
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="mmx-api-key"
+                      type="password"
+                      value={mmxApiKey}
+                      onChange={(e) => setMmxApiKey(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && mmxApiKey.trim() && !mmxBusy) {
+                          e.preventDefault();
+                          handleMmxApiKeySave();
+                        }
+                      }}
+                      placeholder="sk-…"
+                      disabled={mmxBusy}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="flex-1 bg-zinc-900 border border-zinc-700 focus:border-[#c5a062] outline-none rounded px-2 py-1 text-[12px] text-white font-mono disabled:opacity-60"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleMmxApiKeySave}
+                      disabled={mmxBusy || !mmxApiKey.trim()}
+                      className="btn-gold-sm rounded-lg px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {mmxBusy ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-zinc-600">
+                    Stored in your local mmx config; never sent to MashupForge servers. Get one at platform.minimax.io.
+                  </p>
+                </div>
+
+                {/* Secondary path: open the interactive tmux flow for users
+                    who prefer OAuth or want to configure provider/model in
+                    the same session. */}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleMmxSetup}
+                    disabled={mmxBusy}
+                    className="text-[11px] text-zinc-400 hover:text-[#c5a062] underline underline-offset-2 disabled:opacity-50"
+                  >
+                    {mmxStatus != null && !mmxStatus.available
+                      ? 'or install + sign in via terminal (OAuth)'
+                      : 'or sign in via terminal (OAuth)'}
+                  </button>
+                </div>
+
                 {mmxError && (
                   <p className="text-[11px] text-red-400 whitespace-pre-wrap">{mmxError}</p>
                 )}
