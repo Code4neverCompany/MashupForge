@@ -59,11 +59,6 @@ function extractLeonardoError(parsed: unknown): string | null {
 
 // Map internal id → Leonardo API model id (exact strings required by
 // https://cloud.leonardo.ai/api/rest/v2/generations).
-// Nano Banana (original) → 'gemini-2.5-flash-image' (Leonardo's API ID)
-// Nano Banana 2 → 'nano-banana-2' (accepted directly, no mapping needed)
-// Nano Banana Pro → 'gemini-image-2'
-// GPT Image-1.5 → 'gpt-image-1.5'
-// GPT Image 2 → 'gpt-image-2'
 const MODEL_ID_MAP: Record<string, string> = {
   'nano-banana': 'gemini-2.5-flash-image',
   'nano-banana-2': 'nano-banana-2',

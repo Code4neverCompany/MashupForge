@@ -64,35 +64,38 @@ Model identifier: "gpt-image-2"
 ## Parameters
 - model (string, required): "gpt-image-2".
 - prompt (string, required).
-- quality (string, optional): LOW | MEDIUM | HIGH. App default: HIGH.
-- prompt_enhance (string, optional): ON | OFF. App default: ON.
-- quantity (integer, optional, 1..8).
-- width (integer, optional, multiple of 16).
-- height (integer, optional, multiple of 16).
-- public (boolean, optional).
-- guidances.image_reference (array, optional, up to 6): each entry has
-  image.id and image.type (GENERATED|UPLOADED). NOTE: gpt-image-2 does
-  NOT use \`strength\` on image references — omit it.
-
-## Notes
-- gpt-image-2 has no mode parameter (and mode is deprecated fleet-wide
-  for GPT image models as of 2026-05-04).
-- gpt-image-2 does not document a seed parameter; do not send seed.
-- size: "auto" is NOT supported and must never be sent.
+- quality (string, optional): LOW | MEDIUM | HIGH. Default: MEDIUM.
+- prompt_enhance (string, optional): ON | OFF. Default: OFF.
+- quantity (integer, optional, 1-8). Default: 1.
+- width (integer, optional): must be multiple of 16. max(w,h) < 3840.
+- height (integer, optional): must be multiple of 16. max(w,h) < 3840.
+- public (boolean, optional). Default: false.
+- guidances.image_reference (array, optional, up to 6): each reference
+  includes image.id and image.type (GENERATED or UPLOADED).
+  NOTE: GPT Image 2 does NOT use strength — must not be passed to the API.
 
 ## Aspect Ratio Settings (width × height)
 | Aspect Ratio | Width | Height |
-| 1:1          | 1024  | 1024   |
-| 2:3          | 848   | 1264   |
-| 3:2          | 1264  | 848    |
-| 16:9         | 1376  | 768    |
-| 9:16         | 768   | 1376   |
+| 1:1         | 1024  | 1024   |
+| 2:3         | 848   | 1264   |
+| 3:2         | 1264  | 848    |
+| 16:9        | 1376  | 768    |
+| 9:16        | 768   | 1376   |
 
 ## Resolution Constraints
-- max edge: max(width, height) < 3840.
-- both width and height must be multiples of 16.
-- aspect ratio: max(w,h)/min(w,h) ≤ 3 (no wider than 3:1, no taller than 1:3).
-- pixel count: 655,360 ≤ width × height ≤ 8,294,400.
+- Max edge length: max(width, height) < 3840.
+- Both width and height must be multiples of 16.
+- Aspect ratio limit: long/short ratio ≤ 3 (no 21:9 ultra-wide).
+- Pixel count range: 655,360 ≤ width × height ≤ 8,294,400.
+- size:auto is NOT supported and must not be passed to the API.
+
+## Key Differences from GPT Image-1.5
+- No seed parameter (GPT Image-1.5 supports it).
+- No strength on image_reference (GPT Image-1.5 supports LOW|MID|HIGH).
+- Default quality is MEDIUM (GPT Image-1.5 defaults to HIGH).
+- Default prompt_enhance is OFF (GPT Image-1.5 defaults to ON).
+- Max quantity 8 (GPT Image-1.5 caps at 4).
+- Supports 16:9 and 9:16 (GPT Image-1.5 only 1:1, 2:3, 3:2).
 `;
 
 const NANO_BANANA_2 = `========================================================================
