@@ -506,11 +506,22 @@ export function SettingsModal({
                   label = 'Not Installed';
                   labelColor = 'text-red-300';
                 }
-                return (
-                  <button
-                    type="button"
-                    onClick={() => updateSettings({ activeAiAgent: 'mmx', aiAgentProvider: 'mmx' })}
-                    aria-pressed={selected}
+                  const handleMmxCardClick = () => {
+                    if (selected) {
+                      updateSettings({ activeAiAgent: 'mmx', aiAgentProvider: 'mmx' });
+                      return;
+                    }
+                    if (!available || !mmxStatus?.authenticated) {
+                      handleMmxSetup();
+                    } else {
+                      updateSettings({ activeAiAgent: 'mmx', aiAgentProvider: 'mmx' });
+                    }
+                  };
+                  return (
+                    <button
+                      type="button"
+                      onClick={handleMmxCardClick}
+                      aria-pressed={selected}
                     className={`text-left rounded-xl border p-4 transition-all ${
                       selected
                         ? 'border-[#c5a062] bg-[#c5a062]/10 shadow-[0_0_0_1px_rgba(197,160,98,0.3)]'
@@ -608,9 +619,19 @@ export function SettingsModal({
                   {mmxStatus == null ? (
                     <p className="text-[11px] text-zinc-500">Checking MMX status…</p>
                   ) : !mmxStatus.available ? (
-                    <p className="text-[11px] text-red-400">
-                      mmx binary not found on PATH. Install the MiniMax mmx CLI and relaunch.
-                    </p>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={handleMmxSetup}
+                        disabled={mmxBusy}
+                        className="btn-gold-sm rounded-lg"
+                      >
+                        {mmxBusy ? 'Opening…' : 'Launch MMX Setup'}
+                      </button>
+                      {mmxError && (
+                        <p className="text-[11px] text-red-400">{mmxError}</p>
+                      )}
+                    </div>
                   ) : !mmxStatus.authenticated ? (
                     <div className="space-y-2">
                       <button
