@@ -511,18 +511,24 @@ export function SettingsModal({
                       updateSettings({ activeAiAgent: 'mmx', aiAgentProvider: 'mmx' });
                       return;
                     }
-                    if (!available || !mmxStatus?.authenticated) {
+                    // QA W-1: strict equality so a click in the null/undefined
+                    // loading window (before the /api/mmx/status probe and the
+                    // useMmxAvailability hook settle) does not fire setup on a
+                    // machine where mmx is already installed + authenticated.
+                    if (available === false || mmxStatus?.authenticated === false) {
                       handleMmxSetup();
-                    } else {
+                    } else if (available === true && mmxStatus?.authenticated === true) {
                       updateSettings({ activeAiAgent: 'mmx', aiAgentProvider: 'mmx' });
                     }
+                    // else: still loading — do nothing rather than guess.
                   };
                   return (
                     <button
                       type="button"
                       onClick={handleMmxCardClick}
                       aria-pressed={selected}
-                    className={`text-left rounded-xl border p-4 transition-all ${
+                      disabled={mmxBusy}
+                    className={`text-left rounded-xl border p-4 transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
                       selected
                         ? 'border-[#c5a062] bg-[#c5a062]/10 shadow-[0_0_0_1px_rgba(197,160,98,0.3)]'
                         : 'border-zinc-800/60 bg-zinc-950/40 hover:border-zinc-700'
