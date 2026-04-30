@@ -180,10 +180,18 @@ export async function POST() {
     }
 
     // POSIX desktop: use tmux so the setup session is persistent and visible.
-    // Run `mmx auth login --no-browser` in a detached tmux session named
-    // "mmx-setup". Only kill the existing session if one is already running —
-    // belt-and-suspenders guard alongside the mmxBusyRef double-click guard
-    // in the UI, because the API is also callable via curl/scripts.
+    // The session does three things in order:
+    //   1. Skip auth if the user is already authenticated (`mmx auth status`),
+    //      otherwise run `mmx auth login --no-browser`.
+    //   2. Print a help banner pointing at config commands.
+    //   3. Drop into an interactive bash shell so the user can run `mmx config
+    //      set provider …`, `mmx config set model …`, `mmx --help`, etc.
+    //      without leaving the session.
+    //
+    // Idempotency: if the session already exists, return `alreadyRunning`
+    // instead of killing it. Belt-and-suspenders alongside the mmxBusyRef
+    // double-click guard in the UI — the route is also callable via
+    // curl/scripts, so the server must protect itself.
     const hasSession = spawnSync('tmux', ['has-session', '-t', 'mmx-setup'], {
       stdio: 'ignore',
     });
@@ -198,9 +206,29 @@ export async function POST() {
       });
     }
     spawnSync('tmux', ['kill-session', '-t', 'mmx-setup'], { stdio: 'ignore' });
+
+    // Inline bash script: run the auth flow only if needed, print a banner,
+    // then exec an interactive shell. Single-quoted to avoid shell expansion
+    // happening in this Node string before tmux passes it to bash.
+    const setupScript = [
+      'if mmx auth status >/dev/null 2>&1; then',
+      '  echo "MMX is already authenticated."',
+      'else',
+      '  mmx auth login --no-browser || true',
+      'fi',
+      'echo',
+      'echo "─── MMX CLI ready ────────────────────────────────────────────"',
+      'echo "Configure provider, model, or other settings:"',
+      'echo "  mmx config show               # show current config"',
+      'echo "  mmx config set <key> <value>  # set a config value"',
+      'echo "  mmx --help                    # all commands"',
+      'echo "──────────────────────────────────────────────────────────────"',
+      'exec bash -i',
+    ].join('\n');
+
     const tmuxResult = spawnSync(
       'tmux',
-      ['new-session', '-d', '-s', 'mmx-setup', '-x', '120', '-y', '30', 'mmx', 'auth', 'login', '--no-browser'],
+      ['new-session', '-d', '-s', 'mmx-setup', '-x', '120', '-y', '30', 'bash', '-c', setupScript],
       { encoding: 'utf8' },
     );
     if (tmuxResult.status !== 0) {
@@ -212,7 +240,7 @@ export async function POST() {
     return NextResponse.json({
       success: true,
       message:
-        'MMX setup opened in tmux session "mmx-setup". Attach with:\n  tmux attach -t mmx-setup\n\nThen follow the OAuth/device-code prompts to authenticate.',
+        'MMX CLI opened in tmux session "mmx-setup". Attach with:\n  tmux attach -t mmx-setup\n\nIf not yet authenticated, follow the OAuth/device-code prompts. Once in the shell, run `mmx config set provider <name>` and `mmx config set model <name>` to choose your provider and model. `mmx --help` lists every resource.',
       tmuxSession: 'mmx-setup',
       platform: 'posix',
     });

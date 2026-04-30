@@ -507,22 +507,22 @@ export function SettingsModal({
                   labelColor = 'text-red-300';
                 }
                   const handleMmxCardClick = () => {
-                    if (selected) {
+                    // Always open the MMX CLI in tmux so the user can configure
+                    // provider/model, even when already authenticated. The
+                    // setup route is idempotent: it skips `mmx auth login` when
+                    // already auth'd and drops straight into an interactive
+                    // shell. If the tmux session is already running it returns
+                    // `alreadyRunning` instead of duplicating it.
+                    handleMmxSetup();
+                    // Promote MMX to the active agent only on a healthy
+                    // machine and only when not already selected — no point
+                    // re-writing the same setting on every click.
+                    if (
+                      !selected
+                      && available === true
+                      && mmxStatus?.authenticated === true
+                    ) {
                       updateSettings({ activeAiAgent: 'mmx', aiAgentProvider: 'mmx' });
-                      return;
-                    }
-                    // Trigger setup whenever MMX isn't confirmed installed +
-                    // authenticated. The null/loading window also routes here so
-                    // a user clicking before the probe settles still installs;
-                    // /api/mmx/setup is idempotent (server re-checks isAvailable
-                    // and skips the install branch when mmx is already on PATH),
-                    // so the worst-case "false trigger" on an already-installed
-                    // machine just opens the auth tmux session — visible to the
-                    // user, recoverable, never destructive.
-                    if (available === true && mmxStatus?.authenticated === true) {
-                      updateSettings({ activeAiAgent: 'mmx', aiAgentProvider: 'mmx' });
-                    } else {
-                      handleMmxSetup();
                     }
                   };
                   return (
