@@ -218,11 +218,14 @@ export async function POST(req: Request) {
       const igAccountId = igAccountIdRaw.trim().replace(/[^0-9]/g, '');
       const igAccessToken = igAccessTokenRaw.trim();
 
+      if (igAccessToken.startsWith('IGAA')) {
+        throw new Error('You are using an Instagram Basic Display token (starts with IGAA). To publish posts, you need a Facebook Page Access Token (starts with EAA). Get one from Meta Developer Portal -> Graph API Explorer.');
+      }
       if (igAccessToken.startsWith('IGQ')) {
-        throw new Error('You are using an Instagram Basic Display token (starts with IGQ). To publish posts, you MUST use the Instagram Graph API with a Facebook Page Access Token (starts with EAA). The Basic Display API does not support posting.');
+        throw new Error('You are using an Instagram Basic Display token (starts with IGQ). To publish posts, you need a Facebook Page Access Token (starts with EAA). The Basic Display API does not support posting.');
       }
 
-      const hostUrl = igAccessToken.startsWith('IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
+      const hostUrl = 'graph.facebook.com';
 
       // Preprocess every image through prepareForInstagram so IG doesn't
       // center-crop anything. We build a SEPARATE igItems array instead
