@@ -511,16 +511,19 @@ export function SettingsModal({
                       updateSettings({ activeAiAgent: 'mmx', aiAgentProvider: 'mmx' });
                       return;
                     }
-                    // QA W-1: strict equality so a click in the null/undefined
-                    // loading window (before the /api/mmx/status probe and the
-                    // useMmxAvailability hook settle) does not fire setup on a
-                    // machine where mmx is already installed + authenticated.
-                    if (available === false || mmxStatus?.authenticated === false) {
-                      handleMmxSetup();
-                    } else if (available === true && mmxStatus?.authenticated === true) {
+                    // Trigger setup whenever MMX isn't confirmed installed +
+                    // authenticated. The null/loading window also routes here so
+                    // a user clicking before the probe settles still installs;
+                    // /api/mmx/setup is idempotent (server re-checks isAvailable
+                    // and skips the install branch when mmx is already on PATH),
+                    // so the worst-case "false trigger" on an already-installed
+                    // machine just opens the auth tmux session — visible to the
+                    // user, recoverable, never destructive.
+                    if (available === true && mmxStatus?.authenticated === true) {
                       updateSettings({ activeAiAgent: 'mmx', aiAgentProvider: 'mmx' });
+                    } else {
+                      handleMmxSetup();
                     }
-                    // else: still loading — do nothing rather than guess.
                   };
                   return (
                     <button
@@ -620,17 +623,21 @@ export function SettingsModal({
 
             {/* MMX install CTA — visible regardless of which agent is currently
                 active so users can install/auth MMX without first selecting it.
-                Without this hoist the button below was buried inside the
+                Without this hoist the button was buried inside the
                 `activeAiAgent === 'mmx'` branch and invisible whenever Pi.dev
-                was the default active agent (which is the new-user case). */}
-            {mmxStatus != null
-              && (!mmxStatus.available || !mmxStatus.authenticated)
-              && activeAiAgent !== 'mmx' && (
+                was the default active agent. Renders during the null/loading
+                window as well so the install affordance never disappears: the
+                /api/mmx/status probe can take a beat on cold starts and we'd
+                rather show the button optimistically than make the user wait. */}
+            {activeAiAgent !== 'mmx'
+              && (mmxStatus == null || !mmxStatus.available || !mmxStatus.authenticated) && (
               <div className="pt-2 space-y-2">
                 <p className="text-[11px] text-zinc-400">
-                  {!mmxStatus.available
-                    ? 'MMX CLI is not installed yet.'
-                    : 'MMX CLI is installed but not authenticated.'}
+                  {mmxStatus == null
+                    ? 'Checking MMX CLI status…'
+                    : !mmxStatus.available
+                      ? 'MMX CLI is not installed yet.'
+                      : 'MMX CLI is installed but not authenticated.'}
                 </p>
                 <button
                   type="button"
@@ -640,7 +647,7 @@ export function SettingsModal({
                 >
                   {mmxBusy
                     ? 'Opening…'
-                    : !mmxStatus.available
+                    : mmxStatus != null && !mmxStatus.available
                       ? 'Install + Set Up MMX'
                       : 'Launch MMX Setup'}
                 </button>
@@ -655,7 +662,23 @@ export function SettingsModal({
               {activeAiAgent === 'mmx' ? (
                 <>
                   {mmxStatus == null ? (
-                    <p className="text-[11px] text-zinc-500">Checking MMX status…</p>
+                    // Loading: show the button optimistically so the user can
+                    // act without waiting for /api/mmx/status. /api/mmx/setup
+                    // is idempotent on already-installed binaries.
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-zinc-500">Checking MMX status…</p>
+                      <button
+                        type="button"
+                        onClick={handleMmxSetup}
+                        disabled={mmxBusy}
+                        className="btn-gold-sm rounded-lg"
+                      >
+                        {mmxBusy ? 'Opening…' : 'Launch MMX Setup'}
+                      </button>
+                      {mmxError && (
+                        <p className="text-[11px] text-red-400 whitespace-pre-wrap">{mmxError}</p>
+                      )}
+                    </div>
                   ) : !mmxStatus.available ? (
                     <div className="space-y-2">
                       <button
