@@ -29,8 +29,19 @@ interface InstallResult {
  */
 function installMmxCli(): InstallResult {
   const isWin = platform() === 'win32';
+  // npm-on-PATH first; then common managed-install locations users hit when
+  // PATH is not set up (Tauri/Electron sometimes inherit a sparse env on
+  // macOS GUI launches, and Linuxbrew dot-files only kick in for login shells).
+  // Order: Apple-silicon Homebrew → Intel-mac Homebrew + most Linux distros →
+  // Linuxbrew. First match wins via the ENOENT-fallback loop below.
   const candidates: string[] = ['npm'];
-  if (!isWin) candidates.push('/home/linuxbrew/.linuxbrew/bin/npm');
+  if (!isWin) {
+    candidates.push(
+      '/opt/homebrew/bin/npm',
+      '/usr/local/bin/npm',
+      '/home/linuxbrew/.linuxbrew/bin/npm',
+    );
+  }
 
   const installArgs = ['install', '-g', '--no-fund', '--no-audit', 'mmx-cli'];
   let lastResult: ReturnType<typeof spawnSync> | undefined;
