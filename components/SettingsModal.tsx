@@ -618,7 +618,39 @@ export function SettingsModal({
               })()}
             </div>
 
-            {/* Launch Setup */}
+            {/* MMX install CTA — visible regardless of which agent is currently
+                active so users can install/auth MMX without first selecting it.
+                Without this hoist the button below was buried inside the
+                `activeAiAgent === 'mmx'` branch and invisible whenever Pi.dev
+                was the default active agent (which is the new-user case). */}
+            {mmxStatus != null
+              && (!mmxStatus.available || !mmxStatus.authenticated)
+              && activeAiAgent !== 'mmx' && (
+              <div className="pt-2 space-y-2">
+                <p className="text-[11px] text-zinc-400">
+                  {!mmxStatus.available
+                    ? 'MMX CLI is not installed yet.'
+                    : 'MMX CLI is installed but not authenticated.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleMmxSetup}
+                  disabled={mmxBusy}
+                  className="btn-gold-sm rounded-lg"
+                >
+                  {mmxBusy
+                    ? 'Opening…'
+                    : !mmxStatus.available
+                      ? 'Install + Set Up MMX'
+                      : 'Launch MMX Setup'}
+                </button>
+                {mmxError && (
+                  <p className="text-[11px] text-red-400 whitespace-pre-wrap">{mmxError}</p>
+                )}
+              </div>
+            )}
+
+            {/* Launch Setup — active-agent-specific status panel */}
             <div className="pt-2">
               {activeAiAgent === 'mmx' ? (
                 <>
