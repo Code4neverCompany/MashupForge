@@ -166,21 +166,33 @@ export function SettingsModal({
   // a second click from silently killing the first tmux session.
   const mmxBusyRef = useRef(false);
   const [mmxApiKey, setMmxApiKey] = useState('');
+  // Transient success flag set after a non-interactive API-key save lands a
+  // 200 from /api/mmx/setup AND /api/mmx/status confirms `authenticated:true`.
+  // Auto-clears after ~3.5s so the inline confirmation doesn't linger forever.
+  // Distinct from `onMmxSetupComplete` (which surfaces the server's `message`
+  // field in a separate code-block panel) — this flag is the green "✓
+  // Authenticated" line that lives next to the form itself.
+  const [mmxJustAuthed, setMmxJustAuthed] = useState(false);
 
   // Refresh `mmxStatus` from the server. Called after a successful setup so
   // the UI flips from "Not Authenticated" → "Available" without a tab toggle.
-  const refreshMmxStatus = async () => {
+  // Returns the new status (or null on error) so callers can branch on it
+  // — used by `postMmxSetup` to decide whether to fire the success badge.
+  const refreshMmxStatus = async (): Promise<MmxStatus | null> => {
     try {
       const r = await fetch('/api/mmx/status', { cache: 'no-store' });
-      if (!r.ok) return;
+      if (!r.ok) return null;
       const d = (await r.json()) as { available?: unknown; authenticated?: unknown; version?: unknown };
-      setMmxStatus({
+      const next: MmxStatus = {
         available: !!d.available,
         authenticated: !!d.authenticated,
         version: typeof d.version === 'string' ? d.version : '',
-      });
+      };
+      setMmxStatus(next);
+      return next;
     } catch {
       // Best-effort; the existing tab-mount probe will retry on next open.
+      return null;
     }
   };
 
@@ -208,10 +220,13 @@ export function SettingsModal({
       } else {
         onMmxSetupComplete(data.message || null);
         if (apiKey) {
-          // Non-interactive path: clear the field + re-probe status so the
-          // card flips to Authenticated without the user reopening the tab.
+          // Non-interactive path: clear the field + re-probe status. Fire
+          // the success badge only if the re-probe confirms authenticated;
+          // otherwise the user gets the server message via the existing
+          // mmxSetupMsg panel without a misleading green checkmark.
           setMmxApiKey('');
-          await refreshMmxStatus();
+          const next = await refreshMmxStatus();
+          if (next?.authenticated) setMmxJustAuthed(true);
         }
       }
     } catch {
@@ -221,6 +236,15 @@ export function SettingsModal({
       mmxBusyRef.current = false;
     }
   };
+
+  // Auto-dismiss the success badge so the UI returns to its steady "Available"
+  // state. 3.5s is long enough to read "✓ Authenticated" without it becoming
+  // visual debt the user has to dismiss manually.
+  useEffect(() => {
+    if (!mmxJustAuthed) return;
+    const t = setTimeout(() => setMmxJustAuthed(false), 3500);
+    return () => clearTimeout(t);
+  }, [mmxJustAuthed]);
 
   const handleMmxSetup = () => { void postMmxSetup(); };
   const handleMmxApiKeySave = () => {
@@ -278,6 +302,102 @@ export function SettingsModal({
     const t = setTimeout(() => setShowSavedPill(false), 1500);
     return () => clearTimeout(t);
   }, [saveState]);
+
+  // ── MMX setup form (shared between hoisted CTA and active-agent panel) ───
+  // Defined inline so both render sites get pixel-identical UX. The caption,
+  // button labels, and "or sign in via terminal" link are all state-aware so
+  // a single block covers Loading / Not Installed / Not Authenticated. The
+  // authenticated-and-ready state is rendered separately by the active-agent
+  // panel since the hoisted CTA hides itself in that case.
+  //
+  // State-driven copy (microcopy harmonized 2026-04-30 per design pass):
+  //   loading        → "Checking MMX status…" + "Sign in via terminal (OAuth)"
+  //   not installed  → "MMX is not installed yet."
+  //                    + "Install + sign in via terminal (OAuth)"
+  //   not auth'd     → "MMX is installed but not authenticated."
+  //                    + "Sign in via terminal (OAuth)"
+  const mmxNeedsInstall = mmxStatus != null && !mmxStatus.available;
+  const mmxCaption =
+    mmxStatus == null
+      ? 'Checking MMX status…'
+      : !mmxStatus.available
+        ? 'MMX is not installed yet.'
+        : 'MMX is installed but not authenticated.';
+  const mmxOauthLabel = mmxNeedsInstall
+    ? 'Install + sign in via terminal (OAuth)'
+    : 'Sign in via terminal (OAuth)';
+
+  const mmxSetupBlock = (
+    <div className="space-y-3">
+      <p className="text-[11px] text-zinc-400">{mmxCaption}</p>
+
+      {/* Primary path: paste an API key. Server-side runs `mmx auth login
+          --method api-key --api-key <key>` after auto-installing mmx-cli if
+          needed. See docs/design/patterns/api-key-paste-form.md for the
+          general pattern this implements. */}
+      <div className="space-y-1">
+        <label htmlFor="mmx-api-key" className="block text-[10px] uppercase tracking-wider text-zinc-500">
+          MiniMax API key
+        </label>
+        <div className="flex gap-2">
+          <input
+            id="mmx-api-key"
+            type="password"
+            value={mmxApiKey}
+            onChange={(e) => setMmxApiKey(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && mmxApiKey.trim() && !mmxBusy) {
+                e.preventDefault();
+                handleMmxApiKeySave();
+              }
+            }}
+            placeholder="sk-…"
+            disabled={mmxBusy}
+            autoComplete="off"
+            spellCheck={false}
+            aria-describedby="mmx-api-key-help"
+            className="flex-1 bg-zinc-900 border border-zinc-700 focus:border-[#c5a062] outline-none rounded px-2 py-1 text-[12px] text-white font-mono disabled:opacity-60"
+          />
+          <button
+            type="button"
+            onClick={handleMmxApiKeySave}
+            disabled={mmxBusy || !mmxApiKey.trim()}
+            className="btn-gold-sm rounded-lg px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {mmxBusy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+        <p id="mmx-api-key-help" className="text-[10px] text-zinc-600">
+          Stored in your local mmx config; never sent to MashupForge servers. Get one at platform.minimax.io.
+        </p>
+      </div>
+
+      {/* Secondary path: tmux/cmd interactive flow. Demoted to a text link
+          so the API-key path is the visual primary. */}
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="button"
+          onClick={handleMmxSetup}
+          disabled={mmxBusy}
+          className="text-[11px] text-zinc-400 hover:text-[#c5a062] underline underline-offset-2 disabled:opacity-50"
+        >
+          {mmxBusy ? 'Opening…' : `or ${mmxOauthLabel.toLowerCase()}`}
+        </button>
+      </div>
+
+      {/* Inline feedback. mmxJustAuthed is a transient confirmation that
+          auto-clears after 3.5s; mmxError persists until the next attempt. */}
+      {mmxJustAuthed && (
+        <p className="text-[11px] text-emerald-400 flex items-center gap-1">
+          <span aria-hidden>✓</span>
+          MMX authenticated. Open the terminal anytime to pick a provider/model.
+        </p>
+      )}
+      {mmxError && (
+        <p className="text-[11px] text-red-400 whitespace-pre-wrap" role="alert">{mmxError}</p>
+      )}
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
@@ -667,132 +787,45 @@ export function SettingsModal({
                 window as well so the install affordance never disappears: the
                 /api/mmx/status probe can take a beat on cold starts and we'd
                 rather show the button optimistically than make the user wait. */}
+            {/* Hoisted CTA: rendered when MMX is not the active agent and
+                still needs setup. Hides itself once MMX is the active agent
+                so the active-agent panel below owns the surface — this
+                avoids the duplicate-MMX-panel concern flagged in the
+                MMX-AGENT-CARD-UX-VISUAL-PASS brief. */}
             {activeAiAgent !== 'mmx'
               && (mmxStatus == null || !mmxStatus.available || !mmxStatus.authenticated) && (
-              <div className="pt-2 space-y-3">
-                <p className="text-[11px] text-zinc-400">
-                  {mmxStatus == null
-                    ? 'Checking MMX CLI status…'
-                    : !mmxStatus.available
-                      ? 'MMX CLI is not installed yet.'
-                      : 'MMX CLI is installed but not authenticated.'}
-                </p>
-
-                {/* Primary path: paste an API key. Server-side runs
-                    `mmx auth login --method api-key --api-key <key>` after
-                    auto-installing mmx-cli if needed, so the user never
-                    leaves the Settings tab to authenticate. */}
-                <div className="space-y-1">
-                  <label htmlFor="mmx-api-key" className="block text-[10px] uppercase tracking-wider text-zinc-500">
-                    MiniMax API key
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      id="mmx-api-key"
-                      type="password"
-                      value={mmxApiKey}
-                      onChange={(e) => setMmxApiKey(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && mmxApiKey.trim() && !mmxBusy) {
-                          e.preventDefault();
-                          handleMmxApiKeySave();
-                        }
-                      }}
-                      placeholder="sk-…"
-                      disabled={mmxBusy}
-                      autoComplete="off"
-                      spellCheck={false}
-                      className="flex-1 bg-zinc-900 border border-zinc-700 focus:border-[#c5a062] outline-none rounded px-2 py-1 text-[12px] text-white font-mono disabled:opacity-60"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleMmxApiKeySave}
-                      disabled={mmxBusy || !mmxApiKey.trim()}
-                      className="btn-gold-sm rounded-lg px-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {mmxBusy ? 'Saving…' : 'Save'}
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-zinc-600">
-                    Stored in your local mmx config; never sent to MashupForge servers. Get one at platform.minimax.io.
-                  </p>
-                </div>
-
-                {/* Secondary path: open the interactive tmux flow for users
-                    who prefer OAuth or want to configure provider/model in
-                    the same session. */}
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleMmxSetup}
-                    disabled={mmxBusy}
-                    className="text-[11px] text-zinc-400 hover:text-[#c5a062] underline underline-offset-2 disabled:opacity-50"
-                  >
-                    {mmxStatus != null && !mmxStatus.available
-                      ? 'or install + sign in via terminal (OAuth)'
-                      : 'or sign in via terminal (OAuth)'}
-                  </button>
-                </div>
-
-                {mmxError && (
-                  <p className="text-[11px] text-red-400 whitespace-pre-wrap">{mmxError}</p>
-                )}
-              </div>
+              <div className="pt-2">{mmxSetupBlock}</div>
             )}
 
-            {/* Launch Setup — active-agent-specific status panel */}
+            {/* Launch Setup — active-agent-specific status panel.
+                When MMX is the active agent we own the full surface here:
+                needs-setup states reuse the shared mmxSetupBlock (so the
+                user gets the same API-key form they'd see in the hoisted
+                CTA), and the authenticated state shows a compact ready
+                line + a reconfigure link to drop into the terminal for
+                provider/model changes. */}
             <div className="pt-2">
               {activeAiAgent === 'mmx' ? (
                 <>
-                  {mmxStatus == null ? (
-                    // Loading: show the button optimistically so the user can
-                    // act without waiting for /api/mmx/status. /api/mmx/setup
-                    // is idempotent on already-installed binaries.
-                    <div className="space-y-2">
-                      <p className="text-[11px] text-zinc-500">Checking MMX status…</p>
-                      <button
-                        type="button"
-                        onClick={handleMmxSetup}
-                        disabled={mmxBusy}
-                        className="btn-gold-sm rounded-lg"
-                      >
-                        {mmxBusy ? 'Opening…' : 'Launch MMX Setup'}
-                      </button>
-                      {mmxError && (
-                        <p className="text-[11px] text-red-400 whitespace-pre-wrap">{mmxError}</p>
-                      )}
-                    </div>
-                  ) : !mmxStatus.available ? (
-                    <div className="space-y-2">
-                      <button
-                        type="button"
-                        onClick={handleMmxSetup}
-                        disabled={mmxBusy}
-                        className="btn-gold-sm rounded-lg"
-                      >
-                        {mmxBusy ? 'Opening…' : 'Launch MMX Setup'}
-                      </button>
-                      {mmxError && (
-                        <p className="text-[11px] text-red-400">{mmxError}</p>
-                      )}
-                    </div>
-                  ) : !mmxStatus.authenticated ? (
-                    <div className="space-y-2">
-                      <button
-                        type="button"
-                        onClick={handleMmxSetup}
-                        disabled={mmxBusy}
-                        className="btn-gold-sm rounded-lg"
-                      >
-                        {mmxBusy ? 'Opening…' : 'Launch MMX Setup'}
-                      </button>
-                      {mmxError && (
-                        <p className="text-[11px] text-red-400">{mmxError}</p>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-emerald-400">MMX authenticated and ready.</p>
-                  )}
+                  {(mmxStatus == null || !mmxStatus.available || !mmxStatus.authenticated)
+                    ? mmxSetupBlock
+                    : (
+                      <div className="space-y-1">
+                        <p className="text-[11px] text-emerald-400 flex items-center gap-1">
+                          <span aria-hidden>✓</span>
+                          MMX is authenticated and ready
+                          {mmxStatus.version ? ` (${mmxStatus.version})` : ''}.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleMmxSetup}
+                          disabled={mmxBusy}
+                          className="text-[11px] text-zinc-400 hover:text-[#c5a062] underline underline-offset-2 disabled:opacity-50"
+                        >
+                          {mmxBusy ? 'Opening…' : 'Open MMX CLI to change provider/model'}
+                        </button>
+                      </div>
+                    )}
                   {mmxSetupMsg && (
                     <div className="mt-3 bg-zinc-900 border border-zinc-700 rounded-lg p-3 space-y-1">
                       <p className="text-[11px] text-amber-300 font-medium">MMX Setup</p>
