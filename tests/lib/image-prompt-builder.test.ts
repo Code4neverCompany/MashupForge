@@ -129,11 +129,14 @@ describe('buildEnhancedPrompt — Leonardo branch', () => {
     expect(r.leonardo.height).toBe(2048);
   });
 
-  it('forwards spec.parameters.quality and mode as structured params', () => {
+  it('forwards spec.parameters.quality and prompt_enhance as structured params', () => {
+    // gpt-image-1.5 spec: quality=HIGH, prompt_enhance=ON. The legacy
+    // `mode` parameter (FAST|QUALITY|ULTRA) was deprecated 2026-05-04
+    // and removed from the spec — only `quality` survives.
     const r = buildEnhancedPrompt('a cat', { modelId: 'gpt-image-1.5' });
     expect(r.leonardo.quality).toBe('HIGH');
-    expect(r.leonardo.mode).toBe('ULTRA');
     expect(r.leonardo.promptEnhance).toBe('ON');
+    expect((r.leonardo as Record<string, unknown>).mode).toBeUndefined();
   });
 
   it('passes count to leonardo.quantity', () => {

@@ -33,14 +33,7 @@
       "required": false,
       "allowedValues": ["LOW", "MEDIUM", "HIGH"],
       "default": "HIGH",
-      "description": "Generation quality level. Always HIGH — we want best quality."
-    },
-    "mode": {
-      "type": "string",
-      "required": false,
-      "allowedValues": ["FAST", "QUALITY", "ULTRA"],
-      "default": "ULTRA",
-      "description": "Generation mode. Always ULTRA — maximum quality."
+      "description": "Generation quality level. Always HIGH — we want best quality. NOTE: replaces the deprecated `mode` parameter (deprecated 2026-05-04)."
     },
     "prompt_enhance": {
       "type": "string",
@@ -100,8 +93,8 @@
     "DO NOT set style — this model has no style parameter.",
     "DO NOT set negativePrompt — this model has no negative prompt parameter.",
     "DO NOT set imageSize (1K/2K) — not a parameter on this model.",
+    "DO NOT set mode — `mode` (FAST|QUALITY|ULTRA) is DEPRECATED as of 2026-05-04 and will FAIL after that date. Use `quality` (LOW|MEDIUM|HIGH) instead.",
     "quality must always be HIGH.",
-    "mode must always be ULTRA.",
     "prompt_enhance must always be ON.",
     "quantity must always be 1.",
     "Only user-facing choice is aspect ratio (2:3, 1:1, or 3:2) — pick based on prompt scene.",

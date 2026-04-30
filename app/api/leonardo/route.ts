@@ -33,13 +33,20 @@ function extractLeonardoError(parsed: unknown): string | null {
 /**
  * Leonardo AI Image Generation API Route
  *
- * Supports 4 API-documented models:
+ * Supports 5 API-documented image models:
  * - Nano Banana (nano-banana): 20 styles, 10 aspect ratios, max 8 images
  * - Nano Banana 2 (nano-banana-2): 20 styles, 10 aspect ratios, max 8 images
- * - Nano Banana Pro (gemini-image-2): 20 styles, 3 aspect ratios, max 8 images
+ * - Nano Banana Pro (gemini-image-2): 20 styles, 10 aspect ratios, max 8 images
  * - GPT Image-1.5 (gpt-image-1.5): no styles, quality param, 3 aspect ratios, max 4 images
+ * - GPT Image 2 (gpt-image-2): no styles, quality param, 5 aspect ratios, max 8 images
  *
- * All use v2 endpoint: https://cloud.leonardo.ai/api/rest/v2/generations
+ * All use v2 endpoint: https://cloud.leonardo.ai/api/rest/v2/generations.
+ * Video models (kling-o3, seedance-2.0, veo-3.1, kling-3.0) live in
+ * app/api/leonardo-video/route.ts — not this route.
+ *
+ * Deprecation (2026-05-04): the legacy `mode` parameter (FAST|QUALITY|ULTRA)
+ * is removed for GPT image models. Use `quality` (LOW|MEDIUM|HIGH) instead.
+ * This route already only sends `quality`; it never sent `mode`.
  *
  * Client sends internal model id (e.g. 'nano-banana-pro').
  * Route maps to apiModelId (e.g. 'gemini-image-2') for Leonardo API.
@@ -55,11 +62,14 @@ function extractLeonardoError(parsed: unknown): string | null {
 // Nano Banana (original) → 'gemini-2.5-flash-image' (Leonardo's API ID)
 // Nano Banana 2 → 'nano-banana-2' (accepted directly, no mapping needed)
 // Nano Banana Pro → 'gemini-image-2'
+// GPT Image-1.5 → 'gpt-image-1.5'
+// GPT Image 2 → 'gpt-image-2'
 const MODEL_ID_MAP: Record<string, string> = {
   'nano-banana': 'gemini-2.5-flash-image',
   'nano-banana-2': 'nano-banana-2',
   'nano-banana-pro': 'gemini-image-2',
   'gpt-image-1.5': 'gpt-image-1.5',
+  'gpt-image-2': 'gpt-image-2',
 };
 
 export async function POST(req: Request) {

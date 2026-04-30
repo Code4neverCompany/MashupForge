@@ -50,10 +50,12 @@ export interface LeonardoBuilderOptions {
   width?: number;
   height?: number;
   /** Default quality from spec.parameters.quality. Forwarded as-is so the
-   * route can use the spec's documented enum value (e.g. "HIGH"). */
+   * route can use the spec's documented enum value (e.g. "HIGH").
+   *
+   * Note: this replaces the legacy `mode` parameter (FAST|QUALITY|ULTRA),
+   * which was deprecated by Leonardo on 2026-05-04 for GPT image models.
+   */
   quality?: string;
-  /** Default mode from spec.parameters.mode (e.g. "ULTRA"). */
-  mode?: string;
   /** Maps to Leonardo's `prompt_enhance` enum: 'ON' | 'OFF'. */
   promptEnhance?: 'ON' | 'OFF';
 }
@@ -186,19 +188,15 @@ export function buildEnhancedPrompt(
     }
   }
 
-  // Quality / mode pulled from the spec when present. Forwarded as prompt
-  // keywords for both providers; Leonardo also gets them as structured
-  // params it can pass to its REST API.
+  // Quality pulled from the spec when present. Forwarded as a prompt
+  // keyword for both providers; Leonardo also gets it as a structured
+  // param it can pass to its REST API. (The legacy `mode` parameter was
+  // deprecated by Leonardo on 2026-05-04 — image specs no longer carry it.)
   if (spec) {
     const quality = paramValue(spec, 'quality');
     if (quality) {
       hintParts.push(`quality: ${quality}`);
       leonardo.quality = quality;
-    }
-    const mode = paramValue(spec, 'mode');
-    if (mode) {
-      hintParts.push(`mode: ${mode}`);
-      leonardo.mode = mode;
     }
     const promptEnhance = paramValue(spec, 'prompt_enhance');
     if (promptEnhance) {

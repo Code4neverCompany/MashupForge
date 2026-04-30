@@ -30,8 +30,8 @@ Model identifier: "gpt-image-1.5"
 ## Parameters
 - model (string, required): "gpt-image-1.5".
 - prompt (string, required).
-- quality (string, optional): LOW | MEDIUM | HIGH.
-- mode (string, optional): FAST | QUALITY | ULTRA.
+- quality (string, optional): LOW | MEDIUM | HIGH. App default: HIGH.
+  NOTE: replaces the deprecated mode parameter (deprecated 2026-05-04).
 - prompt_enhance (string, optional): ON | OFF. App default: ON.
 - quantity (integer, optional).
 - width (integer, optional).
@@ -41,11 +41,58 @@ Model identifier: "gpt-image-1.5"
 - guidances.image_reference (array, optional, up to 6): each entry
   has image.id, image.type (GENERATED|UPLOADED), strength (LOW|MID|HIGH).
 
+## Deprecation
+The legacy mode parameter (FAST|QUALITY|ULTRA) is DEPRECATED as of
+2026-05-04 and requests using it will FAIL after that date. Always use
+the quality parameter instead.
+
 ## Aspect Ratio Settings (width × height)
 | Aspect Ratio | Width | Height |
 | 2:3          | 1024  | 1536   |
 | 1:1          | 1024  | 1024   |
 | 3:2          | 1536  | 1024   |
+`;
+
+const GPT_IMAGE_2 = `========================================================================
+# GPT Image 2
+========================================================================
+
+## Endpoint
+POST https://cloud.leonardo.ai/api/rest/v2/generations
+Model identifier: "gpt-image-2"
+
+## Parameters
+- model (string, required): "gpt-image-2".
+- prompt (string, required).
+- quality (string, optional): LOW | MEDIUM | HIGH. App default: HIGH.
+- prompt_enhance (string, optional): ON | OFF. App default: ON.
+- quantity (integer, optional, 1..8).
+- width (integer, optional, multiple of 16).
+- height (integer, optional, multiple of 16).
+- public (boolean, optional).
+- guidances.image_reference (array, optional, up to 6): each entry has
+  image.id and image.type (GENERATED|UPLOADED). NOTE: gpt-image-2 does
+  NOT use \`strength\` on image references — omit it.
+
+## Notes
+- gpt-image-2 has no mode parameter (and mode is deprecated fleet-wide
+  for GPT image models as of 2026-05-04).
+- gpt-image-2 does not document a seed parameter; do not send seed.
+- size: "auto" is NOT supported and must never be sent.
+
+## Aspect Ratio Settings (width × height)
+| Aspect Ratio | Width | Height |
+| 1:1          | 1024  | 1024   |
+| 2:3          | 848   | 1264   |
+| 3:2          | 1264  | 848    |
+| 16:9         | 1376  | 768    |
+| 9:16         | 768   | 1376   |
+
+## Resolution Constraints
+- max edge: max(width, height) < 3840.
+- both width and height must be multiples of 16.
+- aspect ratio: max(w,h)/min(w,h) ≤ 3 (no wider than 3:1, no taller than 1:3).
+- pixel count: 655,360 ≤ width × height ≤ 8,294,400.
 `;
 
 const NANO_BANANA_2 = `========================================================================
@@ -235,6 +282,7 @@ Dimensions outside these are rejected. Uploaded images are cropped to fit.
  */
 export const LEONARDO_API_DOCS_BY_MODEL: Record<string, string> = {
   'gpt-image-1.5': GPT_IMAGE_15,
+  'gpt-image-2': GPT_IMAGE_2,
   'nano-banana-2': NANO_BANANA_2,
   'nano-banana-pro': NANO_BANANA_PRO,
   'kling-3.0': KLING_30,
@@ -251,6 +299,7 @@ export const LEONARDO_API_DOCS_BY_MODEL: Record<string, string> = {
  */
 export const LEONARDO_API_DOCS = `
 ${GPT_IMAGE_15}
+${GPT_IMAGE_2}
 ${NANO_BANANA_2}
 ${NANO_BANANA_PRO}
 ${KLING_30}

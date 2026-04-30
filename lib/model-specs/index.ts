@@ -7,6 +7,7 @@
  */
 
 import gptImage15 from './gpt-image-1.5.json';
+import gptImage2 from './gpt-image-2.json';
 import nanoBanana2 from './nano-banana-2.json';
 import nanoBananaPro from './nano-banana-pro.json';
 import kling30 from './kling-3.0.json';
@@ -44,6 +45,7 @@ export interface ModelSpec {
 
 const MODEL_SPECS: Record<string, ModelSpec> = {
   'gpt-image-1.5': gptImage15 as unknown as ModelSpec,
+  'gpt-image-2': gptImage2 as unknown as ModelSpec,
   'nano-banana-2': nanoBanana2 as unknown as ModelSpec,
   'nano-banana-pro': nanoBananaPro as unknown as ModelSpec,
   'kling-3.0': kling30 as unknown as ModelSpec,
