@@ -4,6 +4,23 @@ All notable changes to MashupForge are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.16] — 2026-04-30
+
+### Added
+- **mmx:** auto-install mmx-cli when not found on setup button click
+- **model-specs:** add gpt-image-2 + drop deprecated `mode` param
+
+### Fixed
+- **mmx:** add macOS Homebrew npm fallbacks to auto-install resolver (QA W-B)
+- **settings:** address QA W-1 + W-2 on MMX card
+
+### Docs
+- **qa:** MMX auto-install 3-state verify report
+- **briefs:** MMX auto-install 3-state QA verify brief
+- **discoveries:** IG scheduled posts fail — wrong token type on Vercel
+- **discoveries:** record sched-post 401 root cause + fix
+- **qa:** add MMX-CARD-SETUP-FIX review report
+
 ## [0.9.12] — 2026-04-29
 
 QA-driven cleanup release: clears the MMX + calendar warnings (W1–W5)
