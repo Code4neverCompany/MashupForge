@@ -1,36 +1,134 @@
 #!/bin/bash
-# release.sh — bump version across all 3 files, commit, tag, push
-# Usage: ./scripts/release.sh 0.7.2
+# release.sh — bump version, regenerate CHANGELOG.md, commit, leave push+tag
+# to the operator. Usage: ./scripts/release.sh 0.7.2
 
-set -e
+set -euo pipefail
 
 VERSION="${1:?Usage: ./scripts/release.sh <version> (e.g. 0.7.2)}"
 TAG="v${VERSION}"
+DATE="$(date -u +%Y-%m-%d)"
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
 
 echo "Bumping to ${VERSION}..."
 
-# Bump package.json
+# Bump package.json, tauri.conf.json, Cargo.toml in place. Each sed pattern
+# matches the FIRST `"version": "..."` line in the file, which is the
+# project's own version in all three files (Cargo.toml lock-style entries
+# use a different syntax and aren't matched by the JSON-style pattern).
 sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION}\"/" package.json
-
-# Bump src-tauri/tauri.conf.json
 sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION}\"/" src-tauri/tauri.conf.json
-
-# Bump src-tauri/Cargo.toml
 sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" src-tauri/Cargo.toml
 
-# Verify parity
 pkg=$(grep '"version"' package.json | sed 's/.*"version": "\(.*\)".*/\1/')
 tauri=$(grep '"version"' src-tauri/tauri.conf.json | sed 's/.*"version": "\(.*\)".*/\1/')
 cargo=$(grep '^version' src-tauri/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
 
 echo "package.json=${pkg}  tauri.conf.json=${tauri}  Cargo.toml=${cargo}"
-
 if [ "$pkg" != "$VERSION" ] || [ "$tauri" != "$VERSION" ] || [ "$cargo" != "$VERSION" ]; then
-  echo "ERROR: Version mismatch after bump!"
+  echo "ERROR: Version mismatch after bump!" >&2
   exit 1
 fi
 
-echo "All 3 files match: ${VERSION}"
-echo "Run: git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml"
-echo "Then: git commit -m 'chore(release): ${TAG}'"
-echo "Then: git push && git tag ${TAG} && git push origin ${TAG}"
+# ── Changelog generation ─────────────────────────────────────────────────────
+# Conventional-commits → Keep-a-Changelog sections. `chore:`, `ci:`, `build:`,
+# `style:` are skipped — internal noise that doesn't belong in user-facing
+# release notes. `chore(release):` (the bump itself, from a prior run) is
+# also skipped via the same filter.
+
+prev_tag="$(git tag --list 'v*' --sort=-version:refname | head -n 1 || true)"
+if [ -z "${prev_tag}" ]; then
+  echo "No prior tag found — diffing from initial commit."
+  prev_tag="$(git rev-list --max-parents=0 HEAD | head -n 1)"
+fi
+echo "Generating changelog since ${prev_tag}..."
+
+block="$(mktemp)"
+trap 'rm -f "${block}"' EXIT
+
+# Emit a `### <Section>` block for every commit subject matching `pattern`.
+# Subjects of the form `type(scope): summary` become `- **scope:** summary`,
+# matching the existing CHANGELOG.md style. Bare `type: summary` becomes
+# `- summary`. Returns 0 (and emits nothing) if no commits matched.
+emit_section() {
+  local label="$1"
+  local pattern="$2"
+  local lines
+  lines="$(git log "${prev_tag}..HEAD" --no-merges --pretty='%s' \
+            | grep -E "^${pattern}" || true)"
+  [ -z "${lines}" ] && return 0
+
+  printf '\n### %s\n' "${label}" >> "${block}"
+  while IFS= read -r line; do
+    local cleaned scope
+    cleaned="$(printf '%s' "${line}" | sed -E 's/^[a-z]+(\([^)]+\))?: //')"
+    scope="$(printf '%s' "${line}" | sed -nE 's/^[a-z]+\(([^)]+)\):.*/\1/p')"
+    if [ -n "${scope}" ]; then
+      printf -- '- **%s:** %s\n' "${scope}" "${cleaned}" >> "${block}"
+    else
+      printf -- '- %s\n' "${cleaned}" >> "${block}"
+    fi
+  done <<< "${lines}"
+}
+
+printf '## [%s] — %s\n' "${VERSION}" "${DATE}" > "${block}"
+
+emit_section "Added"   "feat(\([^)]+\))?:"
+emit_section "Fixed"   "fix(\([^)]+\))?:"
+emit_section "Changed" "(refactor|perf)(\([^)]+\))?:"
+emit_section "Docs"    "docs(\([^)]+\))?:"
+emit_section "Tests"   "test(\([^)]+\))?:"
+
+# Empty release: only the heading line was written. Substitute a placeholder
+# so the CHANGELOG entry still exists for traceability.
+if [ "$(wc -l < "${block}")" -le 1 ]; then
+  printf '\n_Internal-only release; no user-facing changes since %s._\n' "${prev_tag}" >> "${block}"
+fi
+
+# Insert the new block above the first existing version block. The intro
+# header (everything from line 1 up to the first `## [`) is preserved
+# verbatim. If no prior version block exists, append after the header.
+header_end="$(grep -nE '^## \[' CHANGELOG.md | head -n 1 | cut -d: -f1 || true)"
+new_changelog="$(mktemp)"
+trap 'rm -f "${block}" "${new_changelog}"' EXIT
+
+if [ -z "${header_end}" ]; then
+  cat CHANGELOG.md > "${new_changelog}"
+  printf '\n' >> "${new_changelog}"
+  cat "${block}" >> "${new_changelog}"
+  printf '\n' >> "${new_changelog}"
+else
+  head -n "$((header_end - 1))" CHANGELOG.md > "${new_changelog}"
+  cat "${block}" >> "${new_changelog}"
+  printf '\n' >> "${new_changelog}"
+  tail -n "+${header_end}" CHANGELOG.md >> "${new_changelog}"
+fi
+mv "${new_changelog}" CHANGELOG.md
+
+echo
+echo "── Generated changelog block ──"
+cat "${block}"
+echo "───────────────────────────────"
+
+# ── Commit ──────────────────────────────────────────────────────────────────
+# Stage all four files and commit with subject `chore(release): vX.Y.Z` and
+# body = the generated changelog block. Operator pushes + tags afterwards.
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml CHANGELOG.md
+
+# Skip the commit if nothing actually changed (e.g. re-running for the same
+# version). git diff --cached is empty when nothing is staged for commit.
+if git diff --cached --quiet; then
+  echo "No staged changes — skipping commit."
+else
+  {
+    printf 'chore(release): %s\n\n' "${TAG}"
+    cat "${block}"
+  } | git commit -F -
+  echo "Committed: $(git log -1 --pretty='%h %s')"
+fi
+
+echo
+echo "Next:"
+echo "  git push origin main"
+echo "  git tag ${TAG} && git push origin ${TAG}"
