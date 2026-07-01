@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Start camofox sidecar (Docker)
         # The official camofox-browser Docker image binds 127.0.0.1:9377
